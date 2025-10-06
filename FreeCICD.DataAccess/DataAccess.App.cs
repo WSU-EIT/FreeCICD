@@ -1,3 +1,5 @@
+﻿using Microsoft.Extensions.Caching.Memory;
+
 namespace FreeCICD;
 
 // Use this file as a place to put any application-specific data access methods.
@@ -9,13 +11,16 @@ public partial interface IDataAccess
 
 public partial class DataAccess
 {
+
+  
+
+
     /// <summary>
     /// Use this area to add your custom language tags for your app, or to override built-in language tags (eg: AppTitle).
     /// </summary>
     private Dictionary<string, string> AppLanguage {
         get {
-            return new Dictionary<string, string>
-            {
+            return new Dictionary<string, string> {
                 //{ "AppTitle", "My Custom App Title" },
                 //{ "YourLanguageItem", "Your Language Item" },
             };
@@ -25,6 +30,17 @@ public partial class DataAccess
     private void DataAccessAppInit()
     {
         // Add any app-specific initialization logic here.
+        if (_serviceProvider != null) {
+            // Grab the global IMemoryCache registered in Program.cs / Startup.cs
+            var cache = _serviceProvider.GetService(typeof(IMemoryCache)) as IMemoryCache;
+            if (cache == null) {
+                throw new InvalidOperationException("IMemoryCache is not registered in the service provider.");
+            }
+
+            _cache = cache;
+        } else {
+            throw new InvalidOperationException("ServiceProvider is not available for DataAccess.");
+        }
     }
 
     /// <summary>

@@ -12,7 +12,7 @@ public partial class DataController
     [Route("~/api/Data/YourEndpoint/")]
     public ActionResult<DataObjects.BooleanResponse> YourEndpoint()
     {
-        var output = new DataObjects.BooleanResponse { 
+        var output = new DataObjects.BooleanResponse {
             Result = true,
             Messages = new List<string> { "Your messages here" },
         };
@@ -23,7 +23,7 @@ public partial class DataController
     private async Task<bool> SignalRUpdateApp(DataObjects.SignalRUpdate update)
     {
         await Task.Delay(0); // Simulate a delay since this method has to be async. This can be removed once you implement your await logic.
-        
+
         bool processedInApp = false;
 
         // Do any app-specific SignalR processing here.

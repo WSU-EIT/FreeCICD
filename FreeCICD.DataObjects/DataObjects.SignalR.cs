@@ -21,6 +21,10 @@ public partial class DataObjects
         UserAttendance,
         UserGroup,
         UserPreferences,
+
+        //mystuff
+        RegisterSignalR,
+        LoadingDevOpsInfoStatusUpdate,
     }
 
     public partial class SignalRUpdate

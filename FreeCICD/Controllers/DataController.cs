@@ -1,6 +1,8 @@
 using FreeCICD.Server.Hubs;
+using FreeCICD.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Caching.Memory;
 using System.Security.Claims;
 
 namespace FreeCICD.Server.Controllers;
@@ -14,6 +16,8 @@ public partial class DataController : ControllerBase
     private DataObjects.User CurrentUser;
     private Guid TenantId = Guid.Empty;
     private IConfigurationHelper configurationHelper;
+    private readonly IMemoryCache _cache;
+    private readonly IIISInfoProvider _iisInfoProvider;
     private Plugins.IPlugins plugins;
 
     private readonly IHubContext<freecicdHub>? _signalR;
@@ -25,7 +29,9 @@ public partial class DataController : ControllerBase
         IHttpContextAccessor httpContextAccessor, 
         ICustomAuthentication auth, 
         IHubContext<freecicdHub> hubContext, 
-        IConfigurationHelper configHelper, 
+        IConfigurationHelper configHelper,
+        IIISInfoProvider iisInfoProvider,
+        IMemoryCache memoryCache,
         Plugins.IPlugins diPlugins)
     {
         da = daInjection;
@@ -34,6 +40,8 @@ public partial class DataController : ControllerBase
         plugins = diPlugins;
         _signalR = hubContext;
 
+        _iisInfoProvider = iisInfoProvider;
+        _cache = memoryCache;
         if (authenticationProviders != null) {
             da.SetAuthenticationProviders(new DataObjects.AuthenticationProviders { 
                 UseApple = authenticationProviders.UseApple,

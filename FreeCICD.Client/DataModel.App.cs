@@ -38,4 +38,23 @@ public partial class BlazorDataModel
             }
         }
     }
+
+    private DataObjects.SignalrClientRegistration _SignalrClientRegistration = new();
+
+    public DataObjects.SignalrClientRegistration SignalrClientRegistration {
+        get { return _SignalrClientRegistration == null ? new() : _SignalrClientRegistration; }
+        set {
+            if (!ObjectsAreEqual(_SignalrClientRegistration?.RegistrationId, value?.RegistrationId)
+                ||
+                !ObjectsAreEqual(_SignalrClientRegistration?.ConnectionId, value?.ConnectionId)
+                ) {
+                _SignalrClientRegistration = new DataObjects.SignalrClientRegistration {
+                    RegistrationId = (string.Empty + value?.RegistrationId).Trim(),
+                    ConnectionId = (string.Empty + value?.ConnectionId).Trim(),
+                };
+                _ModelUpdated = DateTime.UtcNow;
+                NotifyDataChanged();
+            }
+        }
+    }
 }
