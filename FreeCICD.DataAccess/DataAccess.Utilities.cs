@@ -2082,16 +2082,33 @@ public partial class DataAccess
 
     public void UpdateApplicationURL(string? url)
     {
-        // Only set the application URL if it is not already set.
-        if (!String.IsNullOrWhiteSpace(url) && String.IsNullOrWhiteSpace(ApplicationURL)) {
-            SaveSetting("ApplicationURL", DataObjects.SettingType.Text, url);
-            CacheStore.SetCacheItem(Guid.Empty, "ApplicationURL", url);
+        if (String.IsNullOrWhiteSpace(url)) {
+            return;
         }
 
-        //if (!String.IsNullOrWhiteSpace(url) && url.ToLower() != ApplicationURL.ToLower() && url.ToLower().StartsWith("https://")) {
-        //    SaveSetting("ApplicationURL", DataObjects.SettingType.Text, url);
-        //    CacheStore.SetCacheItem(Guid.Empty, "ApplicationURL", url);
-        //}
+        string normalized = url.Trim();
+        if (!normalized.EndsWith("/", StringComparison.Ordinal)) {
+            normalized += "/";
+        }
+
+        string existing = (ApplicationURL ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(existing) && !existing.EndsWith("/", StringComparison.Ordinal)) {
+            existing += "/";
+        }
+
+        bool newIsLocal = normalized.Contains("localhost", StringComparison.OrdinalIgnoreCase) || normalized.Contains("127.0.0.1", StringComparison.OrdinalIgnoreCase);
+        bool existingIsLocal = !string.IsNullOrWhiteSpace(existing) && (existing.Contains("localhost", StringComparison.OrdinalIgnoreCase) || existing.Contains("127.0.0.1", StringComparison.OrdinalIgnoreCase));
+
+        if (string.IsNullOrWhiteSpace(existing) || (existingIsLocal && !newIsLocal)) {
+            SaveSetting("ApplicationURL", DataObjects.SettingType.Text, normalized);
+            CacheStore.SetCacheItem(Guid.Empty, "ApplicationURL", normalized);
+            return;
+        }
+
+        if (!string.Equals(existing, normalized, StringComparison.OrdinalIgnoreCase) && !newIsLocal) {
+            SaveSetting("ApplicationURL", DataObjects.SettingType.Text, normalized);
+            CacheStore.SetCacheItem(Guid.Empty, "ApplicationURL", normalized);
+        }
     }
 
     private DataObjects.EmailMessage UpdateEmailReplyAddress(Guid TenantId, DataObjects.EmailMessage message)

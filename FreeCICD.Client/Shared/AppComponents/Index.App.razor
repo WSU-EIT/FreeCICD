@@ -1,5 +1,8 @@
 ﻿@implements IDisposable
 @using Humanizer
+@using System.Linq
+@using System.Text.Json
+@using System.Text.Json.Serialization
 @inject BlazorDataModel Model
 
 @if(Model.Loaded && Model.LoggedIn && Model.View == _pageName) {
@@ -366,6 +369,83 @@
 
                                     <label class="form-label mt-2">Variable Group Name:</label>
                                     <input type="text" class="form-control" @bind="envSetting.VariableGroupName" @bind:event="oninput" placeholder="Enter variable group name" disabled="@_loading" />
+
+                                    <div class="mt-3">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <label class="form-label mb-0">Custom IIS Bindings</label>
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-primary"
+                                                    aria-label="Add IIS binding"
+                                                    @onclick="() => AddCustomBinding(envKey)"
+                                                    disabled="@_loading">
+                                                Add Binding
+                                            </button>
+                                        </div>
+                                        <p class="form-text mb-2">Define host header bindings for this environment. Leave Path blank for the site root.</p>
+
+                                        @if(envSetting.CustomBindings == null || !envSetting.CustomBindings.Any()) {
+                                            <div class="alert alert-info" role="status">
+                                                No bindings defined. Use "Add Binding" to configure host headers.
+                                            </div>
+                                        } else {
+                                            @foreach(var binding in envSetting.CustomBindings.Select((b, index) => new { Binding = b, Index = index })) {
+                                                <div class="border rounded p-2 mb-2" @key="envKey.ToString() + \"_binding_\" + binding.Index">
+                                                    <div class="row g-2 align-items-end">
+                                                        <div class="col-12 col-md-3">
+                                                            <label class="form-label">Protocol</label>
+                                                            <select class="form-select"
+                                                                    aria-label="Binding protocol"
+                                                                    value="@binding.Binding.Protocol"
+                                                                    @onchange="(e) => BindingProtocolChanged(envKey, binding.Index, e)"
+                                                                    disabled="@_loading">
+                                                                <option value="https">HTTPS</option>
+                                                                <option value="http">HTTP</option>
+                                                            </select>
+                                                        </div>
+                                                        <div class="col-12 col-md-4">
+                                                            <label class="form-label">Hostname</label>
+                                                            <input type="text"
+                                                                   class="form-control"
+                                                                   aria-label="Binding hostname"
+                                                                   value="@binding.Binding.Hostname"
+                                                                   @oninput="(e) => BindingHostnameChanged(envKey, binding.Index, e)"
+                                                                   disabled="@_loading" />
+                                                        </div>
+                                                        <div class="col-6 col-md-2">
+                                                            <label class="form-label">Port</label>
+                                                            <input type="text"
+                                                                   class="form-control"
+                                                                   aria-label="Binding port"
+                                                                   inputmode="numeric"
+                                                                   pattern="[0-9]*"
+                                                                   value="@binding.Binding.Port"
+                                                                   @oninput="(e) => BindingPortChanged(envKey, binding.Index, e)"
+                                                                   disabled="@_loading" />
+                                                        </div>
+                                                        <div class="col-6 col-md-3">
+                                                            <label class="form-label">Path</label>
+                                                            <input type="text"
+                                                                   class="form-control"
+                                                                   aria-label="Binding path"
+                                                                   placeholder="/"
+                                                                   value="@(@binding.Binding.Path ?? string.Empty)"
+                                                                   @oninput="(e) => BindingPathChanged(envKey, binding.Index, e)"
+                                                                   disabled="@_loading" />
+                                                        </div>
+                                                    </div>
+                                                    <div class="text-end mt-2">
+                                                        <button type="button"
+                                                                class="btn btn-sm btn-outline-danger"
+                                                                aria-label="@($"Remove binding {binding.Index + 1} for {envKey}")"
+                                                                @onclick="() => RemoveCustomBinding(envKey, binding.Index)"
+                                                                disabled="@_loading">
+                                                            Remove Binding
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            }
+                                        }
+                                    </div>
                                 </div>
                             }
                         }
@@ -546,6 +626,15 @@
     // State for environment configuration checkboxes.
     private Dictionary<GlobalSettings.EnvironmentType, DataObjects.EnvSetting> EnvSettings = new();
 
+    private static readonly JsonSerializerOptions BindingSerializerOptions = new JsonSerializerOptions
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        ReadCommentHandling = JsonCommentHandling.Skip,
+        AllowTrailingCommas = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        WriteIndented = false
+    };
+
     private string[] StepNames = [
         DataObjects.StepNameList.SelectPAT,
         DataObjects.StepNameList.SelectProject,
@@ -579,7 +668,7 @@
         YAMLFileName = SelectedPipelineInfo?.YamlFileName ?? "",
         PipelineId = SelectedPipelineId.GetValueOrDefault(0),
         PipelineName = SelectedPipelineId > 0 ? string.Empty : NewPipelineName ?? "",
-        EnvironmentSettings = EnvSettings.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
+        EnvironmentSettings = BuildEnvironmentSettingsPayload(),
         CsProjectFile = SelectedCsprojPath ?? "",
         ConnectionId = Model.SignalrClientRegistration?.ConnectionId
     };
@@ -947,7 +1036,7 @@
                     VariableGroupName = $"{SelectedProjectInfo?.ProjectName}_{GlobalSettings.App.VariableGroupNameDefault}_{envKey}"
                 };
 
-                EnvSettings[envKey] = setting;
+                EnvSettings[envKey] = InitializeCustomBindingState(setting);
             } else {
                 if(EnvSettings.ContainsKey(envKey)) {
                     EnvSettings.Remove(envKey);
@@ -969,12 +1058,16 @@
         try {
             string deploymentType = e.Value?.ToString() ?? "";
             if(EnvSettings.ContainsKey(envKey)) {
-                EnvSettings[envKey].IISDeploymentType = deploymentType;
+                var setting = EnvSettings[envKey];
+                var previousPath = setting.VirtualPath;
+                setting.IISDeploymentType = deploymentType;
                 if(deploymentType == "IISWebApplication" || deploymentType == "IISWebApplicationAuth") {
-                    EnvSettings[envKey].VirtualPath = "/" + SelectedProjectInfo?.ProjectName?.ToLower();
+                    setting.VirtualPath = "/" + SelectedProjectInfo?.ProjectName?.ToLower();
                 } else {
-                    EnvSettings[envKey].VirtualPath = "";
+                    setting.VirtualPath = "";
                 }
+                SyncBindingPaths(setting, previousPath, setting.VirtualPath);
+                NormalizeBindingsInPlace(setting);
             }
         } catch {
         } finally {
@@ -1121,7 +1214,11 @@
         try {
             var value = e?.Value?.ToString() ?? "";
             if(EnvSettings.ContainsKey(envKey)) {
-                EnvSettings[envKey].WebsiteName = value;
+                var setting = EnvSettings[envKey];
+                var previous = setting.WebsiteName;
+                setting.WebsiteName = value;
+                SyncBindingHostnames(setting, previous, value);
+                NormalizeBindingsInPlace(setting);
             }
         } catch {
         } finally {
@@ -1135,7 +1232,11 @@
         try {
             var value = e?.Value?.ToString() ?? "";
             if(EnvSettings.ContainsKey(envKey)) {
-                EnvSettings[envKey].VirtualPath = value;
+                var setting = EnvSettings[envKey];
+                var previous = setting.VirtualPath;
+                setting.VirtualPath = value;
+                SyncBindingPaths(setting, previous, value);
+                NormalizeBindingsInPlace(setting);
             }
         } catch {
         } finally {
@@ -1150,11 +1251,350 @@
             var value = e?.Value?.ToString() ?? "";
             if(EnvSettings.ContainsKey(envKey)) {
                 EnvSettings[envKey].AppPoolName = value;
+                NormalizeBindingsInPlace(EnvSettings[envKey]);
             }
         } catch {
         } finally {
             await Task.CompletedTask;
             StateHasChanged();
+        }
+    }
+
+    private Dictionary<GlobalSettings.EnvironmentType, DataObjects.EnvSetting> BuildEnvironmentSettingsPayload()
+    {
+        NormalizeAllEnvironmentBindings();
+        return EnvSettings.ToDictionary(kvp => kvp.Key, kvp => CloneEnvSetting(kvp.Value));
+    }
+
+    private DataObjects.EnvSetting CloneEnvSetting(DataObjects.EnvSetting setting)
+    {
+        return new DataObjects.EnvSetting {
+            EnvName = setting.EnvName,
+            IISDeploymentType = setting.IISDeploymentType,
+            WebsiteName = setting.WebsiteName,
+            VirtualPath = setting.VirtualPath,
+            AppPoolName = setting.AppPoolName,
+            VariableGroupName = setting.VariableGroupName,
+            BindingInfo = setting.BindingInfo,
+            AuthUser = setting.AuthUser,
+            CustomBindings = setting.CustomBindings?.Select(b => new DataObjects.CustomBindingDefinition {
+                Protocol = b.Protocol,
+                Hostname = b.Hostname,
+                Port = b.Port,
+                IpAddress = b.IpAddress,
+                Path = b.Path,
+                SniFlag = b.SniFlag,
+                SslThumbprint = b.SslThumbprint,
+                SslStoreName = b.SslStoreName
+            }).ToList() ?? new List<DataObjects.CustomBindingDefinition>()
+        };
+    }
+
+    private void NormalizeAllEnvironmentBindings()
+    {
+        foreach(var setting in EnvSettings.Values) {
+            NormalizeBindingsInPlace(setting);
+        }
+    }
+
+    private void NormalizeBindingsInPlace(DataObjects.EnvSetting setting)
+    {
+        if(setting == null) {
+            return;
+        }
+
+        var normalized = NormalizeBindings(setting.CustomBindings);
+        setting.CustomBindings = normalized;
+        setting.BindingInfo = normalized.Any()
+            ? JsonSerializer.Serialize(normalized, BindingSerializerOptions)
+            : string.Empty;
+    }
+
+    private List<DataObjects.CustomBindingDefinition> NormalizeBindings(IEnumerable<DataObjects.CustomBindingDefinition>? bindings)
+    {
+        var normalized = new List<DataObjects.CustomBindingDefinition>();
+
+        if(bindings != null) {
+            foreach(var binding in bindings) {
+                if(binding == null) {
+                    continue;
+                }
+
+                var protocol = NormalizeProtocol(binding.Protocol);
+                var port = NormalizePort(binding.Port, protocol);
+                var host = (binding.Hostname ?? string.Empty).Trim();
+                var ipAddress = string.IsNullOrWhiteSpace(binding.IpAddress) ? "*" : binding.IpAddress.Trim();
+                var path = NormalizeBindingPath(binding.Path);
+
+                bool? sniFlag = binding.SniFlag;
+                if(protocol == "https") {
+                    sniFlag = sniFlag ?? true;
+                } else {
+                    sniFlag = null;
+                }
+
+                normalized.Add(new DataObjects.CustomBindingDefinition {
+                    Protocol = protocol,
+                    Hostname = host,
+                    Port = port,
+                    IpAddress = ipAddress,
+                    Path = path,
+                    SniFlag = sniFlag,
+                    SslThumbprint = string.IsNullOrWhiteSpace(binding.SslThumbprint) ? null : binding.SslThumbprint.Trim(),
+                    SslStoreName = string.IsNullOrWhiteSpace(binding.SslStoreName) ? null : binding.SslStoreName.Trim()
+                });
+            }
+        }
+
+        return normalized;
+    }
+
+    private List<DataObjects.CustomBindingDefinition> ParseBindings(string? bindingInfo)
+    {
+        if(string.IsNullOrWhiteSpace(bindingInfo)) {
+            return new List<DataObjects.CustomBindingDefinition>();
+        }
+
+        try {
+            var parsed = JsonSerializer.Deserialize<List<DataObjects.CustomBindingDefinition>>(bindingInfo, BindingSerializerOptions);
+            return NormalizeBindings(parsed);
+        } catch {
+            return new List<DataObjects.CustomBindingDefinition>();
+        }
+    }
+
+    private static string NormalizeProtocol(string? protocol)
+    {
+        var value = (protocol ?? "https").Trim().ToLowerInvariant();
+        return value switch {
+            "http" => "http",
+            "https" => "https",
+            _ => "https"
+        };
+    }
+
+    private static string NormalizePort(string? port, string protocol)
+    {
+        var trimmed = (port ?? string.Empty).Trim();
+        if(string.IsNullOrWhiteSpace(trimmed)) {
+            return DefaultPortForProtocol(protocol);
+        }
+
+        var digits = new string(trimmed.Where(char.IsDigit).ToArray());
+        return string.IsNullOrWhiteSpace(digits) ? DefaultPortForProtocol(protocol) : digits;
+    }
+
+    private static string DefaultPortForProtocol(string? protocol)
+    {
+        return string.Equals(protocol, "https", StringComparison.OrdinalIgnoreCase) ? "443" : "80";
+    }
+
+    private static string? NormalizeBindingPath(string? path)
+    {
+        if(string.IsNullOrWhiteSpace(path)) {
+            return null;
+        }
+
+        var trimmed = path.Trim();
+        if(trimmed == "/") {
+            return "/";
+        }
+
+        trimmed = trimmed.TrimStart('/');
+        return string.IsNullOrWhiteSpace(trimmed) ? null : "/" + trimmed;
+    }
+
+    private DataObjects.EnvSetting InitializeCustomBindingState(DataObjects.EnvSetting setting)
+    {
+        setting.CustomBindings ??= new List<DataObjects.CustomBindingDefinition>();
+
+        if(setting.CustomBindings.Count == 0 && !string.IsNullOrWhiteSpace(setting.BindingInfo)) {
+            setting.CustomBindings = ParseBindings(setting.BindingInfo);
+        }
+
+        if(setting.CustomBindings.Count == 0) {
+            string defaultHost = setting.WebsiteName?.Trim() ?? string.Empty;
+            if(string.IsNullOrWhiteSpace(defaultHost) && GlobalSettings.App.EnvironmentOptions.TryGetValue(setting.EnvName, out var envDefaults)) {
+                defaultHost = envDefaults?.Hostname ?? string.Empty;
+            }
+
+            setting.CustomBindings.Add(new DataObjects.CustomBindingDefinition {
+                Protocol = "https",
+                Hostname = defaultHost,
+                Port = DefaultPortForProtocol("https"),
+                IpAddress = "*",
+                Path = NormalizeBindingPath(setting.VirtualPath),
+                SniFlag = true
+            });
+        }
+
+        NormalizeBindingsInPlace(setting);
+        return setting;
+    }
+
+    private DataObjects.CustomBindingDefinition? GetBinding(DataObjects.EnvSetting setting, int index)
+    {
+        if(setting?.CustomBindings == null) {
+            return null;
+        }
+
+        if(index < 0 || index >= setting.CustomBindings.Count) {
+            return null;
+        }
+
+        return setting.CustomBindings[index];
+    }
+
+    private void AddCustomBinding(GlobalSettings.EnvironmentType envKey)
+    {
+        if(!EnvSettings.TryGetValue(envKey, out var setting)) {
+            return;
+        }
+
+        setting.CustomBindings ??= new List<DataObjects.CustomBindingDefinition>();
+
+        setting.CustomBindings.Add(new DataObjects.CustomBindingDefinition {
+            Protocol = "https",
+            Hostname = setting.WebsiteName?.Trim() ?? string.Empty,
+            Port = DefaultPortForProtocol("https"),
+            IpAddress = "*",
+            Path = NormalizeBindingPath(setting.VirtualPath),
+            SniFlag = true
+        });
+
+        NormalizeBindingsInPlace(setting);
+        StateHasChanged();
+    }
+
+    private void RemoveCustomBinding(GlobalSettings.EnvironmentType envKey, int index)
+    {
+        if(!EnvSettings.TryGetValue(envKey, out var setting)) {
+            return;
+        }
+
+        if(setting.CustomBindings != null && index >= 0 && index < setting.CustomBindings.Count) {
+            setting.CustomBindings.RemoveAt(index);
+            NormalizeBindingsInPlace(setting);
+            StateHasChanged();
+        }
+    }
+
+    private void BindingProtocolChanged(GlobalSettings.EnvironmentType envKey, int index, ChangeEventArgs e)
+    {
+        if(!EnvSettings.TryGetValue(envKey, out var setting)) {
+            return;
+        }
+
+        var binding = GetBinding(setting, index);
+        if(binding == null) {
+            return;
+        }
+
+        var previousProtocol = binding.Protocol;
+        binding.Protocol = NormalizeProtocol(e?.Value?.ToString());
+
+        if(string.IsNullOrWhiteSpace(binding.Port) || binding.Port == DefaultPortForProtocol(previousProtocol)) {
+            binding.Port = DefaultPortForProtocol(binding.Protocol);
+        }
+
+        binding.SniFlag = binding.Protocol == "https" ? true : null;
+
+        NormalizeBindingsInPlace(setting);
+        StateHasChanged();
+    }
+
+    private void BindingHostnameChanged(GlobalSettings.EnvironmentType envKey, int index, ChangeEventArgs e)
+    {
+        if(!EnvSettings.TryGetValue(envKey, out var setting)) {
+            return;
+        }
+
+        var binding = GetBinding(setting, index);
+        if(binding == null) {
+            return;
+        }
+
+        binding.Hostname = (e?.Value?.ToString() ?? string.Empty).Trim();
+        NormalizeBindingsInPlace(setting);
+        StateHasChanged();
+    }
+
+    private void BindingPortChanged(GlobalSettings.EnvironmentType envKey, int index, ChangeEventArgs e)
+    {
+        if(!EnvSettings.TryGetValue(envKey, out var setting)) {
+            return;
+        }
+
+        var binding = GetBinding(setting, index);
+        if(binding == null) {
+            return;
+        }
+
+        var value = e?.Value?.ToString() ?? string.Empty;
+        var digits = new string(value.Where(char.IsDigit).ToArray());
+        binding.Port = string.IsNullOrWhiteSpace(digits) ? DefaultPortForProtocol(binding.Protocol) : digits;
+
+        NormalizeBindingsInPlace(setting);
+        StateHasChanged();
+    }
+
+    private void BindingPathChanged(GlobalSettings.EnvironmentType envKey, int index, ChangeEventArgs e)
+    {
+        if(!EnvSettings.TryGetValue(envKey, out var setting)) {
+            return;
+        }
+
+        var binding = GetBinding(setting, index);
+        if(binding == null) {
+            return;
+        }
+
+        binding.Path = NormalizeBindingPath(e?.Value?.ToString());
+        NormalizeBindingsInPlace(setting);
+        StateHasChanged();
+    }
+
+    private void SyncBindingHostnames(DataObjects.EnvSetting setting, string previousHostname, string newHostname)
+    {
+        if(setting?.CustomBindings == null) {
+            return;
+        }
+
+        var previous = previousHostname?.Trim() ?? string.Empty;
+        var updated = newHostname?.Trim() ?? string.Empty;
+
+        foreach(var binding in setting.CustomBindings) {
+            if(binding == null) {
+                continue;
+            }
+
+            if(string.IsNullOrWhiteSpace(binding.Hostname) && !string.IsNullOrWhiteSpace(updated)) {
+                binding.Hostname = updated;
+            } else if(!string.IsNullOrWhiteSpace(previous) && string.Equals(binding.Hostname, previous, StringComparison.OrdinalIgnoreCase)) {
+                binding.Hostname = updated;
+            }
+        }
+    }
+
+    private void SyncBindingPaths(DataObjects.EnvSetting setting, string previousPath, string newPath)
+    {
+        if(setting?.CustomBindings == null) {
+            return;
+        }
+
+        var previous = NormalizeBindingPath(previousPath);
+        var updated = NormalizeBindingPath(newPath);
+
+        foreach(var binding in setting.CustomBindings) {
+            if(binding == null) {
+                continue;
+            }
+
+            if(string.IsNullOrWhiteSpace(binding.Path) && !string.IsNullOrWhiteSpace(updated)) {
+                binding.Path = updated;
+            } else if(!string.IsNullOrWhiteSpace(previous) && string.Equals(binding.Path ?? string.Empty, previous, StringComparison.OrdinalIgnoreCase)) {
+                binding.Path = updated;
+            }
         }
     }
 

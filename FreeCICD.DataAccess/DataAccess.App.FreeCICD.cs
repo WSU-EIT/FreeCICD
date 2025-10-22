@@ -15,6 +15,8 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 
 namespace FreeCICD;
@@ -63,6 +65,129 @@ public partial interface IDataAccess
 public partial class DataAccess
 {
     private IMemoryCache _cache;
+
+    private static readonly JsonSerializerOptions BindingSerializerOptions = new JsonSerializerOptions
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        WriteIndented = false
+    };
+
+    private static List<DataObjects.CustomBindingDefinition> NormalizeBindingDefinitions(IEnumerable<DataObjects.CustomBindingDefinition>? bindings)
+    {
+        var normalized = new List<DataObjects.CustomBindingDefinition>();
+
+        if (bindings != null) {
+            foreach (var binding in bindings) {
+                if (binding == null) {
+                    continue;
+                }
+
+                string protocol = NormalizeProtocol(binding.Protocol);
+                string port = NormalizePort(binding.Port, protocol);
+                string host = (binding.Hostname ?? string.Empty).Trim();
+                string ipAddress = string.IsNullOrWhiteSpace(binding.IpAddress) ? "*" : binding.IpAddress.Trim();
+                string? path = NormalizeBindingPath(binding.Path);
+
+                bool? sniFlag = binding.SniFlag;
+                if (protocol == "https") {
+                    sniFlag = sniFlag ?? true;
+                } else {
+                    sniFlag = null;
+                }
+
+                normalized.Add(new DataObjects.CustomBindingDefinition {
+                    Protocol = protocol,
+                    Hostname = host,
+                    Port = port,
+                    IpAddress = ipAddress,
+                    Path = path,
+                    SniFlag = sniFlag,
+                    SslThumbprint = string.IsNullOrWhiteSpace(binding.SslThumbprint) ? null : binding.SslThumbprint.Trim(),
+                    SslStoreName = string.IsNullOrWhiteSpace(binding.SslStoreName) ? null : binding.SslStoreName.Trim()
+                });
+            }
+        }
+
+        return normalized;
+    }
+
+    private static string NormalizeBindingInfo(DataObjects.EnvSetting env)
+    {
+        if (env == null) {
+            return string.Empty;
+        }
+
+        List<DataObjects.CustomBindingDefinition> normalized;
+
+        if (env.CustomBindings != null && env.CustomBindings.Any()) {
+            normalized = NormalizeBindingDefinitions(env.CustomBindings);
+        } else if (!string.IsNullOrWhiteSpace(env.BindingInfo)) {
+            try {
+                var parsed = JsonSerializer.Deserialize<List<DataObjects.CustomBindingDefinition>>(env.BindingInfo, BindingSerializerOptions);
+                normalized = NormalizeBindingDefinitions(parsed);
+            } catch {
+                normalized = new List<DataObjects.CustomBindingDefinition>();
+            }
+        } else {
+            normalized = new List<DataObjects.CustomBindingDefinition>();
+        }
+
+        if (normalized.Any()) {
+            var serialized = JsonSerializer.Serialize(normalized, BindingSerializerOptions);
+            env.BindingInfo = serialized;
+            env.CustomBindings = normalized;
+            return serialized;
+        }
+
+        env.BindingInfo = string.Empty;
+        return string.Empty;
+    }
+
+    private static string NormalizeProtocol(string? protocol)
+    {
+        var value = (protocol ?? "https").Trim().ToLowerInvariant();
+        return value == "http" ? "http" : value == "https" ? "https" : "https";
+    }
+
+    private static string NormalizePort(string? port, string protocol)
+    {
+        var trimmed = (port ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(trimmed)) {
+            return DefaultPortForProtocol(protocol);
+        }
+
+        var digits = new string(trimmed.Where(char.IsDigit).ToArray());
+        if (string.IsNullOrWhiteSpace(digits)) {
+            return DefaultPortForProtocol(protocol);
+        }
+
+        return digits;
+    }
+
+    private static string DefaultPortForProtocol(string? protocol)
+    {
+        return string.Equals(protocol, "https", StringComparison.OrdinalIgnoreCase) ? "443" : "80";
+    }
+
+    private static string? NormalizeBindingPath(string? rawPath)
+    {
+        if (string.IsNullOrWhiteSpace(rawPath)) {
+            return null;
+        }
+
+        var trimmed = rawPath.Trim();
+        if (trimmed == "/") {
+            return "/";
+        }
+
+        trimmed = trimmed.TrimStart('/');
+        if (string.IsNullOrWhiteSpace(trimmed)) {
+            return null;
+        }
+
+        return "/" + trimmed;
+    }
 
     // Modified CreateConnection accepts an optional org parameter.
     private VssConnection CreateConnection(string pat, string orgName)
@@ -1136,10 +1261,11 @@ public partial class DataAccess
                 sb.AppendLine($"    value: \"{env.AppPoolName}\"");
                 sb.AppendLine($"  - name: CI_{envKey}_VariableGroup");
                 sb.AppendLine($"    value: \"{env.VariableGroupName}\"");
-                if (!string.IsNullOrWhiteSpace(env.BindingInfo)) {
+                var bindingInfo = NormalizeBindingInfo(env);
+                if (!string.IsNullOrWhiteSpace(bindingInfo)) {
                     sb.AppendLine($"  - name: CI_{envKey}_BindingInfo");
                     sb.AppendLine($"    value: >");
-                    sb.AppendLine($"      {env.BindingInfo}");
+                    sb.AppendLine($"      {bindingInfo}");
                 }
 
                 if (String.IsNullOrEmpty(authUsername) && !String.IsNullOrWhiteSpace(env.AuthUser)) {
@@ -1204,7 +1330,8 @@ public partial class DataAccess
                 sb.AppendLine($"                    AppPoolName: \"$(CI_{env.EnvName.ToString()}_AppPoolName)\"");
                 sb.AppendLine($"                    DotNetVersion: \"{dotNetVersion}\"");
                 sb.AppendLine($"                    AppPoolIdentity: \"{appPoolIdentity}\"");
-                if (!string.IsNullOrWhiteSpace(env.BindingInfo)) {
+                var bindingInfo = NormalizeBindingInfo(env);
+                if (!string.IsNullOrWhiteSpace(bindingInfo)) {
                     sb.AppendLine($"                    CustomBindings: \"$(CI_{env.EnvName.ToString()}_BindingInfo)\"");
                 }
                 sb.AppendLine($"                - template: Templates/clean-workspace-template.yml@TemplateRepo");

@@ -53,6 +53,34 @@ public partial class DataObjects
         public string VariableGroupName { get; set; } = "";
         public string BindingInfo { get; set; } = "";
         public string AuthUser { get; set; } = "";
+        public List<CustomBindingDefinition> CustomBindings { get; set; } = new();
+    }
+
+    public class CustomBindingDefinition
+    {
+        [JsonPropertyName("protocol")]
+        public string Protocol { get; set; } = "https";
+
+        [JsonPropertyName("hostname")]
+        public string Hostname { get; set; } = string.Empty;
+
+        [JsonPropertyName("port")]
+        public string Port { get; set; } = string.Empty;
+
+        [JsonPropertyName("ipAddress")]
+        public string IpAddress { get; set; } = "*";
+
+        [JsonPropertyName("path")]
+        public string? Path { get; set; }
+
+        [JsonPropertyName("sniFlag")]
+        public bool? SniFlag { get; set; }
+
+        [JsonPropertyName("sslThumbprint")]
+        public string? SslThumbprint { get; set; }
+
+        [JsonPropertyName("sslStoreName")]
+        public string? SslStoreName { get; set; }
     }
 
     public class Application
