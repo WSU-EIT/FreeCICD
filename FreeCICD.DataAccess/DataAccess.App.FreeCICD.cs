@@ -1263,7 +1263,7 @@ public partial class DataAccess
                             },
                             new DataObjects.DevopsVariable {
                                 Name = $"ConnectionStrings.AppData",
-                                Value = $"\"AppData\": \"Data Source=localhost;Initial Catalog={devopsProject.ProjectName};TrustServerCertificate=True;Integrated Security=true;MultipleActiveResultSets=True;\"",
+                                Value = $"Data Source=localhost;Initial Catalog={devopsProject.ProjectName};TrustServerCertificate=True;Integrated Security=true;MultipleActiveResultSets=True;",
                                 IsSecret = false,
                                 IsReadOnly = false
                             },
