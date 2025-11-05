@@ -304,9 +304,9 @@
                                 var _vpathOptsList = GetVirtualPathOptions(envKey, envSetting.WebsiteName).ToList();
                                 var _poolOptsList = GetAppPoolOptions(envKey).ToList();
 
-                                bool _siteLocked = _siteOptsList.Any() && _siteOptsList.Any(o => string.Equals(envSetting.WebsiteName, o, StringComparison.OrdinalIgnoreCase));
-                                bool _vpathLocked = _vpathOptsList.Any() && _vpathOptsList.Any(v => string.Equals(envSetting.VirtualPath, v, StringComparison.OrdinalIgnoreCase));
-                                bool _poolLocked = _poolOptsList.Any() && _poolOptsList.Any(p => string.Equals(envSetting.AppPoolName, p, StringComparison.OrdinalIgnoreCase));
+                                bool _siteLocked = !envSetting.AllowCustomWebsiteName && _siteOptsList.Any() && _siteOptsList.Any(o => string.Equals(envSetting.WebsiteName, o, StringComparison.OrdinalIgnoreCase));
+                                bool _vpathLocked = !envSetting.AllowCustomVirtualPath && _vpathOptsList.Any() && _vpathOptsList.Any(v => string.Equals(envSetting.VirtualPath, v, StringComparison.OrdinalIgnoreCase));
+                                bool _poolLocked = !envSetting.AllowCustomAppPoolName && _poolOptsList.Any() && _poolOptsList.Any(p => string.Equals(envSetting.AppPoolName, p, StringComparison.OrdinalIgnoreCase));
 
                                 <div class="border p-2 mb-3">
                                     <h6>@envKey Environment Settings</h6>
@@ -492,7 +492,7 @@
 
 @code {
     protected async Task MyLoadDataAsync()
-    {        
+    {
         // Keep base page responsible for ValidateUrl & TenantCodeFromUrl.
         if(Model.LoggedIn) {
             _hidePAT = true;
@@ -518,7 +518,7 @@
             await PrefetchIISDataIfNeeded();
 
             StateHasChanged();
-        }        
+        }
     }
 
     // ---------------------------
@@ -1122,6 +1122,11 @@
             var value = e?.Value?.ToString() ?? "";
             if(EnvSettings.ContainsKey(envKey)) {
                 EnvSettings[envKey].WebsiteName = value;
+                if(string.IsNullOrWhiteSpace(value)) {
+                    EnvSettings[envKey].AllowCustomWebsiteName = true;
+                } else {
+                    EnvSettings[envKey].AllowCustomWebsiteName = false;
+                }
             }
         } catch {
         } finally {
@@ -1136,6 +1141,11 @@
             var value = e?.Value?.ToString() ?? "";
             if(EnvSettings.ContainsKey(envKey)) {
                 EnvSettings[envKey].VirtualPath = value;
+                if(string.IsNullOrWhiteSpace(value)) {
+                    EnvSettings[envKey].AllowCustomVirtualPath = true;
+                } else {
+                    EnvSettings[envKey].AllowCustomVirtualPath = false;
+                }
             }
         } catch {
         } finally {
@@ -1150,6 +1160,11 @@
             var value = e?.Value?.ToString() ?? "";
             if(EnvSettings.ContainsKey(envKey)) {
                 EnvSettings[envKey].AppPoolName = value;
+                if(string.IsNullOrWhiteSpace(value)) {
+                    EnvSettings[envKey].AllowCustomAppPoolName = true;
+                } else {
+                    EnvSettings[envKey].AllowCustomAppPoolName = false;
+                }
             }
         } catch {
         } finally {
