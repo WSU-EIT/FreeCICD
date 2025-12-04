@@ -47,49 +47,7 @@ public partial class DataMigrations
             )
             """);
 
-        // {{ModuleItemStart:EmailTemplates}}
-        m1.Add(
-            """
-            CREATE TABLE IF NOT EXISTS "EmailTemplates" (
-                "EmailTemplateId" TEXT NOT NULL CONSTRAINT "PK_EmailTemplates" PRIMARY KEY,
-                "TenantId" TEXT NOT NULL,
-                "Name" TEXT NOT NULL,
-                "Template" TEXT NULL,
-                "Enabled" INTEGER NOT NULL,
-                "Added" datetime NOT NULL,
-                "AddedBy" TEXT NULL,
-                "LastModified" datetime NOT NULL,
-                "LastModifiedBy" TEXT NULL,
-                "Deleted" INTEGER NOT NULL,
-                "DeletedAt" datetime NULL
-            );
-            """);
-        // {{ModuleItemEnd:EmailTemplates}}
 
-        // {{ModuleItemStart:Locations}}
-        m1.Add(
-            """
-            CREATE TABLE IF NOT EXISTS "Locations" (
-                "LocationId" TEXT NOT NULL CONSTRAINT "PK_Locations" PRIMARY KEY,
-                "TenantId" TEXT NOT NULL,
-                "Name" TEXT NOT NULL,
-                "Address" TEXT NULL,
-                "City" TEXT NULL,
-                "State" TEXT NULL,
-                "PostalCode" TEXT NULL,
-                "CalendarBackgroundColor" TEXT NULL,
-                "CalendarForegroundColor" TEXT NULL,
-                "Enabled" INTEGER NOT NULL,
-                "DefaultLocation" INTEGER NOT NULL,
-                "Added" datetime NOT NULL,
-                "AddedBy" TEXT NULL,
-                "LastModified" datetime NOT NULL,
-                "LastModifiedBy" TEXT NULL,
-                "Deleted" INTEGER NOT NULL,
-                "DeletedAt" datetime NULL
-            );
-            """);
-        // {{ModuleItemEnd:Locations}}
 
         m1.Add(
             """
@@ -109,27 +67,6 @@ public partial class DataMigrations
             );
             """);
 
-        // {{ModuleItemStart:Services}}
-        m1.Add(
-            """
-            CREATE TABLE IF NOT EXISTS "Services" (
-                "ServiceId" TEXT NOT NULL CONSTRAINT "PK_Services" PRIMARY KEY,
-                "TenantId" TEXT NOT NULL,
-                "Code" TEXT NULL,
-                "DefaultService" INTEGER NOT NULL,
-                "Description" TEXT NOT NULL,
-                "Rate" decimal(19, 4) NOT NULL,
-                "DefaultAppointmentDuration" INTEGER NOT NULL,
-                "Enabled" INTEGER NOT NULL,
-                "Added" datetime NOT NULL,
-                "AddedBy" TEXT NULL,
-                "LastModified" datetime NOT NULL,
-                "LastModifiedBy" TEXT NULL,
-                "Deleted" INTEGER NOT NULL,
-                "DeletedAt" datetime NULL
-            );
-            """);
-        // {{ModuleItemEnd:Services}}
 
         m1.Add(
             """
@@ -155,15 +92,6 @@ public partial class DataMigrations
                 "Name" TEXT NOT NULL,
                 "Style" TEXT NULL,
                 "Enabled" INTEGER NOT NULL,
-                -- {{ModuleItemStart:Appointments}}
-                "UseInAppointments" INTEGER NOT NULL,
-                -- {{ModuleItemEnd:Appointments}}
-                -- {{ModuleItemStart:EmailTemplates}}
-                "UseInEmailTemplates" INTEGER NOT NULL,
-                -- {{ModuleItemEnd:EmailTemplates}}
-                -- {{ModuleItemStart:Services}}
-                "UseInServices" INTEGER NOT NULL,
-                -- {{ModuleItemEnd:Services}}
                 "Added" datetime NOT NULL,
                 "AddedBy" TEXT NULL,
                 "LastModified" datetime NOT NULL,
@@ -221,35 +149,6 @@ public partial class DataMigrations
             );
             """);
 
-        // {{ModuleItemStart:Appointments}}
-        m1.Add(
-            """
-            CREATE TABLE IF NOT EXISTS "Appointments" (
-                "AppointmentId" TEXT NOT NULL CONSTRAINT "PK_Appointments" PRIMARY KEY,
-                "TenantId" TEXT NOT NULL,
-                "Title" TEXT NOT NULL,
-                "Start" datetime NOT NULL,
-                "End" datetime NOT NULL,
-                "AllDay" INTEGER NOT NULL,
-                "Meeting" INTEGER NOT NULL,
-                -- {{ModuleItemStart:Locations}}
-                "LocationId" TEXT NULL,
-                -- {{ModuleItemEnd:Locations}}
-                "Added" datetime NOT NULL,
-                "AddedBy" TEXT NULL,
-                "LastModified" datetime NOT NULL,
-                "LastModifiedBy" TEXT NULL,
-                "Deleted" INTEGER NOT NULL,
-                "DeletedAt" datetime NULL,
-                "Note" TEXT NULL,
-                "ForegroundColor" TEXT NULL,
-                "BackgroundColor" TEXT NULL
-                -- {{ModuleItemStart:Locations}}
-                , CONSTRAINT "FK_Appointments_Locations" FOREIGN KEY ("LocationId") REFERENCES "Locations" ("LocationId")
-                -- {{ModuleItemEnd:Locations}}
-            );
-            """);
-        // {{ModuleItemEnd:Appointments}}
 
         // {{ModuleItemStart:Tags}}
         m1.Add(
@@ -312,57 +211,6 @@ public partial class DataMigrations
             )
             """);
 
-        // {{ModuleItemStart:Appointments}}
-        m1.Add(
-            """
-            CREATE TABLE IF NOT EXISTS "AppointmentNotes" (
-                "AppointmentNoteId" TEXT NOT NULL CONSTRAINT "PK_AppointmentNotes" PRIMARY KEY,
-                "AppointmentId" TEXT NOT NULL,
-                "TenantId" TEXT NOT NULL,
-                "Added" datetime NOT NULL,
-                "AddedBy" TEXT NULL,
-                "LastModified" datetime NOT NULL,
-                "LastModifiedBy" TEXT NULL,
-                "Note" TEXT NULL,
-                "Deleted" INTEGER NOT NULL,
-                "DeletedAt" datetime NULL,
-                CONSTRAINT "FK_AppointmentNotes_Appointments" FOREIGN KEY ("AppointmentId") REFERENCES "Appointments" ("AppointmentId")
-            );
-            """);
-
-        // {{ModuleItemStart:Services}}
-        m1.Add(
-            """
-            CREATE TABLE IF NOT EXISTS "AppointmentServices" (
-                "AppointmentServiceId" TEXT NOT NULL CONSTRAINT "PK_AppointmentServices" PRIMARY KEY,
-                "AppointmentId" TEXT NOT NULL,
-                "TenantId" TEXT NOT NULL,
-                "ServiceId" TEXT NOT NULL,
-                "Fee" decimal(19, 4) NULL,
-                "Deleted" INTEGER NOT NULL,
-                "DeletedAt" datetime NULL,
-                "LastModified" datetime NOT NULL,
-                "LastModifiedBy" TEXT NULL,
-                CONSTRAINT "FK_AppointmentServices_Appointments" FOREIGN KEY ("AppointmentId") REFERENCES "Appointments" ("AppointmentId"),
-                CONSTRAINT "FK_AppointmentServices_Services" FOREIGN KEY ("ServiceId") REFERENCES "Services" ("ServiceId")
-            );
-            """);
-        // {{ModuleItemEnd:Services}}
-
-        m1.Add(
-            """
-            CREATE TABLE IF NOT EXISTS "AppointmentUsers" (
-                "AppointmentUserId" TEXT NOT NULL CONSTRAINT "PK_AppointmentUsers" PRIMARY KEY,
-                "AppointmentId" TEXT NOT NULL,
-                "TenantId" TEXT NOT NULL,
-                "UserId" TEXT NOT NULL,
-                "AttendanceCode" TEXT NULL,
-                "Fees" decimal(19, 4) NULL,
-                CONSTRAINT "FK_AppointmentUsers_Appointments" FOREIGN KEY ("AppointmentId") REFERENCES "Appointments" ("AppointmentId"),
-                CONSTRAINT "FK_AppointmentUsers_Users" FOREIGN KEY ("UserId") REFERENCES "Users" ("UserId")
-            );
-            """);
-        // {{ModuleItemEnd:Appointments}}
 
         m1.Add(
             """
@@ -386,41 +234,6 @@ public partial class DataMigrations
             )
             """);
 
-        // {{ModuleItemStart:Invoices}}
-        m1.Add(
-            """
-            CREATE TABLE IF NOT EXISTS "Invoices" (
-                "InvoiceId" TEXT NOT NULL CONSTRAINT "PK_Invoices" PRIMARY KEY,
-                "TenantId" TEXT NOT NULL,
-                "InvoiceNumber" TEXT NULL,
-                "PONumber" TEXT NULL,
-                -- {{ModuleItemStart:Appointments}}
-                "AppointmentId" TEXT NULL,
-                -- {{ModuleItemEnd:Appointments}}
-                "UserId" TEXT NULL,
-                "Title" TEXT NOT NULL,
-                "Items" TEXT NOT NULL,
-                "Notes" TEXT NULL,
-                "InvoiceCreated" datetime NULL,
-                "InvoiceDueDate" datetime NULL,
-                "InvoiceSendDate" datetime NULL,
-                "InvoiceSent" datetime NULL,
-                "InvoiceClosed" datetime NULL,
-                "Total" decimal(19, 4) NOT NULL,
-                "Added" datetime NOT NULL,
-                "AddedBy" TEXT NULL,
-                "LastModified" datetime NOT NULL,
-                "LastModifiedBy" TEXT NULL,
-                "Deleted" INTEGER NOT NULL,
-                "DeletedAt" datetime NULL,
-                -- {{ModuleItemStart:Appointments}}
-                CONSTRAINT "FK_Invoices_Appointments" FOREIGN KEY ("AppointmentId") REFERENCES "Appointments" ("AppointmentId"),
-                -- {{ModuleItemEnd:Appointments}}
-                CONSTRAINT "FK_Invoices_Tenants" FOREIGN KEY ("TenantId") REFERENCES "Tenants" ("TenantId"),
-                CONSTRAINT "FK_Invoices_Users" FOREIGN KEY ("UserId") REFERENCES "Users" ("UserId")
-            );
-            """);
-        // {{ModuleItemEnd:Invoices}}
 
         m1.Add(
             """
@@ -434,109 +247,15 @@ public partial class DataMigrations
             );
             """);
 
-        // {{ModuleItemStart:Payments}}
-        m1.Add(
-            """
-            CREATE TABLE IF NOT EXISTS "Payments" (
-                "PaymentId" TEXT NOT NULL CONSTRAINT "PK_Payments" PRIMARY KEY,
-                "TenantId" TEXT NOT NULL,
-                "InvoiceId" TEXT NOT NULL,
-                "UserId" TEXT NULL,
-                "Notes" TEXT NULL,
-                "PaymentDate" datetime NOT NULL,
-                "Amount" decimal(19, 4) NOT NULL,
-                "Refunded" decimal(19, 4) NULL,
-                "RefundedBy" TEXT NULL,
-                "RefundDate" datetime NULL,
-                "Added" datetime NOT NULL,
-                "AddedBy" TEXT NULL,
-                "LastModified" datetime NOT NULL,
-                "LastModifiedBy" TEXT NULL,
-                "Deleted" INTEGER NOT NULL,
-                "DeletedAt" datetime NULL,
-                CONSTRAINT "FK_Payments_Invoices" FOREIGN KEY ("InvoiceId") REFERENCES "Invoices" ("InvoiceId"),
-                CONSTRAINT "FK_Payments_Tenants" FOREIGN KEY ("TenantId") REFERENCES "Tenants" ("TenantId"),
-                CONSTRAINT "FK_Payments_Users" FOREIGN KEY ("UserId") REFERENCES "Users" ("UserId")
-            );
-            """);
-        // {{ModuleItemEnd:Payments}}
 
-        // {{ModuleItemStart:Appointments}}
-        m1.Add(
-            """
-            CREATE INDEX "IX_AppointmentNotes_AppointmentId" ON "AppointmentNotes" ("AppointmentId");
-            """);
 
-        // {{ModuleItemStart:Locations}}
-        m1.Add(
-            """
-            CREATE INDEX "IX_Appointments_LocationId" ON "Appointments" ("LocationId");
-            """);
-        // {{ModuleItemEnd:Locations}}
-        // {{ModuleItemEnd:Appointments}}
-
-        // {{ModuleItemStart:Appointments}}
-        // {{ModuleItemStart:Services}}
-        m1.Add(
-            """
-            CREATE INDEX "IX_AppointmentServices_AppointmentId" ON "AppointmentServices" ("AppointmentId");
-            """);
-
-        m1.Add(
-            """
-            CREATE INDEX "IX_AppointmentServices_ServiceId" ON "AppointmentServices" ("ServiceId");
-            """);
-        // {{ModuleItemEnd:Services}}
-
-        m1.Add(
-            """
-            CREATE INDEX "IX_AppointmentUsers_AppointmentId" ON "AppointmentUsers" ("AppointmentId");
-            """);
-
-        m1.Add(
-            """
-            CREATE INDEX "IX_AppointmentUsers_UserId" ON "AppointmentUsers" ("UserId");
-            """);
-
-        m1.Add(
-            """
-            CREATE INDEX "IX_Invoices_AppointmentId" ON "Invoices" ("AppointmentId");
-            """);
-        // {{ModuleItemEnd:Appointments}}
 
         m1.Add(
             """
             CREATE INDEX "IX_FileStorage_UserId" ON "FileStorage" ("UserId");
             """);
 
-        // {{ModuleItemStart:Invoices}}
-        m1.Add(
-            """
-            CREATE INDEX "IX_Invoices_TenantId" ON "Invoices" ("TenantId");
-            """);
 
-        m1.Add(
-            """
-            CREATE INDEX "IX_Invoices_UserId" ON "Invoices" ("UserId");
-            """);
-
-        m1.Add(
-            """
-            CREATE INDEX "IX_Payments_InvoiceId" ON "Payments" ("InvoiceId");
-            """);
-        // {{ModuleItemEnd:Invoices}}
-
-        // {{ModuleItemStart:Payments}}
-        m1.Add(
-            """
-            CREATE INDEX "IX_Payments_TenantId" ON "Payments" ("TenantId");
-            """);
-
-        m1.Add(
-            """
-            CREATE INDEX "IX_Payments_UserId" ON "Payments" ("UserId");
-            """);
-        // {{ModuleItemEnd:Payments}}
 
         // {{ModuleItemStart:Tags}}
         m1.Add(

@@ -1,4 +1,4 @@
-﻿@implements IDisposable
+@implements IDisposable
 @inject BlazorDataModel Model
 @inject Radzen.DialogService DialogService
 @if (_loading) {
@@ -167,29 +167,8 @@
 
             if (Module != null) {
                 switch (Module) {
-                    // {{ModuleItemStart:Appointments}}
-                    case DataObjects.TagModule.Appointment:
-                        output = Model.Tags.Where(x => !_initialTags.Contains(x.TagId) && x.UseInAppointments == true)
-                            .OrderBy(x => x.Name)
-                            .ToList();
-                        break;
-                    // {{ModuleItemEnd:Appointments}}
 
-                    // {{ModuleItemStart:EmailTemplates}}
-                    case DataObjects.TagModule.EmailTemplate:
-                        output = Model.Tags.Where(x => !_initialTags.Contains(x.TagId) && x.UseInEmailTemplates == true)
-                            .OrderBy(x => x.Name)
-                            .ToList();
-                        break;
-                    // {{ModuleItemEnd:EmailTemplates}}
 
-                    // {{ModuleItemStart:Services}}
-                    case DataObjects.TagModule.Service:
-                        output = Model.Tags.Where(x => !_initialTags.Contains(x.TagId) && x.UseInServices == true)
-                            .OrderBy(x => x.Name)
-                            .ToList();
-                        break;
-                    // {{ModuleItemEnd:Services}}
 
                     default:
                         output = Helpers.AvailableTagListApp(Module, _initialTags);
@@ -211,29 +190,8 @@
 
             if (Module != null) {
                 switch (Module) {
-                    // {{ModuleItemStart:Appointments}}
-                    case DataObjects.TagModule.Appointment:
-                        output = Model.Tags.Where(x => x.UseInAppointments == true)
-                            .OrderBy(x => x.Name)
-                            .ToList();
-                        break;
-                    // {{ModuleItemEnd:Appointments}}
 
-                    // {{ModuleItemStart:EmailTemplates}}
-                    case DataObjects.TagModule.EmailTemplate:
-                        output = Model.Tags.Where(x => x.UseInEmailTemplates == true)
-                            .OrderBy(x => x.Name)
-                            .ToList();
-                        break;
-                    // {{ModuleItemEnd:EmailTemplates}}
 
-                    // {{ModuleItemStart:Services}}
-                    case DataObjects.TagModule.Service:
-                        output = Model.Tags.Where(x => x.UseInServices == true)
-                            .OrderBy(x => x.Name)
-                            .ToList();
-                        break;
-                    // {{ModuleItemEnd:Services}}
 
                     default:
                         output = Helpers.AvailableTagListApp(Module, new List<Guid>());

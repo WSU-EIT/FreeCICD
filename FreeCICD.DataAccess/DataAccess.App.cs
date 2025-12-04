@@ -81,35 +81,6 @@ public partial class DataAccess
         var output = new DataObjects.BooleanResponse();
 
         try {
-            // {{ModuleItemStart:Appointments}}
-            if (Rec is EFModels.EFModels.Appointment) {
-                var rec = Rec as EFModels.EFModels.Appointment;
-                if (rec != null) {
-                    // Remove any related records.
-                }
-            }
-
-            if (Rec is EFModels.EFModels.AppointmentNote) {
-                var rec = Rec as EFModels.EFModels.AppointmentNote;
-                if (rec != null) {
-                    // Remove any related records.
-                }
-            }
-
-            if (Rec is EFModels.EFModels.AppointmentService) {
-                var rec = Rec as EFModels.EFModels.AppointmentService;
-                if (rec != null) {
-                    // Remove any related records.
-                }
-            }
-
-            if (Rec is EFModels.EFModels.AppointmentUser) {
-                var rec = Rec as EFModels.EFModels.AppointmentUser;
-                if (rec != null) {
-                    // Remove any related records.
-                }
-            }
-            // {{ModuleItemEnd:Appointments}}
 
             if (Rec is EFModels.EFModels.Department) {
                 var rec = Rec as EFModels.EFModels.Department;
@@ -125,50 +96,10 @@ public partial class DataAccess
                 }
             }
 
-            // {{ModuleItemStart:EmailTemplates}}
-            if (Rec is EFModels.EFModels.EmailTemplate) {
-                var rec = Rec as EFModels.EFModels.EmailTemplate;
-                if (rec != null) {
-                    // Remove any related records.
-                }
-            }
-            // {{ModuleItemEnd:EmailTemplates}}
 
-            // {{ModuleItemStart:Invoices}}
-            if (Rec is EFModels.EFModels.Invoice) {
-                var rec = Rec as EFModels.EFModels.Invoice;
-                if (rec != null) {
-                    // Remove any related records.
-                }
-            }
-            // {{ModuleItemEnd:Invoices}}
 
-            // {{ModuleItemStart:Locations}}
-            if (Rec is EFModels.EFModels.Location) {
-                var rec = Rec as EFModels.EFModels.Location;
-                if (rec != null) {
-                    // Remove any related records.
-                }
-            }
-            // {{ModuleItemEnd:Locations}}
 
-            // {{ModuleItemStart:Payments}}
-            if (Rec is EFModels.EFModels.Payment) {
-                var rec = Rec as EFModels.EFModels.Payment;
-                if (rec != null) {
-                    // Remove any related records.
-                }
-            }
-            // {{ModuleItemEnd:Payments}}
 
-            // {{ModuleItemStart:Services}}
-            if (Rec is EFModels.EFModels.Service) {
-                var rec = Rec as EFModels.EFModels.Service;
-                if (rec != null) {
-                    // Remove any related records.
-                }
-            }
-            // {{ModuleItemEnd:Services}}
 
             if (Rec is EFModels.EFModels.Tenant) {
                 var rec = Rec as EFModels.EFModels.Tenant;
@@ -274,51 +205,6 @@ public partial class DataAccess
     private void GetDataApp(object Rec, object DataObject, DataObjects.User? CurrentUser = null)
     {
         try {
-            // {{ModuleItemStart:Appointments}}
-            if (Rec is EFModels.EFModels.Appointment && DataObject is DataObjects.Appointment) {
-                var rec = Rec as EFModels.EFModels.Appointment;
-                var appointment = DataObject as DataObjects.Appointment;
-
-                if (rec != null && appointment != null) {
-                    //appointment.Property = rec.Property;
-                }
-
-                return;
-            }
-
-            if (Rec is EFModels.EFModels.AppointmentNote && DataObject is DataObjects.AppointmentNote) {
-                var rec = Rec as EFModels.EFModels.AppointmentNote;
-                var appointmentNote = DataObject as DataObjects.AppointmentNote;
-
-                if (rec != null && appointmentNote != null) {
-                    //appointmentNote.Property = rec.Property;
-                }
-
-                return;
-            }
-
-            if (Rec is EFModels.EFModels.AppointmentService && DataObject is DataObjects.AppointmentService) {
-                var rec = Rec as EFModels.EFModels.AppointmentService;
-                var appointmentService = DataObject as DataObjects.AppointmentService;
-
-                if (rec != null && appointmentService != null) {
-                    //appointmentService.Property = rec.Property;
-                }
-
-                return;
-            }
-
-            if (Rec is EFModels.EFModels.AppointmentUser && DataObject is DataObjects.AppointmentUser) {
-                var rec = Rec as EFModels.EFModels.AppointmentUser;
-                var appointmentUser = DataObject as DataObjects.AppointmentUser;
-
-                if (rec != null && appointmentUser != null) {
-                    //appointmentUser.Property = rec.Property;
-                }
-
-                return;
-            }
-            // {{ModuleItemEnd:Appointments}}
 
             if (Rec is EFModels.EFModels.Department && DataObject is DataObjects.Department) {
                 var rec = Rec as EFModels.EFModels.Department;
@@ -342,70 +228,10 @@ public partial class DataAccess
                 return;
             }
 
-            // {{ModuleItemStart:EmailTemplates}}
-            if (Rec is EFModels.EFModels.EmailTemplate && DataObject is DataObjects.EmailTemplate) {
-                var rec = Rec as EFModels.EFModels.EmailTemplate;
-                var emailTemplate = DataObject as DataObjects.EmailTemplate;
 
-                if (rec != null && emailTemplate != null) {
-                    //emailTemplate.Property = rec.Property;
-                }
 
-                return;
-            }
-            // {{ModuleItemEnd:EmailTemplates}}
 
-            // {{ModuleItemStart:Invoices}}
-            if (Rec is EFModels.EFModels.Invoice && DataObject is DataObjects.Invoice) {
-                var rec = Rec as EFModels.EFModels.Invoice;
-                var invoice = DataObject as DataObjects.Invoice;
 
-                if (rec != null && invoice != null) {
-                    //invoice.Property = rec.Property;
-                }
-
-                return;
-            }
-            // {{ModuleItemEnd:Invoices}}
-
-            // {{ModuleItemStart:Locations}}
-            if (Rec is EFModels.EFModels.Location && DataObject is DataObjects.Location) {
-                var rec = Rec as EFModels.EFModels.Location;
-                var location = DataObject as DataObjects.Location;
-
-                if (rec != null && location != null) {
-                    //location.Property = rec.Property;
-                }
-
-                return;
-            }
-            // {{ModuleItemEnd:Locations}}
-
-            // {{ModuleItemStart:Payments}}
-            if (Rec is EFModels.EFModels.Payment && DataObject is DataObjects.Payment) {
-                var rec = Rec as EFModels.EFModels.Payment;
-                var payment = DataObject as DataObjects.Payment;
-
-                if (rec != null && payment != null) {
-                    //payment.Property = rec.Property;
-                }
-
-                return;
-            }
-            // {{ModuleItemEnd:Payments}}
-
-            // {{ModuleItemStart:Services}}
-            if (Rec is EFModels.EFModels.Service && DataObject is DataObjects.Service) {
-                var rec = Rec as EFModels.EFModels.Service;
-                var service = DataObject as DataObjects.Service;
-
-                if (rec != null && service != null) {
-                    //service.Property = rec.Property;
-                }
-
-                return;
-            }
-            // {{ModuleItemEnd:Services}}
 
             if (Rec is EFModels.EFModels.User && DataObject is DataObjects.ActiveUser) {
                 var rec = Rec as EFModels.EFModels.User;
@@ -473,51 +299,6 @@ public partial class DataAccess
     private void SaveDataApp(object Rec, object DataObject, DataObjects.User? CurrentUser = null)
     {
         try {
-            // {{ModuleItemStart:Appointments}}
-            if (Rec is EFModels.EFModels.Appointment && DataObject is DataObjects.Appointment) {
-                var rec = Rec as EFModels.EFModels.Appointment;
-                var appointment = DataObject as DataObjects.Appointment;
-
-                if (rec != null && appointment != null) {
-                    //rec.Property = appointment.Property;
-                }
-
-                return;
-            }
-
-            if (Rec is EFModels.EFModels.AppointmentNote && DataObject is DataObjects.AppointmentNote) {
-                var rec = Rec as EFModels.EFModels.AppointmentNote;
-                var appointmentNote = DataObject as DataObjects.AppointmentNote;
-
-                if (rec != null && appointmentNote != null) {
-                    //rec.Property = appointmentNote.Property;
-                }
-
-                return;
-            }
-
-            if (Rec is EFModels.EFModels.AppointmentService && DataObject is DataObjects.AppointmentService) {
-                var rec = Rec as EFModels.EFModels.AppointmentService;
-                var svc = DataObject as DataObjects.AppointmentService;
-
-                if (rec != null && svc != null) {
-                    //rec.Property = svc.Property;
-                }
-
-                return;
-            }
-
-            if (Rec is EFModels.EFModels.AppointmentUser && DataObject is DataObjects.User) {
-                var rec = Rec as EFModels.EFModels.AppointmentUser;
-                var user = DataObject as DataObjects.User;
-
-                if (rec != null && user != null) {
-                    //rec.Property = user.Property;
-                }
-
-                return;
-            }
-            // {{ModuleItemEnd:Appointments}}
 
             if (Rec is EFModels.EFModels.Department && DataObject is DataObjects.Department) {
                 var rec = Rec as EFModels.EFModels.Department;
@@ -541,70 +322,10 @@ public partial class DataAccess
                 return;
             }
 
-            // {{ModuleItemStart:EmailTemplates}}
-            if (Rec is EFModels.EFModels.EmailTemplate && DataObject is DataObjects.EmailTemplate) {
-                var rec = Rec as EFModels.EFModels.EmailTemplate;
-                var emailTemplate = DataObject as DataObjects.EmailTemplate;
 
-                if (rec != null && emailTemplate != null) {
-                    //rec.Property = emailTemplate.Property;
-                }
 
-                return;
-            }
-            // {{ModuleItemEnd:EmailTemplates}}
 
-            // {{ModuleItemStart:Invoices}}
-            if (Rec is EFModels.EFModels.Invoice && DataObject is DataObjects.Invoice) {
-                var rec = Rec as EFModels.EFModels.Invoice;
-                var invoice = DataObject as DataObjects.Invoice;
 
-                if (rec != null && invoice != null) {
-                    //rec.Property = invoice.Property;
-                }
-
-                return;
-            }
-            // {{ModuleItemEnd:Invoices}}
-
-            // {{ModuleItemStart:Locations}}
-            if (Rec is EFModels.EFModels.Location && DataObject is DataObjects.Location) {
-                var rec = Rec as EFModels.EFModels.Location;
-                var location = DataObject as DataObjects.Location;
-                
-                if (rec != null && location != null) {
-                    //rec.Property = location.Property;
-                }
-                
-                return;
-            }
-            // {{ModuleItemEnd:Locations}}
-
-            // {{ModuleItemStart:Payments}}
-            if (Rec is EFModels.EFModels.Payment && DataObject is DataObjects.Payment) {
-                var rec = Rec as EFModels.EFModels.Payment;
-                var payment = DataObject as DataObjects.Payment;
-
-                if (rec != null && payment != null) {
-                    //rec.Property = payment.Property;
-                }
-
-                return;
-            }
-            // {{ModuleItemEnd:Payments}}
-
-            // {{ModuleItemStart:Services}}
-            if (Rec is EFModels.EFModels.Service && DataObject is DataObjects.Service) {
-                var rec = Rec as EFModels.EFModels.Service;
-                var service = DataObject as DataObjects.Service;
-
-                if (rec != null && service != null) {
-                    //rec.Property = service.Property;
-                }
-
-                return;
-            }
-            // {{ModuleItemEnd:Services}}
 
             if (Rec is EFModels.EFModels.User && DataObject is DataObjects.User) {
                 var rec = Rec as EFModels.EFModels.User;

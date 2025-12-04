@@ -216,27 +216,6 @@ public partial class DataAccess
             }
         }
 
-// {{ModuleItemStart:Appointments}}
-        // If this is the local database and we are in debug mode, then make sure
-        // that the test events are in the current month.
-#if DEBUG
-        if (_connectionString == "Data Source=localhost;Initial Catalog=FreeCICD;TrustServerCertificate=True;User ID=sa;Password=saPassword;MultipleActiveResultSets=True;") {
-            var events = data.Appointments.Where(x => x.TenantId == _guid2).ToList();
-            if(events != null && events.Any()) {
-                foreach(var item in events) {
-                    if (item.Start.Month != now.Month || item.Start.Year != now.Year) {
-                        item.Start = SeedTestData_AdjustDate(item.Start);
-                        item.End = SeedTestData_AdjustDate(item.End);
-
-                        if (item.End < item.Start) {
-                            item.End = item.Start;
-                        }
-                    }
-                }
-            }
-        }
-#endif
-// {{ModuleItemEnd:Appointments}}
         data.SaveChanges();
     }
 

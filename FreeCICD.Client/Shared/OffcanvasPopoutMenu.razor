@@ -1,4 +1,4 @@
-﻿@implements IDisposable
+@implements IDisposable
 @inject BlazorDataModel Model
 
 <div class="offcanvas offcanvas-end" tabindex="-1" id="offcanvasQuickAction" aria-labelledby="offcanvasQuickActionLabel" role="dialog">
@@ -59,16 +59,6 @@
                     <input type="text" id="quickadd-user-Title" class="form-control" @bind="Model.QuickAddUser.Title" />
                 </div>
 
-                <!-- {{ModuleItemStart:Locations}} -->
-                @if (Model.FeatureEnabledLocation) {
-                    <div class="mb-2">
-                        <label for="quickadd-user-Location">
-                            <Language Tag="Location" />
-                        </label>
-                        <input type="text" id="quickadd-user-Location" class="form-control" @bind="Model.QuickAddUser.Location" />
-                    </div>
-                }
-                <!-- {{ModuleItemEnd:Locations}} -->
 
                 <div class="mb-2">
                     <label for="quickadd-user-Phone">
@@ -103,38 +93,11 @@
                 break;
 
             case "addusersaving":
-            // {{ModuleItemStart:Appointments}}
-            case "appointmentnotesaving":
-            // {{ModuleItemEnd:Appointments}}
                 <h2 class="quick-action">
                     <Language Tag="SavingWait" IncludeIcon="true" />
                 </h2>
                 break;
 
-            // {{ModuleItemStart:Appointments}}
-            case "appointmentnote":
-                <h2 class="quick-action">
-                    <Language Tag="AppointmentNoteAdd" IncludeIcon="true" />
-                </h2>
-
-                <div class="mb-2">
-                    <label for="quickadd-appointment-note">
-                        <Language Tag="AppointmentNote" />
-                    </label>
-                    <textarea id="quickadd-appointment-note" rows="8" class="form-control" @bind="Model.QuickAddAppointmentNote.Note"></textarea>
-                </div>
-
-                <div class="btn-group" role="group">
-                    <button type="button" class="btn btn-success btn-sm" @onclick="QuickAddAppointmentNoteSave">
-                        <Language Tag="Save" IncludeIcon="true" />
-                    </button>
-
-                    <button type="button" class="btn btn-dark btn-sm" @onclick="QuickActionClose">
-                        <Language Tag="Cancel" IncludeIcon="true" />
-                    </button>
-                </div>
-                break;
-            // {{ModuleItemEnd:Appointments}}
         }
     </div>
 </div>
@@ -299,39 +262,6 @@
         await Helpers.HideMenus();
     }
 
-    // {{ModuleItemStart:Appointments}}
-    protected async Task QuickAddAppointmentNoteSave() {
-        string focus = String.Empty;
-
-        if (String.IsNullOrWhiteSpace(Model.QuickAddAppointmentNote.Note)) {
-            focus = "quickadd-appointment-note";
-        }
-
-        if (focus != String.Empty) {
-            await Helpers.DelayedFocus(focus);
-            return;
-        }
-
-        Model.QuickAction = "appointmentnotesaving";
-
-        var saved = await Helpers.GetOrPost<DataObjects.AppointmentNote>("api/Data/SaveAppointmentNote", Model.QuickAddAppointmentNote);
-
-        await Helpers.HideMenus();
-
-        if (saved != null) {
-            if (saved.ActionResponse.Result) {
-                Model.AddMessage(Helpers.Text("AppointmentNoteCreated"), MessageType.Success);
-                if (Model.QuickActionOnComplete != null) {
-                    Model.QuickActionOnComplete.DynamicInvoke(saved);
-                }
-            } else {
-                Model.ErrorMessages(saved.ActionResponse.Messages);
-            }
-        } else {
-            Model.UnknownError();
-        }
-    }
-    // {{ModuleItemEnd:Appointments}}
 
     protected async Task QuickAddUserSave() {
         string focus = String.Empty;

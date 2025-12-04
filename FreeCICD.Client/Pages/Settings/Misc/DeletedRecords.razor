@@ -1,4 +1,4 @@
-﻿@page "/Settings/DeletedRecords"
+@page "/Settings/DeletedRecords"
 @page "/{TenantCode}/Settings/DeletedRecords"
 @implements IDisposable
 @using Blazored.LocalStorage
@@ -37,20 +37,6 @@
                 List<DataObjects.DeletedRecordItem>? deletedRecords = null;
 
                 switch (deletedRecordType) {
-                    // {{ModuleItemStart:Appointments}}
-                    case "Appointment":
-                        deletedRecords = _DeletedRecords.Appointments;
-                        break;
-
-                    case "AppointmentNote":
-                        deletedRecords = _DeletedRecords.AppointmentNotes;
-                        break;
-
-                    case "AppointmentService":
-                        deletedRecordTypeLanguageTag = "AppointmentServicesFull";
-                        deletedRecords = _DeletedRecords.AppointmentServices;
-                        break;
-                    // {{ModuleItemEnd:Appointments}}
 
                     case "Department":
                         deletedRecords = _DeletedRecords.Departments;
@@ -60,28 +46,13 @@
                         deletedRecords = _DeletedRecords.DepartmentGroups;
                         break;
 
-                    // {{ModuleItemStart:EmailTemplates}}
-                    case "EmailTemplate":
-                        deletedRecords = _DeletedRecords.EmailTemplates;
-                        break;
-                    // {{ModuleItemEnd:EmailTemplates}}
 
                     case "FileStorage":
                         deletedRecords = _DeletedRecords.FileStorage;
                         deletedRecordTypeLanguageTag = "Files";
                         break;
 
-                    // {{ModuleItemStart:Locations}}
-                    case "Location":
-                        deletedRecords = _DeletedRecords.Locations;
-                        break;
-                    // {{ModuleItemEnd:Locations}}
 
-                    // {{ModuleItemStart:Services}}
-                    case "Service":
-                        deletedRecords = _DeletedRecords.Services;
-                        break;
-                    // {{ModuleItemEnd:Services}}
 
                     // {{ModuleItemStart:Tags}}
                     case "Tag":

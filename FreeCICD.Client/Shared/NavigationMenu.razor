@@ -1,4 +1,4 @@
-﻿@implements IDisposable
+@implements IDisposable
 @inject BlazorDataModel Model
 
 <header>
@@ -208,31 +208,7 @@
         {
             var output = new List<DataObjects.MenuItem> { };
 
-            // {{ModuleItemStart:Appointments}}
-            if (Model.FeatureEnabledScheduling) {
-                output.Add(new DataObjects.MenuItem {
-                    Title = Helpers.Text("Schedule"),
-                    Icon = "Schedule",
-                    PageNames = new List<string> { "schedule" },
-                    url = Helpers.BuildUrl("Schedule"),
-                    SortOrder = 1000,
-                    AppAdminOnly = false,
-                });
-            }
-            // {{ModuleItemEnd:Appointments}}
 
-            // {{ModuleItemStart:Invoices}}
-            @if (Model.FeatureEnabledInvoices) {
-                output.Add(new DataObjects.MenuItem {
-                    Title = Helpers.Text("Invoices"),
-                    Icon = "Invoices",
-                    PageNames = new List<string> { "invoices", "editinvoice", "createinvoice" },
-                    url = Helpers.BuildUrl("Invoices"),
-                    SortOrder = 2000,
-                    AppAdminOnly = false,
-                });
-            }
-            // {{ModuleItemEnd:Invoices}}
 
             output.AddRange(Helpers.MenuItemsApp);
 
@@ -279,18 +255,6 @@
             }
             // {{ModuleItemEnd:Departments}}
 
-            // {{ModuleItemStart:EmailTemplates}}
-            if (Model.User.Admin && Model.FeatureEnabledEmailTemplates) {
-                output.Add(new DataObjects.MenuItem {
-                    Title = Helpers.Text("EmailTemplates"),
-                    Icon = "EmailTemplates",
-                    PageNames = new List<string> { "emailtemplates", "editemailtemplate" },
-                    url = Helpers.BuildUrl("Settings/EmailTemplates"),
-                    SortOrder = 1000,
-                    AppAdminOnly = false,
-                });
-            }
-            // {{ModuleItemEnd:EmailTemplates}}
 
             if (Model.User.Admin && Model.FeatureEnabledFiles) {
                 output.Add(new DataObjects.MenuItem {
@@ -314,18 +278,6 @@
                 });
             }
             
-            // {{ModuleItemStart:Locations}}
-            if (Model.User.Admin && Model.FeatureEnabledLocation) {
-                output.Add(new DataObjects.MenuItem {
-                    Title = Helpers.Text("Locations"),
-                    Icon = "Locations",
-                    PageNames = new List<string> { "editlocation", "locations" },
-                    url = Helpers.BuildUrl("Settings/Locations"),
-                    SortOrder = 1000,
-                    AppAdminOnly = false,
-                });
-            }
-            // {{ModuleItemEnd:Locations}}
 
             if (Model.User.Admin) {
                 output.Add(new DataObjects.MenuItem {
@@ -338,18 +290,6 @@
                 });
             }
 
-            // {{ModuleItemStart:Services}}
-            if (Model.User.Admin && Model.FeatureEnabledServices) {
-                output.Add(new DataObjects.MenuItem {
-                    Title = Helpers.Text("Services"),
-                    Icon = "Services",
-                    PageNames = new List<string> { "editservice", "services" },
-                    url = Helpers.BuildUrl("Settings/Services"),
-                    SortOrder = 1000,
-                    AppAdminOnly = false,
-                });
-            }
-            // {{ModuleItemEnd:Services}}
             
             // {{ModuleItemStart:Tags}}
             if (Model.User.Admin && Model.FeatureEnabledTags) {

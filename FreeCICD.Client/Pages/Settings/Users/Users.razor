@@ -1,4 +1,4 @@
-﻿@page "/Settings/Users"
+@page "/Settings/Users"
 @page "/{TenantCode}/Settings/Users"
 @implements IDisposable
 @using Blazored.LocalStorage
@@ -283,17 +283,6 @@
             },
         };
 
-        // {{ModuleItemStart:Invoices}}
-        if (Model.FeatureEnabledInvoices) {
-            ActionHandlers.Add(new PagedRecordset.ActionHandler {
-                CallbackHandler = OnShowInvoices,
-                ActionElement =
-                    "<button type=\"button\" class=\"btn btn-xs btn-secondary nowrap action-button\">" +
-                    Helpers.IconAndText("Invoices") +
-                    "</button>"
-            });
-        }
-        // {{ModuleItemEnd:Invoices}}
 
         CenterItems = new Dictionary<string, Action?>();
 

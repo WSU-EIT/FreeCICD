@@ -72,60 +72,6 @@ public partial class DataAccess
             { "ActiveDirectoryNames", "Active Directory Names" },
             { "ActiveDirectoryNamesInfo", "Bracket-separated names of AD groups to match for this department (eg: {Enrollment IT]{Admissions}, etc.)" },
 
-            // {{ModuleItemStart:Appointments}}
-            // Appointments
-            { "Appointment", "Appointment" },
-            { "AddAppointment", "Add Appointment" },
-            { "AllDay", "All Day" },
-            { "AllDayEvent", "All Day Event" },
-            { "AppointmentAddService", "Add Service" },
-            { "AppointmentAttendanceCodeAccept", "Accept" },
-            { "AppointmentAttendanceCodeAccepted", "Accepted" },
-            { "AppointmentAttendanceCodeDecline", "Decline" },
-            { "AppointmentAttendanceCodeDeclined", "Declined" },
-            { "AppointmentAttendanceCodeInvited", "Invited" },
-            { "AppointmentAttendanceCodeTentative", "Tentative" },
-            { "AppointmentAttendees", "Attendees" },
-            { "AppointmentEnd", "End" },
-            { "AppointmentFees", "Fees" },
-            { "AppointmentNote", "Note" },
-            { "AppointmentNoteInfo", "This note is public and visible to any person that can view this appointment." },
-            { "AppointmentNoteAdd", "Add a Private Note" },
-            { "AppointmentNoteAdded", "Added" },
-            { "AppointmentNoteAddedBy", "by" },
-            { "AppointmentNoteCreated", "Note Created" },
-            { "AppointmentNotes", "Appointment Notes" },
-            { "AppointmentNotesInfo", "These notes are private and can only be viewed by users that can manage events." },
-            { "Appointments", "Appointments" },
-            { "AppointmentServices", "Services" },
-            { "AppointmentServicesFull", "Appointment Services" },
-            { "AppointmentStart", "Start" },
-            { "AppointmentStatus", "Status" },
-            { "AppointmentTitle", "Title" },
-            { "AppointmentType", "Appointment Type" },
-            { "AppointmentTypeMeeting", "Meeting" },
-            { "AppointmentTypeEvent", "Event" },
-            { "BackgroundColor", "Background Color" },
-            { "BackgroundColorAbbreviation", "BG" },
-            { "CalendarColor", "Calendar Color" },
-            { "CalendarStyle", "Style" },
-            { "CanBeScheduled", "User Can Be Scheduled to Take Appointments" },
-            { "EditAppointment", "Edit Appointment" },
-            { "EditAppointmentEvent", "Edit Event" },
-            { "EditAppointmentMeeting", "Edit Meeting" },
-            { "ForegroundColor", "Foreground Color" },
-            { "ForegroundColorAbbreviation", "FG" },
-            { "ManageAppointments", "Manage Appointments" },
-            { "NoUsersInvited", "No Users Have Been Invited" },
-            { "Schedule", "Schedule" },
-            { "ScheduleMore", "+ {0} more" },
-            { "ScheduleViewDay", "Day" },
-            { "ScheduleViewMonth", "Month" },
-            { "ScheduleViewToday", "Today" },
-            { "ScheduleViewWeek", "Week" },
-            { "ScheduleViewYear", "Year" },
-            { "Scheduling", "Scheduling" },
-            // {{ModuleItemEnd:Appointments}}
 
             // Departments
             { "Department", "Department" },
@@ -137,78 +83,13 @@ public partial class DataAccess
             { "EditDepartment", "Edit Department" },
             { "EditDepartmentGroup", "Edit Department Group" },
 
-            // {{ModuleItemStart:EmailTemplates}}
-            // Email Templates
-            { "AddNewEmailTemplate", "Add a New Email Template" },
-            { "EditEmailTemplate", "Edit Email Template" },
-            { "EmailTemplateBody", "Body" },
-            { "EmailTemplateFrom", "From Email Address" },
-            { "EmailTemplateName", "Name" },
-            { "EmailTemplateReplyTo", "Reply-to Email Address" },
-            { "EmailTemplates", "Email Templates" },
-            { "EmailTemplateSubject", "Subject" },
-            // {{ModuleItemEnd:EmailTemplates}}
 
             // Files
             { "Extension", "Extension" },
             { "Extensions", "Extensions" },
 
-            // {{ModuleItemStart:Invoices}}
-            // Invoices
-            { "AppointmentInvoice", "Appointment Invoice" },
-            { "AppointmentInvoices", "Appointment Invoices" },
-            { "CreateInvoice", "Create a New Invoice" },
-            { "CreateInvoiceForUser", "Create Invoice for User" },
-            { "CreateInvoiceInfo", "Use this interface to create an invoice for a user. If you wish to generate an invoice for an event that can be done from the event interface." },
-            { "EditInvoice", "Edit Invoice" },
-            { "FeatureOptInInvoices", "Use the Invoices Feature" },
-            { "Invoice", "Invoice" },
-            { "InvoiceAddItem", "Add Item" },
-            { "InvoiceClosed", "Closed" },
-            { "InvoiceClosedStatus", "Closed Status" },
-            { "InvoiceCreated", "Created" },
-            { "InvoiceDue", "Due" },
-            { "InvoiceErrorRenderingPreview", "Unable to Render Invoice Preview" },
-            { "InvoiceForAppointment", "Invoice for Appointment" },
-            { "InvoiceItemDescription", "Description" },
-            { "InvoiceItemPrice", "Price" },
-            { "InvoiceItemQuantity", "Quantity" },
-            { "InvoiceItemTotal", "Total" },
-            { "InvoiceItems", "Items" },
-            { "InvoiceItemsMissingElements", "Missing at least one invoice item element." },
-            { "InvoiceNumber", "Invoice Number" },
-            { "InvoicePO", "Purchase Order" },
-            { "InvoicePreview", "Invoice Preview" },
-            { "Invoices", "Invoices" },
-            { "InvoiceSendDate", "Send Date" },
-            { "InvoiceSent", "Sent" },
-            { "InvoiceSentStatus", "Sent Status" },
-            { "InvoiceTitle", "Title" },
-            { "InvoiceTotal", "Total" },
-            { "SearchInvoices", "Search Invoices" },
-            { "ViewInvoice", "View Invoice" },
-            // {{ModuleItemEnd:Invoices}}
 
-            // {{ModuleItemStart:Locations}}
-            // Locations
-            { "AddNewLocation", "Add a New Location" },
-            { "Address", "Address" },
-            { "City", "City" },
-            { "PostalCode", "ZIP/Postal Code" },
-            { "State", "State" },
-            { "EditLocation", "Edit Location" },
-            { "Location", "Location" },
-            { "LocationName", "Name" },
-            { "Locations", "Locations" },
-            { "OverrideLocationColors", "Override Colors" },
-            { "OverrideLocationColorsInfo", "This location has colors specified, but you can use this option to override those colors." },
-            // {{ModuleItemEnd:Locations}}
 
-            // {{ModuleItemStart:Payments}}
-            // Payments
-            { "Payment", "Payment" },
-            { "Payments", "Payments" },
-            // {{ModuleItemEnd:Payments}}
 
             // Plugins
             { "InvalidPlugin", "Invalid Plugin" },
@@ -216,18 +97,6 @@ public partial class DataAccess
             { "PluginNotFound", "The plugin with an Id of {0} could not be found." },
             { "TestPlugin", "Test Plugin" },
 
-            // {{ModuleItemStart:Services}}
-            // Services
-            { "AddNewService", "Add a New Service" },
-            { "EditService", "Edit Service" },
-            { "Service", "Service" },
-            { "ServiceCode", "Code" },
-            { "ServiceDefaultAppointmentDuration", "Default Appointment Duration" },
-            { "ServiceDefaultService", "Default Service" },
-            { "ServiceDescription", "Description" },
-            { "ServiceRate", "Rate" },
-            { "Services", "Services" },
-            // {{ModuleItemEnd:Services}}
 
             // {{ModuleItemStart:Tags}}
             // Tags

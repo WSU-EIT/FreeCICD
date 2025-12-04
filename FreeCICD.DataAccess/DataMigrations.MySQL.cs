@@ -50,51 +50,7 @@ public partial class DataMigrations
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
             """);
 
-        // {{ModuleItemStart:EmailTemplates}}
-        m1.Add(
-            """
-            CREATE TABLE IF NOT EXISTS `EmailTemplates` (
-                `EmailTemplateId` char(36) NOT NULL,
-                `TenantId` char(36) NOT NULL,
-                `Name` varchar(300) NOT NULL,
-                `Template` longtext NULL,
-                `Enabled` tinyint(1) NOT NULL,
-                `Added` datetime NOT NULL,
-                `AddedBy` varchar(100) NULL,
-                `LastModified` datetime NOT NULL,
-                `LastModifiedBy` varchar(100) NULL,
-                `Deleted` tinyint(1) NOT NULL,
-                `DeletedAt` datetime NULL,
-                PRIMARY KEY (`EmailTemplateId`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-            """);
-        // {{ModuleItemEnd:EmailTemplates}}
 
-        // {{ModuleItemStart:Locations}}
-        m1.Add(
-            """
-            CREATE TABLE IF NOT EXISTS `Locations` (
-                `LocationId` char(36) NOT NULL,
-                `TenantId` char(36) NOT NULL,
-                `Name` varchar(200) NOT NULL,
-                `Address` varchar(200) NULL,
-                `City` varchar(100) NULL,
-                `State` varchar(50) NULL,
-                `PostalCode` varchar(50) NULL,
-                `CalendarBackgroundColor` varchar(100) NULL,
-                `CalendarForegroundColor` varchar(100) NULL,
-                `Enabled` tinyint(1) NOT NULL,
-                `DefaultLocation` tinyint(1) NOT NULL,
-                `Added` datetime NOT NULL,
-                `AddedBy` varchar(100) NULL,
-                `LastModified` datetime NOT NULL,
-                `LastModifiedBy` varchar(100) NULL,
-                `Deleted` tinyint(1) NOT NULL,
-                `DeletedAt` datetime NULL,
-                PRIMARY KEY (`LocationId`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-            """);
-        // {{ModuleItemEnd:Locations}}
 
         m1.Add(
             """
@@ -115,28 +71,6 @@ public partial class DataMigrations
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
             """);
 
-        // {{ModuleItemStart:Services}}
-        m1.Add(
-            """
-            CREATE TABLE IF NOT EXISTS `Services` (
-                `ServiceId` char(36) NOT NULL,
-                `TenantId` char(36) NOT NULL,
-                `Code` varchar(50) NULL,
-                `DefaultService` tinyint(1) NOT NULL,
-                `Description` varchar(200) NOT NULL,
-                `Rate` decimal(19,4) NOT NULL,
-                `DefaultAppointmentDuration` int NOT NULL,
-                `Enabled` tinyint(1) NOT NULL,
-                `Added` datetime NOT NULL,
-                `AddedBy` varchar(100) NULL,
-                `LastModified` datetime NOT NULL,
-                `LastModifiedBy` varchar(100) NULL,
-                `Deleted` tinyint(1) NOT NULL,
-                `DeletedAt` datetime NULL,
-                PRIMARY KEY (`ServiceId`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-            """);
-        // {{ModuleItemEnd:Services}}
 
         m1.Add(
             """
@@ -163,15 +97,6 @@ public partial class DataMigrations
                 `Name` varchar(200) NOT NULL,
                 `Style` longtext NULL,
                 `Enabled` tinyint(1) NOT NULL,
-                -- {{ModuleItemStart:Appointments}}
-                `UseInAppointments` tinyint(1) NOT NULL,
-                -- {{ModuleItemEnd:Appointments}}
-                -- {{ModuleItemStart:EmailTemplates}}
-                `UseInEmailTemplates` tinyint(1) NOT NULL,
-                -- {{ModuleItemEnd:EmailTemplates}}
-                -- {{ModuleItemStart:Services}}
-                `UseInServices` tinyint(1) NOT NULL,
-                -- {{ModuleItemEnd:Services}}
                 `Added` datetime NOT NULL,
                 `AddedBy` varchar(100) NULL,
                 `LastModified` datetime NOT NULL,
@@ -233,36 +158,6 @@ public partial class DataMigrations
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
             """);
 
-        // {{ModuleItemStart:Appointments}}
-        m1.Add(
-            """
-            CREATE TABLE IF NOT EXISTS `Appointments` (
-                `AppointmentId` char(36) NOT NULL,
-                `TenantId` char(36) NOT NULL,
-                `Title` varchar(200) NOT NULL,
-                `Start` datetime NOT NULL,
-                `End` datetime NOT NULL,
-                `AllDay` tinyint(1) NOT NULL,
-                `Meeting` tinyint(1) NOT NULL,
-                -- {{ModuleItemStart:Locations}}
-                `LocationId` char(36) NULL,
-                -- {{ModuleItemEnd:Locations}}
-                `Added` datetime NOT NULL,
-                `AddedBy` varchar(100) NULL,
-                `LastModified` datetime NOT NULL,
-                `LastModifiedBy` varchar(100) NULL,
-                `Deleted` tinyint(1) NOT NULL,
-                `DeletedAt` datetime NULL,
-                `Note` longtext NULL,
-                `ForegroundColor` varchar(100) NULL,
-                `BackgroundColor` varchar(100) NULL,
-                PRIMARY KEY (`AppointmentId`)
-                -- {{ModuleItemStart:Locations}}
-                ,CONSTRAINT `FK_Appointments_Locations` FOREIGN KEY (`LocationId`) REFERENCES `Locations` (`LocationId`)
-                -- {{ModuleItemEnd:Locations}}
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-            """);
-        // {{ModuleItemEnd:Appointments}}
 
         // {{ModuleItemStart:Tags}}
         m1.Add(
@@ -327,60 +222,6 @@ public partial class DataMigrations
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
             """);
 
-        // {{ModuleItemStart:Appointments}}
-        m1.Add(
-            """
-            CREATE TABLE IF NOT EXISTS `AppointmentNotes` (
-                `AppointmentNoteId` char(36) NOT NULL,
-                `AppointmentId` char(36) NOT NULL,
-                `TenantId` char(36) NOT NULL,
-                `Added` datetime NOT NULL,
-                `AddedBy` varchar(100) NULL,
-                `LastModified` datetime NOT NULL,
-                `LastModifiedBy` varchar(100) NULL,
-                `Note` longtext NULL,
-                `Deleted` tinyint(1) NOT NULL,
-                `DeletedAt` datetime NULL,
-                PRIMARY KEY (`AppointmentNoteId`),
-                CONSTRAINT `FK_AppointmentNotes_Appointments` FOREIGN KEY (`AppointmentId`) REFERENCES `Appointments` (`AppointmentId`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-            """);
-
-        // {{ModuleItemStart:Services}}
-        m1.Add(
-            """
-            CREATE TABLE IF NOT EXISTS `AppointmentServices` (
-                `AppointmentServiceId` char(36) NOT NULL,
-                `AppointmentId` char(36) NOT NULL,
-                `TenantId` char(36) NOT NULL,
-                `ServiceId` char(36) NOT NULL,
-                `Fee` decimal(19,4) NULL,
-                `Deleted` tinyint(1) NOT NULL,
-                `DeletedAt` datetime NULL,
-                `LastModified` datetime NOT NULL,
-                `LastModifiedBy` varchar(100) NULL,
-                PRIMARY KEY (`AppointmentServiceId`),
-                CONSTRAINT `FK_AppointmentServices_Appointments` FOREIGN KEY (`AppointmentId`) REFERENCES `Appointments` (`AppointmentId`),
-                CONSTRAINT `FK_AppointmentServices_Services` FOREIGN KEY (`ServiceId`) REFERENCES `Services` (`ServiceId`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-            """);
-        // {{ModuleItemEnd:Services}}
-
-        m1.Add(
-            """
-            CREATE TABLE IF NOT EXISTS `AppointmentUsers` (
-                `AppointmentUserId` char(36) NOT NULL,
-                `AppointmentId` char(36) NOT NULL,
-                `TenantId` char(36) NOT NULL,
-                `UserId` char(36) NOT NULL,
-                `AttendanceCode` varchar(50) NULL,
-                `Fees` decimal(19,4) NULL,
-                PRIMARY KEY (`AppointmentUserId`),
-                CONSTRAINT `FK_AppointmentUsers_Appointments` FOREIGN KEY (`AppointmentId`) REFERENCES `Appointments` (`AppointmentId`),
-                CONSTRAINT `FK_AppointmentUsers_Users` FOREIGN KEY (`UserId`) REFERENCES `Users` (`UserId`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-            """);
-        // {{ModuleItemEnd:Appointments}}
 
         m1.Add(
             """
@@ -405,42 +246,6 @@ public partial class DataMigrations
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
             """);
 
-        // {{ModuleItemStart:Invoices}}
-        m1.Add(
-            """
-            CREATE TABLE IF NOT EXISTS `Invoices` (
-                `InvoiceId` char(36) NOT NULL,
-                `TenantId` char(36) NOT NULL,
-                `InvoiceNumber` varchar(100) NULL,
-                `PONumber` varchar(100) NULL,
-                -- {{ModuleItemStart:Appointments}}
-                `AppointmentId` char(36) NULL,
-                -- {{ModuleItemEnd:Appointments}}
-                `UserId` char(36) NULL,
-                `Title` varchar(255) NOT NULL,
-                `Items` longtext NOT NULL,
-                `Notes` longtext NULL,
-                `InvoiceCreated` datetime NULL,
-                `InvoiceDueDate` datetime NULL,
-                `InvoiceSendDate` datetime NULL,
-                `InvoiceSent` datetime NULL,
-                `InvoiceClosed` datetime NULL,
-                `Total` decimal(19,4) NOT NULL,
-                `Added` datetime NOT NULL,
-                `AddedBy` varchar(100) NULL,
-                `LastModified` datetime NOT NULL,
-                `LastModifiedBy` varchar(100) NULL,
-                `Deleted` tinyint(1) NOT NULL,
-                `DeletedAt` datetime NULL,
-                PRIMARY KEY (`InvoiceId`),
-                -- {{ModuleItemStart:Appointments}}
-                CONSTRAINT `FK_Invoices_Appointments` FOREIGN KEY (`AppointmentId`) REFERENCES `Appointments` (`AppointmentId`),
-                -- {{ModuleItemEnd:Appointments}}
-                CONSTRAINT `FK_Invoices_Tenants` FOREIGN KEY (`TenantId`) REFERENCES `Tenants` (`TenantId`),
-                CONSTRAINT `FK_Invoices_Users` FOREIGN KEY (`UserId`) REFERENCES `Users` (`UserId`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-            """);
-        // {{ModuleItemEnd:Invoices}}
 
         m1.Add(
             """
@@ -455,110 +260,15 @@ public partial class DataMigrations
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
             """);
 
-        // {{ModuleItemStart:Payments}}
-        m1.Add(
-            """
-            CREATE TABLE IF NOT EXISTS `Payments` (
-                `PaymentId` char(36) NOT NULL,
-                `TenantId` char(36) NOT NULL,
-                `InvoiceId` char(36) NOT NULL,
-                `UserId` char(36) NULL,
-                `Notes` longtext NULL,
-                `PaymentDate` datetime NOT NULL,
-                `Amount` decimal(19,4) NOT NULL,
-                `Refunded` decimal(19,4) NULL,
-                `RefundedBy` varchar(100) NULL,
-                `RefundDate` datetime NULL,
-                `Added` datetime NOT NULL,
-                `AddedBy` varchar(100) NULL,
-                `LastModified` datetime NOT NULL,
-                `LastModifiedBy` varchar(100) NULL,
-                `Deleted` tinyint(1) NOT NULL,
-                `DeletedAt` datetime NULL,
-                PRIMARY KEY (`PaymentId`),
-                CONSTRAINT `FK_Payments_Invoices` FOREIGN KEY (`InvoiceId`) REFERENCES `Invoices` (`InvoiceId`),
-                CONSTRAINT `FK_Payments_Tenants` FOREIGN KEY (`TenantId`) REFERENCES `Tenants` (`TenantId`),
-                CONSTRAINT `FK_Payments_Users` FOREIGN KEY (`UserId`) REFERENCES `Users` (`UserId`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-            """);
-        // {{ModuleItemEnd:Payments}}
 
-        // {{ModuleItemStart:Appointments}}
-        m1.Add(
-            """
-            CREATE INDEX `IX_AppointmentNotes_AppointmentId` ON `AppointmentNotes` (`AppointmentId`);
-            """);
 
-        // {{ModuleItemStart:Locations}}
-        m1.Add(
-            """
-            CREATE INDEX `IX_Appointments_LocationId` ON `Appointments` (`LocationId`);
-            """);
-        // {{ModuleItemEnd:Locations}}
-        // {{ModuleItemEnd:Appointments}}
-
-        // {{ModuleItemStart:Appointments}}
-        // {{ModuleItemStart:Services}}
-        m1.Add(
-            """
-            CREATE INDEX `IX_AppointmentServices_AppointmentId` ON `AppointmentServices` (`AppointmentId`);
-            """);
-        // {{ModuleItemEnd:Services}}
-
-        m1.Add(
-            """
-            CREATE INDEX `IX_AppointmentServices_ServiceId` ON `AppointmentServices` (`ServiceId`);
-            """);
-
-        m1.Add(
-            """
-            CREATE INDEX `IX_AppointmentUsers_AppointmentId` ON `AppointmentUsers` (`AppointmentId`);
-            """);
-
-        m1.Add(
-            """
-            CREATE INDEX `IX_AppointmentUsers_UserId` ON `AppointmentUsers` (`UserId`);
-            """);
-        // {{ModuleItemEnd:Appointments}}
 
         m1.Add(
             """
             CREATE INDEX `IX_FileStorage_UserId` ON `FileStorage` (`UserId`);
             """);
 
-        // {{ModuleItemStart:Invoices}}
-        m1.Add(
-            """
-            CREATE INDEX `IX_Invoices_AppointmentId` ON `Invoices` (`AppointmentId`);
-            """);
 
-        m1.Add(
-            """
-            CREATE INDEX `IX_Invoices_TenantId` ON `Invoices` (`TenantId`);
-            """);
-
-        m1.Add(
-            """
-            CREATE INDEX `IX_Invoices_UserId` ON `Invoices` (`UserId`);
-            """);
-
-        m1.Add(
-            """
-            CREATE INDEX `IX_Payments_InvoiceId` ON `Payments` (`InvoiceId`);
-            """);
-        // {{ModuleItemEnd:Invoices}}
-
-        // {{ModuleItemStart:Payments}}
-        m1.Add(
-            """
-            CREATE INDEX `IX_Payments_TenantId` ON `Payments` (`TenantId`);
-            """);
-
-        m1.Add(
-            """
-            CREATE INDEX `IX_Payments_UserId` ON `Payments` (`UserId`);
-            """);
-        // {{ModuleItemEnd:Payments}}
 
         // {{ModuleItemStart:Tags}}
         m1.Add(

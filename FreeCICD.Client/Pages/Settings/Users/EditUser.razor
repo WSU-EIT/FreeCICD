@@ -1,4 +1,4 @@
-﻿@page "/Settings/EditUser/{userid}"
+@page "/Settings/EditUser/{userid}"
 @page "/{TenantCode}/Settings/EditUser/{userid}"
 @page "/Settings/AddUser"
 @page "/{TenantCode}/Settings/AddUser"
@@ -139,14 +139,6 @@
                         <td><label for="edit-user-title-@_user.UserId"><Language Tag="Title" ReplaceSpaces="true" /></label></td>
                         <td><input type="text" id="edit-user-title-@_user.UserId" class="form-control" @bind="_user.Title" /></td>
                     </tr>
-                    <!-- {{ModuleItemStart:Locations}} -->
-                    @if (Model.FeatureEnabledLocation) {
-                        <tr>
-                            <td><label for="edit-user-location-@_user.UserId"><Language Tag="Location" ReplaceSpaces="true" /></label></td>
-                            <td><input type="text" id="edit-user-location-@_user.UserId" class="form-control" @bind="_user.Location" /></td>
-                        </tr>
-                    }
-                    <!-- {{ModuleItemEnd:Locations}} -->
                     <tr>
                         <td><label for="edit-user-phone-@_user.UserId"><Language Tag="PhoneNumber" ReplaceSpaces="true" /></label></td>
                         <td><input type="text" id="edit-user-phone-@_user.UserId" class="form-control" @bind="_user.Phone" /></td>
@@ -185,19 +177,6 @@
                         </td>
                         <td><label for="edit-user-preventPasswordChange-@_user.UserId" class="form-check-label"><Language Tag="PreventPasswordChange" /></label></td>
                     </tr>
-                    <!-- {{ModuleItemStart:Appointments}} -->
-                    @if (Model.FeatureEnabledScheduling)
-                    {
-                        <tr>
-                            <td>
-                                <div class="form-check form-switch right">
-                                    <input type="checkbox" id="edit-user-CanBeScheduled-@_user.UserId" role="switch" class="form-check-input" @bind="_user.CanBeScheduled" />
-                                </div>
-                            </td>
-                            <td><label for="edit-user-CanBeScheduled-@_user.UserId" class="form-check-label"><Language Tag="CanBeScheduled" /></label></td>
-                        </tr>
-                    }
-                    <!-- {{ModuleItemEnd:Appointments}} -->
                     <tr>
                         <td>
                             <div class="form-check form-switch right">
@@ -209,26 +188,6 @@
 
                     <EditUser_App @bind-Value="_user" />
 
-                    <!-- {{ModuleItemStart:Appointments}} -->
-                    @if (!_user.Admin && Model.FeatureEnabledScheduling) {
-                        <tr>
-                            <td>
-                                <div class="form-check form-switch right">
-                                    <input type="checkbox" id="edit-user-ManageAppointments-@_user.UserId" role="switch" class="form-check-input" @bind="_user.ManageAppointments" />
-                                </div>
-                            </td>
-                            <td><label for="edit-user-ManageAppointments-@_user.UserId" class="form-check-label"><Language Tag="ManageAppointments" /></label></td>
-                        </tr>
-                        <tr>
-                            <td>
-                                <div class="form-check form-switch right">
-                                    <input type="checkbox" id="edit-user-ManageFiles-@_user.UserId" role="switch" class="form-check-input" @bind="_user.ManageFiles" />
-                                </div>
-                            </td>
-                            <td><label for="edit-user-ManageFiles-@_user.UserId" class="form-check-label"><Language Tag="ManageFiles" /></label></td>
-                        </tr>
-                    }
-                    <!-- {{ModuleItemEnd:Appointments}} -->
 
                     @if (!_newUser) {
                         <tr>

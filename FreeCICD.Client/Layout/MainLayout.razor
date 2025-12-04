@@ -482,11 +482,6 @@
             var userId = update.UserId;
 
             switch (update.UpdateType) {
-                // {{ModuleItemStart:Appointments}}
-                case DataObjects.SignalRUpdateType.Appointment:
-                    var appt = Helpers.DeserializeObject<DataObjects.Appointment>(update.ObjectAsString);
-                    break;
-                // {{ModuleItemEnd:Appointments}}
 
                 case DataObjects.SignalRUpdateType.Department:
                     await Helpers.LoadDepartments();
@@ -495,11 +490,6 @@
                 case DataObjects.SignalRUpdateType.DepartmentGroup:
                     break;
 
-                // {{ModuleItemStart:EmailTemplates}}
-                case DataObjects.SignalRUpdateType.EmailTemplate:
-                    var emailTemplate = Helpers.DeserializeObject<DataObjects.EmailTemplate>(update.ObjectAsString);
-                    break;
-                // {{ModuleItemEnd:EmailTemplates}}
 
                 case DataObjects.SignalRUpdateType.File:
                     var file = Helpers.DeserializeObject<DataObjects.FileStorage>(update.ObjectAsString);
@@ -520,17 +510,7 @@
                     }
                     break;
 
-                // {{ModuleItemStart:Locations}}
-                case DataObjects.SignalRUpdateType.Location:
-                    await Helpers.LoadLocations();
-                    break;
-                // {{ModuleItemEnd:Locations}}
 
-                // {{ModuleItemStart:Services}}
-                case DataObjects.SignalRUpdateType.Service:
-                    await Helpers.LoadServices();
-                    break;
-                // {{ModuleItemEnd:Services}}
 
                 case DataObjects.SignalRUpdateType.Setting:
                     switch (message) {
@@ -599,16 +579,6 @@
                 case DataObjects.SignalRUpdateType.Undelete:
                     // Not all undelete types require reloading data, but those that do are handled here.
                     switch (message) {
-                        // {{ModuleItemStart:Appointments}}
-                        case "appointment":
-                            break;
-
-                        case "appointmentnote":
-                            break;
-
-                        case "appointmentservice":
-                            break;
-                        // {{ModuleItemEnd:Appointments}}
 
                         case "departmentgroup":
                             var undeletedDepartmentGroup = Helpers.DeserializeObject<DataObjects.DepartmentGroup>(update.ObjectAsString);
@@ -630,44 +600,11 @@
                             }
                             break;
 
-                        // {{ModuleItemStart:EmailTemplates}}
-                        case "emailtemplate":
-                            var undeletedEmailTemplate = Helpers.DeserializeObject<DataObjects.EmailTemplate>(update.ObjectAsString);
-                            if (undeletedEmailTemplate != null) {
-                                var modelEmailTemplates = Model.EmailTemplates.ToList();
-                                modelEmailTemplates = modelEmailTemplates.Where(x => x.EmailTemplateId != undeletedEmailTemplate.EmailTemplateId).ToList();
-                                modelEmailTemplates.Add(undeletedEmailTemplate);
-                                Model.EmailTemplates = modelEmailTemplates;
-                            }
-                            break;
-                        // {{ModuleItemEnd:EmailTemplates}}
 
                         case "filestorage":
                             break;
 
-                        // {{ModuleItemStart:Locations}}
-                        case "location":
-                            var undeletedLocation = Helpers.DeserializeObject<DataObjects.Location>(update.ObjectAsString);
-                            if (undeletedLocation != null) {
-                                var modelLocations = Model.Locations.ToList();
-                                modelLocations = modelLocations.Where(x => x.LocationId != undeletedLocation.LocationId).ToList();
-                                modelLocations.Add(undeletedLocation);
-                                Model.Locations = modelLocations;
-                            }
-                            break;
-                        // {{ModuleItemEnd:Locations}}
 
-                        // {{ModuleItemStart:Services}}
-                        case "service":
-                            var undeletedService = Helpers.DeserializeObject<DataObjects.Service>(update.ObjectAsString);
-                            if (undeletedService != null) {
-                                var modelServices = Model.Services.ToList();
-                                modelServices = modelServices.Where(x => x.ServiceId != undeletedService.ServiceId).ToList();
-                                modelServices.Add(undeletedService);
-                                Model.Services = modelServices;
-                            }
-                            break;
-                        // {{ModuleItemEnd:Services}}
 
                         // {{ModuleItemStart:Tags}}
                         case "tag":

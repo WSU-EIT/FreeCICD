@@ -1,4 +1,4 @@
-﻿@page "/Profile"
+@page "/Profile"
 @page "/{TenantCode}/Profile"
 @implements IDisposable
 @using Blazored.LocalStorage
@@ -103,14 +103,6 @@
                             </select>
                         </div>
                     }
-                    <!-- {{ModuleItemStart:Locations}} -->
-                    @if (Model.AllowUsersToManageLocation) {
-                        <div class="mb-2">
-                            <label for="edit-profile-location"><Language Tag="Location" /></label>
-                            <input type="text" class="form-control" id="edit-profile-location" @bind="_user.Location" />
-                        </div>
-                    }
-                    <!-- {{ModuleItemEnd:Locations}} -->
                 </div>
             </div>
         }

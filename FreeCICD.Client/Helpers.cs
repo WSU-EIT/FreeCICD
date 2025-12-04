@@ -1,14 +1,5 @@
 using BlazorBootstrap;
 using Blazored.LocalStorage;
-// {{ModuleItemStart:EmailTemplates}}
-using FreeCICD.Client.Pages.Settings.Email;
-// {{ModuleItemEnd:EmailTemplates}}
-// {{ModuleItemStart:Locations}}
-using FreeCICD.Client.Pages.Settings.Locations;
-// {{ModuleItemEnd:Locations}}
-// {{ModuleItemStart:Services}}
-using FreeCICD.Client.Pages.Settings.Services;
-// {{ModuleItemEnd:Services}}
 // {{ModuleItemStart:Tags}}
 using FreeCICD.Client.Pages.Settings.Tags;
 // {{ModuleItemEnd:Tags}}
@@ -1012,24 +1003,13 @@ public static partial class Helpers
         if (!String.IsNullOrEmpty(DepartmentName) || !String.IsNullOrEmpty(Location)) {
             if (
                 Model.FeatureEnabledDepartments
-                // {{ModuleItemStart:Locations}}
-                || Model.FeatureEnabledLocation
-            // {{ModuleItemEnd:Locations}}
             ) {
                 output += " [";
                 if (
                     !String.IsNullOrEmpty(DepartmentName)
                     && Model.FeatureEnabledDepartments
-                    // {{ModuleItemStart:Locations}}
-                    && !String.IsNullOrEmpty(Location)
-                    && Model.FeatureEnabledLocation
-                // {{ModuleItemEnd:Locations}}
                 ) {
                     output += Location + "/" + DepartmentName;
-                    // {{ModuleItemStart:Locations}}
-                } else if (!String.IsNullOrEmpty(Location) && Model.FeatureEnabledLocation) {
-                    output += Location;
-                    // {{ModuleItemEnd:Locations}}
                 } else if (Model.FeatureEnabledDepartments) {
                     output += DepartmentName;
                 }
@@ -1236,26 +1216,6 @@ public static partial class Helpers
         });
     }
 
-    // {{ModuleItemStart:EmailTemplates}}
-    /// <summary>
-    /// Deserializes the template stored as JSON back to an EmailTemplateDetails object.
-    /// </summary>
-    /// <param name="Template">The template JSON.</param>
-    /// <returns>An EmailTemplateDetails object.</returns>
-    public static DataObjects.EmailTemplateDetails EmailTemplateDetails(string? Template)
-    {
-        DataObjects.EmailTemplateDetails output = new DataObjects.EmailTemplateDetails();
-
-        if (!String.IsNullOrWhiteSpace(Template)) {
-            var deserialized = DeserializeObject<DataObjects.EmailTemplateDetails>(Template);
-            if (deserialized != null) {
-                output = deserialized;
-            }
-        }
-
-        return output;
-    }
-    // {{ModuleItemEnd:EmailTemplates}}
 
     /// <summary>
     /// Executes a plugin and returns the results.
@@ -1431,69 +1391,7 @@ public static partial class Helpers
         Model.Language = lang;
     }
 
-    // {{ModuleItemStart:Locations}}
-    /// <summary>
-    /// Format an address.
-    /// </summary>
-    /// <param name="location">The location with an address to format.</param>
-    /// <returns>The formatted address.</returns>
-    public static string FormatAddress(DataObjects.Location location)
-    {
-        string output = String.Empty;
 
-        if (!String.IsNullOrWhiteSpace(location.Address)) {
-            output += location.Address;
-            if (!String.IsNullOrWhiteSpace(location.City)) {
-                output += "<br />" + location.City;
-
-                if (!String.IsNullOrWhiteSpace(location.State)) {
-                    output += ", " + location.State;
-
-                    if (!String.IsNullOrWhiteSpace(location.PostalCode)) {
-                        output += " " + location.PostalCode;
-                    }
-                }
-            }
-        }
-
-        return output;
-    }
-    // {{ModuleItemEnd:Locations}}
-
-    // {{ModuleItemStart:Appointments}}
-    /// <summary>
-    /// Formats the dates and times for an appointment.
-    /// </summary>
-    /// <param name="appt">The Appointment object.</param>
-    /// <returns>The formatted dates and times.</returns>
-    public static string FormatAppointmentDatesAndTimes(DataObjects.Appointment appt)
-    {
-        string output = String.Empty;
-
-        bool multiDay = appt.Start.ToShortDateString() != appt.End.ToShortDateString();
-
-        if (appt.AllDay) {
-            if (multiDay) {
-                output = appt.Start.ToString("d") + " - " + appt.End.ToString("d") + " " + Text("AllDay");
-            } else {
-                output = appt.Start.ToString("d") + " " + Text("AllDay");
-            }
-        } else {
-            // Start with just the main event date and time
-            output = appt.Start.ToString("d") + " " + appt.Start.ToString("t");
-
-            // If this is a multi-day event then add the end date and time
-            if (multiDay) {
-                output += " - " + appt.End.ToString("d") + " " + appt.End.ToString("t");
-            } else if (appt.Start.ToString("t") != appt.End.ToString("t")) {
-                // Add the end time
-                output += " - " + appt.End.ToString("t");
-            }
-        }
-
-        return output;
-    }
-    // {{ModuleItemEnd:Appointments}}
 
     /// <summary>
     /// Formats a value in the currency format.
@@ -1972,28 +1870,14 @@ public static partial class Helpers
 
         // Also update the counts on the Main Model
 
-        // {{ModuleItemStart:Appointments}}
-        Model.DeletedRecordCounts.AppointmentNotes = output.AppointmentNotes.Count();
-        Model.DeletedRecordCounts.Appointments = output.Appointments.Count();
-        Model.DeletedRecordCounts.AppointmentServices = output.AppointmentServices.Count();
-        // {{ModuleItemEnd:Appointments}}
 
         Model.DeletedRecordCounts.DepartmentGroups = output.DepartmentGroups.Count();
         Model.DeletedRecordCounts.Departments = output.Departments.Count();
 
-        // {{ModuleItemStart:EmailTemplates}}
-        Model.DeletedRecordCounts.EmailTemplates = output.EmailTemplates.Count();
-        // {{ModuleItemEnd:EmailTemplates}}
 
         Model.DeletedRecordCounts.FileStorage = output.FileStorage.Count();
 
-        // {{ModuleItemStart:Locations}}
-        Model.DeletedRecordCounts.Locations = output.Locations.Count();
-        // {{ModuleItemEnd:Locations}}
 
-        // {{ModuleItemStart:Services}}
-        Model.DeletedRecordCounts.Services = output.Services.Count();
-        // {{ModuleItemEnd:Services}}
 
         // {{ModuleItemStart:Tags}}
         Model.DeletedRecordCounts.Tags = output.Tags.Count();
@@ -2014,23 +1898,9 @@ public static partial class Helpers
     public static List<string> GetDeletedRecordTypes()
     {
         var output = new List<string> {
-            // {{ModuleItemStart:Appointments}}
-            "Appointment",
-            "AppointmentNote",
-            "AppointmentService",
-            // {{ModuleItemEnd:Appointments}}
             "Department",
             "DepartmentGroup",
-            // {{ModuleItemStart:EmailTemplates}}
-            "EmailTemplate",
-            // {{ModuleItemEnd:EmailTemplates}}
             "FileStorage",
-            // {{ModuleItemStart:Locations}}
-            "Location",
-            // {{ModuleItemEnd:Locations}}
-            // {{ModuleItemStart:Services}}
-            "Service",
-            // {{ModuleItemEnd:Services}}
             // {{ModuleItemStart:Tags}}
             "Tag",
             // {{ModuleItemEnd:Tags}}
@@ -2197,49 +2067,6 @@ public static partial class Helpers
         return output;
     }
 
-    // {{ModuleItemStart:Locations}}
-    // {{ModuleItemStart:Appointments}}
-    /// <summary>
-    /// Gets the style for a given location.
-    /// </summary>
-    /// <param name="LocationId">The unique id of the location.</param>
-    /// <param name="appointment">An optional Appointment object.</param>
-    /// <returns>A string with the style for the location.</returns>
-    public static async Task<string> GetLocationStyle(Guid? LocationId, DataObjects.Appointment? appointment = null)
-    {
-        string output = String.Empty;
-
-        // See if the event has specific colors
-        if (appointment != null) {
-            if (!String.IsNullOrWhiteSpace(appointment.BackgroundColor)) {
-                output += "background-color:" + appointment.BackgroundColor + ";";
-            }
-            if (!String.IsNullOrWhiteSpace(appointment.ForegroundColor)) {
-                output += "color:" + appointment.ForegroundColor + ";";
-            }
-        }
-
-        if (String.IsNullOrWhiteSpace(output) && LocationId.HasValue && LocationId != Guid.Empty) {
-            if (!Model.Locations.Any()) {
-                await LoadLocations();
-            }
-
-            var locationItem = Model.Locations.FirstOrDefault(x => x.LocationId == LocationId);
-            if (locationItem != null) {
-                if (!String.IsNullOrWhiteSpace(locationItem.CalendarBackgroundColor)) {
-                    output += "background-color:" + locationItem.CalendarBackgroundColor + ";";
-                }
-
-                if (!String.IsNullOrWhiteSpace(locationItem.CalendarForegroundColor)) {
-                    output += "color:" + locationItem.CalendarForegroundColor + ";";
-                }
-            }
-        }
-
-        return output;
-    }
-    // {{ModuleItemEnd:Appointments}}
-    // {{ModuleItemEnd:Locations}}
 
     /// <summary>
     /// Shows a dialog to get a new password.
@@ -3393,27 +3220,16 @@ public static partial class Helpers
             // then the second part indicates the source (eg: google:home, fa:fa fa-home, etc.)
             Dictionary<string, List<string>> icons = new Dictionary<string, List<string>> {
                 { "fa:fa-regular fa-address-card",               new List<string> { "ManageProfile", "ManageProfileInfo" }},
-                // {{ModuleItemStart:Appointments}}
-                { "fa:fa-regular fa-calendar",                   new List<string> { "AppointmentTypeEvent", "Schedule", "Scheduling" }},
-                { "fa:fa-regular fa-calendar-check",             new List<string> { "Now" }},
-                { "fa:fa-regular fa-calendar-plus",              new List<string> { "AddAppointment" }},
-                // {{ModuleItemEnd:Appointments}}
                 { "fa:fa-regular fa-circle",                     new List<string> { "TenantChange" }},
                 { "fa:fa-regular fa-circle-check",               new List<string> { "CurrentCredential", "OK", "Select", "Selected", "UserEnabled" }},
                 { "fa:fa-regular fa-circle-dot",                 new List<string> { "TenantCurrent" }},
                 { "fa:fa-regular fa-file",                       new List<string> { "Files", "ManageFile" }},
-                // {{ModuleItemStart:Appointments}}
-                { "fa:fa-regular fa-note-sticky",                new List<string> { "AppointmentNoteAdd" }},
-                // {{ModuleItemEnd:Appointments}}
                 { "fa:fa-regular fa-square",                     new List<string> { "Unchecked" }},
                 { "fa:fa-regular fa-square-check",               new List<string> { "Checked" }},
                 { "fa:fa-regular fa-square-plus",                new List<string> { "Add", "AddLanguage", "AddNewEmailTemplate", "AddNewUserGroup", "CreateInvoiceForUser", "InvoiceAddItem" }},
                 { "fa:fa-regular fa-sun",                        new List<string> { "Theme", "ThemeLight" }},
 
                 { "fa:fa-solid fa-arrows-rotate",                new List<string> { "Refresh" }},
-                // {{ModuleItemStart:Services}}
-                { "fa:fa-solid fa-bell-concierge",               new List<string> { "AddNewService", "AppointmentAddService", "EditService", "Service", "Services" }},
-                // {{ModuleItemEnd:Services}}
                 { "fa:fa-solid fa-broom",                        new List<string> { "Clear", "Reset", "ResetLanguageDefaults" }},
                 { "fa:fa-solid fa-building-circle-arrow-right",  new List<string> { "AddNewTenant", "NewTenant" }},
                 { "fa:fa-solid fa-building-user",                new List<string> { "EditTenant", "Tenants" }},
@@ -3426,12 +3242,6 @@ public static partial class Helpers
                 { "fa:fa-solid fa-circle-info",                  new List<string> { "About", "Info" }},
                 { "fa:fa-solid fa-circle-user",                  new List<string> { "ManageAvatar", "User", "UserMenuIcon" }},
                 { "fa:fa-solid fa-code",                         new List<string> { "Code", "HTML", "ThemeCustomCssDefault" }},
-                // {{ModuleItemStart:EmailTemplates}}
-                { "fa:fa-solid fa-envelopes-bulk",               new List<string> { "EmailTemplate", "EmailTemplates" }},
-                // {{ModuleItemEnd:EmailTemplates}}
-                // {{ModuleItemStart:Invoices}}
-                { "fa:fa-solid fa-file-invoice",                 new List<string> { "CreateInvoice", "EditInvoice", "Invoice", "Invoices", "ViewInvoice" }},
-                // {{ModuleItemEnd:Invoices}}
                 { "fa:fa-solid fa-file-lines",                   new List<string> { "UserDefinedFields" }},
                 { "fa:fa-solid fa-file-pdf",                     new List<string> { "DownloadPDF", "PDF" }},
                 { "fa:fa-solid fa-filter",                       new List<string> { "AllItems", "ShowFilter" }},
@@ -3442,9 +3252,6 @@ public static partial class Helpers
                 { "fa:fa-solid fa-image",                        new List<string> { "InsertImage", "Photo" }},
                 { "fa:fa-solid fa-key",                          new List<string> { "ChangePassword", "ForgotPassword", "GeneratePassword", "GenerateNewPassword", "PasswordChanged", "UserAdmin" }},
                 { "fa:fa-solid fa-language",                     new List<string> { "Language" }},
-                // {{ModuleItemStart:Locations}}
-                { "fa:fa-solid fa-location-dot",                 new List<string> { "AddNewLocation", "EditLocation", "Locations" }},
-                // {{ModuleItemEnd:Locations}}
                 { "fa:fa-solid fa-magnifying-glass",             new List<string> { "IncludeInSearch", "Preview", "Search", "View" }},
                 { "fa:fa-solid fa-moon",                         new List<string> { "ThemeDark" }},
                 { "fa:fa-solid fa-paper-plane",                  new List<string> { "SendTestEmail" }},
@@ -3925,27 +3732,7 @@ public static partial class Helpers
         Model.ImageFiles = items != null && items.Any() ? items : new List<DataObjects.FileStorage>();
     }
 
-    // {{ModuleItemStart:Locations}}
-    /// <summary>
-    /// Loads the locations from the API endpoint.
-    /// </summary>
-    public async static Task LoadLocations()
-    {
-        var items = await GetOrPost<List<DataObjects.Location>>("api/Data/GetLocations");
-        Model.Locations = items != null && items.Any() ? items : new List<DataObjects.Location>();
-    }
-    // {{ModuleItemEnd:Locations}}
 
-    // {{ModuleItemStart:Services}}
-    /// <summary>
-    /// Loads the services from the API endpoints.
-    /// </summary>
-    public async static Task LoadServices()
-    {
-        var items = await GetOrPost<List<DataObjects.Service>>("api/Data/GetServices");
-        Model.Services = items != null && items.Any() ? items : new List<DataObjects.Service>();
-    }
-    // {{ModuleItemEnd:Services}}
 
     // {{ModuleItemStart:Tags}}
     /// <summary>
@@ -4728,44 +4515,6 @@ public static partial class Helpers
         return output.ToString();
     }
 
-    // {{ModuleItemStart:Invoices}}
-    /// <summary>
-    /// Gets the preview for an invoice.
-    /// </summary>
-    /// <param name="invoice">The invoice to preview.</param>
-    public async static Task PreviewInvoice(DataObjects.Invoice invoice)
-    {
-        Model.ClearMessages();
-        Model.Message_Loading();
-
-        var preview = await Helpers.GetOrPost<DataObjects.Invoice>("api/Data/GenerateInvoiceImages", invoice);
-
-        Model.ClearMessages();
-
-        if (preview != null) {
-            if (preview.ActionResponse.Result) {
-                System.Text.StringBuilder html = new System.Text.StringBuilder();
-
-                if (preview.Images != null && preview.Images.Any()) {
-                    foreach (var image in preview.Images) {
-                        html.AppendLine("<div class=\"mb-2\">");
-                        html.AppendLine("  <img src=\"data:image/jpg;base64," + Convert.ToBase64String(image) + "\" style=\"width:100%;\" />");
-                        html.AppendLine("</div>");
-                    }
-                } else {
-                    html.AppendLine(Helpers.Text("NoItemsToShow"));
-                }
-
-                await Helpers.ModalMessage(html.ToString(), Helpers.Text("Preview"));
-
-            } else {
-                Model.ErrorMessages(preview.ActionResponse.Messages);
-            }
-        } else {
-            Model.UnknownError();
-        }
-    }
-    // {{ModuleItemEnd:Invoices}}
 
     /// <summary>
     /// Opens a quick action slideout.
@@ -4794,11 +4543,6 @@ public static partial class Helpers
                 focus = "quickadd-user-FirstName";
                 break;
 
-            // {{ModuleItemStart:Appointments}}
-            case "appointmentnote":
-                focus = "quickadd-appointment-note";
-                break;
-                // {{ModuleItemEnd:Appointments}}
         }
 
         if (focus != String.Empty) {

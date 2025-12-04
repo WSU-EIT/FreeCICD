@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path=".gitignore" />
+    <File Path="LICENSE" />
+    <File Path="README.md" />
+    <File Path="Remove Modules from FreeFreeCICD.exe" />
+    <File Path="Rename FreeFreeCICD.exe" />
+  </Folder>
+  <Project Path="FreeCICD.DataAccess/FreeCICD.DataAccess.csproj" Id="7FFA8433-E5BF-46DA-B759-C922AFF886F8" />
+  <Project Path="FreeCICD.DataObjects/FreeCICD.DataObjects.csproj" Id="A035EEE6-F7EE-4492-BE9F-71ECD64E0FD0" />
+  <Project Path="FreeCICD.EFModels/FreeCICD.EFModels.csproj" Id="8B36FB69-2BAD-44EB-8F86-CD38788B9529" />
+  <Project Path="FreeCICD.Plugins/FreeCICD.Plugins.csproj" Id="B526956A-6C7B-4E44-8340-A3EB9ADDF7F5" />
+  <Project Path="FreeCICD.Client/FreeCICD.Client.csproj" />
+  <Project Path="FreeCICD/FreeCICD.csproj" />
+</Solution>
