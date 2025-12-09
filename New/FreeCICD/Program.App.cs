@@ -46,7 +46,8 @@ public partial class Program
     {
         var output = loader;
 
-        //output.MyProperty = builder.Configuration.GetValue<string>("MyProperty"); ;
+        // Load FreeCICD-specific configuration
+        output = ConfigurationHelpersLoadFreeCICD(output, builder);
 
         return output;
     }

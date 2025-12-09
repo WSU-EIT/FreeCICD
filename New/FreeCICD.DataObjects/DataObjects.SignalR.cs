@@ -21,6 +21,10 @@ public partial class DataObjects
         public const string UserAttendance = "UserAttendance";
         public const string UserGroup = "UserGroup";
         public const string UserPreferences = "UserPreferences";
+
+        // FreeCICD-specific SignalR update types
+        public const string RegisterSignalR = "RegisterSignalR";
+        public const string LoadingDevOpsInfoStatusUpdate = "LoadingDevOpsInfoStatusUpdate";
     }
 
     //public enum SignalRUpdateType
