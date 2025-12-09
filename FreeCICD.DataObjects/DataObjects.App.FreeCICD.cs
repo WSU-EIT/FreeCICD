@@ -39,7 +39,6 @@ public partial class DataObjects
         public const string YAMLPreviewAndSave = "YAML Preview & Save";
         public const string Completed = "Completed";
     }
-
     // ========================================================
     // Environment Settings Data Model and Operations
     // ========================================================
@@ -47,13 +46,21 @@ public partial class DataObjects
     {
         public GlobalSettings.EnvironmentType EnvName { get; set; } = GlobalSettings.EnvironmentType.DEV;
         public string IISDeploymentType { get; set; } = "IISWebApplication";
+
         public string WebsiteName { get; set; } = "";
+        public bool AllowCustomWebsiteName { get; set; } = true;
+
         public string VirtualPath { get; set; } = "";
+        public bool AllowCustomVirtualPath { get; set; } = true;
+
         public string AppPoolName { get; set; } = "";
+        public bool AllowCustomAppPoolName { get; set; } = true;
+
         public string VariableGroupName { get; set; } = "";
         public string BindingInfo { get; set; } = "";
         public string AuthUser { get; set; } = "";
     }
+
 
     public class Application
     {
