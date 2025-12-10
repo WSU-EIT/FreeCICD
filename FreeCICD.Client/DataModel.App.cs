@@ -41,6 +41,9 @@ public partial class BlazorDataModel
 
     private DataObjects.SignalrClientRegistration _SignalrClientRegistration = new();
 
+    /// <summary>
+    /// Gets or sets the SignalR client registration for real-time updates.
+    /// </summary>
     public DataObjects.SignalrClientRegistration SignalrClientRegistration {
         get { return _SignalrClientRegistration == null ? new() : _SignalrClientRegistration; }
         set {

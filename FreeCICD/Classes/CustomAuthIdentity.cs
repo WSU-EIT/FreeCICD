@@ -28,36 +28,31 @@ public class CustomAuthentication : ICustomAuthentication
         _config = config;
     }
 
-    public bool Enabled
-    {
+    public bool Enabled {
         get {
             return _config.Enabled;
         }
     }
 
-    public bool UseApple
-    {
+    public bool UseApple {
         get {
             return _config.UseApple;
         }
     }
 
-    public bool UseFacebook
-    {
+    public bool UseFacebook {
         get {
             return _config.UseFacebook;
         }
     }
 
-    public bool UseMicrosoftAccount
-    {
+    public bool UseMicrosoftAccount {
         get {
             return _config.UseMicrosoftAccount;
         }
     }
 
-    public bool UseOpenId
-    {
+    public bool UseOpenId {
         get {
             return _config.UseOpenId;
         }
@@ -81,8 +76,7 @@ public class CustomAuthentication : ICustomAuthentication
         }
     }
 
-    public bool UseGoogle
-    {
+    public bool UseGoogle {
         get {
             return _config.UseGoogle;
         }
@@ -117,7 +111,7 @@ public static class CustomAuthenticationProviders
         try { appleClientId += applicationBuilder.Configuration["AuthenticationProviders:Apple:ClientId"]; } catch { }
         try { appleKeyId += applicationBuilder.Configuration["AuthenticationProviders:Apple:KeyId"]; } catch { }
         try { appleTeamId += applicationBuilder.Configuration["AuthenticationProviders:Apple:TeamId"]; } catch { }
-        if(appleSignInKey.Exists && !String.IsNullOrWhiteSpace(appleClientId) && !String.IsNullOrWhiteSpace(appleKeyId) && !String.IsNullOrWhiteSpace(appleTeamId)) {
+        if (appleSignInKey.Exists && !String.IsNullOrWhiteSpace(appleClientId) && !String.IsNullOrWhiteSpace(appleKeyId) && !String.IsNullOrWhiteSpace(appleTeamId)) {
             output.Enabled = true;
             output.UseApple = true;
         }
@@ -170,7 +164,7 @@ public static class CustomAuthenticationProviders
             output.Enabled = true;
             output.UseGoogle = true;
         }
-        
+
         var auth = applicationBuilder.Services.AddAuthentication(options => {
             options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
             options.DefaultChallengeScheme = OpenIdConnectDefaults.AuthenticationScheme;

@@ -74,7 +74,7 @@
 
         // Make sure we have a value for each prompt.
         int index = -1;
-        foreach(var prompt in plugin.Prompts) {
+        foreach (var prompt in plugin.Prompts) {
             index++;
 
             if (prompt.Required) {
@@ -98,7 +98,7 @@
         if (missingPrompts.Count > 1) {
             <h1>Error - Missing Prompt Values</h1>
             <ul>
-                @foreach(var item in missingPrompts) {
+                @foreach (var item in missingPrompts) {
                     <li>@item</li>
                 }
             </ul>
@@ -227,7 +227,7 @@
             } else {
                 <h1>Errors</h1>
                 <ul>
-                    @foreach(var item in result.Messages) {
+                    @foreach (var item in result.Messages) {
                         <li>@item</li>
                     }
                 </ul>

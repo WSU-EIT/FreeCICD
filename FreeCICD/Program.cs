@@ -1,11 +1,8 @@
+using FreeCICD.Client.Pages;
 using FreeCICD.Components;
-using FreeCICD.Server.Controllers;
 using FreeCICD.Server.Hubs;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Authorization.Infrastructure;
-using Microsoft.AspNetCore.Builder;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Security.Claims;
 
 namespace FreeCICD
@@ -20,8 +17,23 @@ namespace FreeCICD
 
             var isDevelopment = builder.Environment.IsDevelopment();
             if (!isDevelopment) {
-                
+
             }
+
+            // Try to get the application name.
+            string cookiePrefix = String.Empty;
+            Assembly assembly = Assembly.GetExecutingAssembly();
+            try {
+                cookiePrefix += assembly.FullName;
+
+                if (cookiePrefix.Contains(",")) { 
+                    cookiePrefix = cookiePrefix.Substring(0, cookiePrefix.IndexOf(",")).Trim();
+                }
+
+                if (!String.IsNullOrWhiteSpace(cookiePrefix)) {
+                    cookiePrefix = new string(cookiePrefix.Where(Char.IsLetter).ToArray()).ToLower() + "_";
+                }
+            } catch { }
 
             // Attempts to read the AzureSignalRurl setting from appsettings.json.
             string azureSignalRUrl = String.Empty + builder.Configuration.GetValue<string>("AzureSignalRurl");
@@ -69,7 +81,7 @@ namespace FreeCICD
             var usingStatements = new List<string>();
             var usingStatementsFromConfig = builder.Configuration.GetSection("PluginUsingStatements").GetChildren().Select(c => c.Value).ToArray();
             if (usingStatementsFromConfig != null && usingStatementsFromConfig.Length > 0) {
-                foreach(var item in usingStatementsFromConfig) {
+                foreach (var item in usingStatementsFromConfig) {
                     if (!String.IsNullOrWhiteSpace(item)) {
                         usingStatements.Add(item);
                     }
@@ -88,7 +100,7 @@ namespace FreeCICD
             string _localModeUrl = String.Empty + builder.Configuration.GetValue<string>("LocalModeUrl");
             string _connectionString = String.Empty + builder.Configuration.GetConnectionString("AppData");
             string _databaseType = String.Empty + builder.Configuration.GetValue<string>("DatabaseType");
-            builder.Services.AddTransient<IDataAccess>(x => ActivatorUtilities.CreateInstance<DataAccess>(x, _connectionString, _databaseType, _localModeUrl, x.GetRequiredService<IServiceProvider>()));
+            builder.Services.AddTransient<IDataAccess>(x => ActivatorUtilities.CreateInstance<DataAccess>(x, _connectionString, _databaseType, _localModeUrl, x.GetRequiredService<IServiceProvider>(), cookiePrefix));
 
             var useAuthorization = CustomAuthenticationProviders.UseAuthorization(builder);
             builder.Services.AddTransient<ICustomAuthentication>(x => ActivatorUtilities.CreateInstance<CustomAuthentication>(x, useAuthorization));
@@ -108,8 +120,8 @@ namespace FreeCICD
 
             List<string> disabled = new List<string>();
             var globallyDisabledModules = builder.Configuration.GetSection("GloballyDisabledModules").GetChildren();
-            if(globallyDisabledModules != null && globallyDisabledModules.Any()) {
-                foreach(var item in globallyDisabledModules.ToArray().Select(c => c.Value).ToList()) {
+            if (globallyDisabledModules != null && globallyDisabledModules.Any()) {
+                foreach (var item in globallyDisabledModules.ToArray().Select(c => c.Value).ToList()) {
                     if (!String.IsNullOrWhiteSpace(item)) {
                         disabled.Add(item.ToLower());
                     }
@@ -119,7 +131,7 @@ namespace FreeCICD
             List<string> enabled = new List<string>();
             var globallyEnabledModules = builder.Configuration.GetSection("GloballyEnabledModules").GetChildren();
             if (globallyEnabledModules != null && globallyEnabledModules.Any()) {
-                foreach(var item in globallyEnabledModules.ToArray().Select(c => c.Value).ToList()) {
+                foreach (var item in globallyEnabledModules.ToArray().Select(c => c.Value).ToList()) {
                     if (!String.IsNullOrWhiteSpace(item)) {
                         enabled.Add(item.ToLower());
                     }
@@ -128,6 +140,7 @@ namespace FreeCICD
 
             var configurationHelperLoader = ConfigurationHelpersLoadApp(new ConfigurationHelperLoader {
                 AnalyticsCode = analyticsCode,
+                CookiePrefix = cookiePrefix,
                 BasePath = basePath,
                 ConnectionStrings = new ConfigurationHelperConnectionStrings {
                     AppData = builder.Configuration.GetConnectionString("AppData"),
@@ -147,8 +160,8 @@ namespace FreeCICD
                 "PreventPasswordChange",
             };
             policies.AddRange(AuthenticationPoliciesApp);
-            builder.Services.AddAuthorization(options => { 
-                foreach(var p in policies) {
+            builder.Services.AddAuthorization(options => {
+                foreach (var p in policies) {
                     options.AddPolicy(p, policy => policy.RequireClaim(ClaimTypes.Role, p));
                 }
             });
@@ -176,9 +189,9 @@ namespace FreeCICD
                 app.UseHsts();
             }
 
+            app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
             //app.UseHttpsRedirection();
-            
-            //app.UseStaticFiles(); Replaced by the newer MapStaticAssets middleware.
+
             app.MapStaticAssets();
 
             app.UseRouting();
@@ -198,7 +211,7 @@ namespace FreeCICD
 
             app.MapRazorComponents<App>()
                 .AddInteractiveWebAssemblyRenderMode()
-                .AddAdditionalAssemblies(typeof(FreeCICD.Client.Pages.Index).Assembly);
+                .AddAdditionalAssemblies(typeof(Client._Imports).Assembly);
 
             QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
 

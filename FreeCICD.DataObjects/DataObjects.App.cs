@@ -1,5 +1,3 @@
-using System.Text.Json.Serialization;
-
 namespace FreeCICD;
 
 // Use this file as a place to put any application-specific data objects.

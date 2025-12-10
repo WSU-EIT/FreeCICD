@@ -2,12 +2,10 @@ using System.Text.Json.Serialization;
 
 namespace FreeCICD;
 
-// Use this file as a place to put any application-specific data objects.
+// FreeCICD-specific data objects for Azure DevOps integration
 
 public partial class DataObjects
 {
-
-
     public static partial class Endpoints
     {
         public static class DevOps
@@ -16,12 +14,9 @@ public partial class DataObjects
             public const string GetDevOpsFiles = "api/Data/GetDevOpsFiles";
             public const string GetDevOpsProjects = "api/Data/GetDevOpsProjects";
             public const string GetDevOpsRepos = "api/Data/GetDevOpsRepos";
-
             public const string GetDevOpsPipelines = "api/Data/GetDevOpsPipelines";
             public const string GetDevOpsIISInfo = "api/Data/GetDevOpsIISInfo";
-
             public const string GetDevOpsYmlFileContent = "api/Data/GetDevOpsYmlFileContent";
-
             public const string CreateOrUpdateDevOpsPipeline = "api/Data/CreateOrUpdateDevOpsPipeline";
             public const string PreviewDevOpsYmlFileContents = "api/Data/PreviewDevOpsYmlFileContents";
         }
@@ -39,6 +34,7 @@ public partial class DataObjects
         public const string YAMLPreviewAndSave = "YAML Preview & Save";
         public const string Completed = "Completed";
     }
+
     // ========================================================
     // Environment Settings Data Model and Operations
     // ========================================================
@@ -46,21 +42,16 @@ public partial class DataObjects
     {
         public GlobalSettings.EnvironmentType EnvName { get; set; } = GlobalSettings.EnvironmentType.DEV;
         public string IISDeploymentType { get; set; } = "IISWebApplication";
-
         public string WebsiteName { get; set; } = "";
         public bool AllowCustomWebsiteName { get; set; } = true;
-
         public string VirtualPath { get; set; } = "";
         public bool AllowCustomVirtualPath { get; set; } = true;
-
         public string AppPoolName { get; set; } = "";
         public bool AllowCustomAppPoolName { get; set; } = true;
-
         public string VariableGroupName { get; set; } = "";
         public string BindingInfo { get; set; } = "";
         public string AuthUser { get; set; } = "";
     }
-
 
     public class Application
     {
@@ -75,6 +66,7 @@ public partial class DataObjects
 
         [JsonPropertyName("PhysicalPath")]
         public string PhysicalPath { get; set; } = string.Empty;
+
         [JsonPropertyName("RootSite")]
         public string RootSite { get; set; } = string.Empty;
 
@@ -117,9 +109,9 @@ public partial class DataObjects
     public class DevopsVariableGroup
     {
         public int Id { get; set; }
-        public string Name { get; set; }
-        public string Description { get; set; }
-        public List<DevopsVariable> Variables { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public List<DevopsVariable> Variables { get; set; } = new();
         public string? ResourceUrl { get; set; } = string.Empty;
     }
 
@@ -168,7 +160,6 @@ public partial class DataObjects
         public string? ResourceUrl { get; set; }
     }
 
-
     public class DevopsGitRepoBranchInfo
     {
         public string BranchName { get; set; } = string.Empty;
@@ -190,7 +181,6 @@ public partial class DataObjects
         public DateTime CreationDate { get; set; } = DateTime.UtcNow;
         public string OrgName { get; set; } = string.Empty;
         public string? ResourceUrl { get; set; }
-
     }
 
     public class DevopsPipelineDefinition
@@ -218,24 +208,22 @@ public partial class DataObjects
 
     public class FileContentItem
     {
-        public string Content { get; set; }
-        public string FileName { get; set; }
-        public string FullPath { get; set; }
+        public string Content { get; set; } = string.Empty;
+        public string FileName { get; set; } = string.Empty;
+        public string FullPath { get; set; } = string.Empty;
     }
 
-    // Existing FileItem used in API responses.
     public class FileItem
     {
-        public string FileName { get; set; }
-        public string FullPath { get; set; }
+        public string FileName { get; set; } = string.Empty;
+        public string FullPath { get; set; } = string.Empty;
     }
 
-    // NEW: Metadata for files
     public class FileMetadataItem
     {
         public int CharCount { get; set; }
-        public string FileName { get; set; }
-        public string FullPath { get; set; }
+        public string FileName { get; set; } = string.Empty;
+        public string FullPath { get; set; } = string.Empty;
         public int LineCount { get; set; }
     }
 
@@ -283,11 +271,10 @@ public partial class DataObjects
         public string RepoId { get; set; } = string.Empty;
         public string Branch { get; set; } = string.Empty;
         public string YAMLFileName { get; set; } = string.Empty;
-        public int? PipelineId { get; set; } = null;          // 0 = create new
+        public int? PipelineId { get; set; } = null;
         public string PipelineName { get; set; } = string.Empty;
         public string CsProjectFile { get; set; } = string.Empty;
-        public Dictionary<GlobalSettings.EnvironmentType, EnvSetting> EnvironmentSettings { get; set; }
-            = new();
+        public Dictionary<GlobalSettings.EnvironmentType, EnvSetting> EnvironmentSettings { get; set; } = new();
         public string? ConnectionId { get; set; }
     }
 
@@ -308,12 +295,12 @@ public partial class DataObjects
         public string? RegistrationId { get; set; }
         public string? ConnectionId { get; set; }
     }
+
     public class TestThing
     {
         public Guid TestThingId { get; set; } = Guid.NewGuid();
         public string TestValue { get; set; } = string.Empty;
     }
-
 
     public partial class SignalRUpdate
     {

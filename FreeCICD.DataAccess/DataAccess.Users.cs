@@ -135,6 +135,12 @@ public partial class DataAccess
             // First, fix or delete all relational user records
             if(ForceDeleteImmediately || tenantSettings.DeletePreference == DataObjects.DeletePreference.Immediate) {
                 try {
+                    var deleteAppRecords = await DeleteRecordsApp(rec, CurrentUser);
+                    if (!deleteAppRecords.Result) {
+                        output.Messages.AddRange(deleteAppRecords.Messages);
+                        return output;
+                    }
+
                     // Update any LastModifiedBy values for this UserId to be the Display Name
                     string displayName = MaxStringLength(rec.FirstName + " " + rec.LastName, 100);
 
@@ -145,13 +151,22 @@ public partial class DataAccess
                     await data.Database.ExecuteSqlRawAsync("UPDATE Departments SET LastModifiedBy={0} WHERE LastModifiedBy={1}", displayName, UserId.ToString());
                     await data.Database.ExecuteSqlRawAsync("UPDATE Departments SET AddedBy={0} WHERE AddedBy={1}", displayName, UserId.ToString());
 
+                    await data.Database.ExecuteSqlRawAsync("UPDATE EmailTemplates SET LastModifiedBy={0} WHERE LastModifiedBy={1}", displayName, UserId.ToString());
+                    await data.Database.ExecuteSqlRawAsync("UPDATE EmailTemplates SET AddedBy={0} WHERE AddedBy={1}", displayName, UserId.ToString());
+
                     await data.Database.ExecuteSqlRawAsync("UPDATE FileStorage SET LastModifiedBy={0} WHERE LastModifiedBy={1}", displayName, UserId.ToString());
                     await data.Database.ExecuteSqlRawAsync("UPDATE FileStorage SET UploadedBy={0} WHERE UploadedBy={1}", displayName, UserId.ToString());
 
 
 
+
+
                     await data.Database.ExecuteSqlRawAsync("UPDATE Settings SET LastModifiedBy={0} WHERE LastModifiedBy={1}", displayName, UserId.ToString());
-                    
+                    data.Settings.RemoveRange(data.Settings.Where(x => x.UserId == UserId));
+
+                    await data.Database.ExecuteSqlRawAsync("UPDATE Tags SET LastModifiedBy={0} WHERE LastModifiedBy={1}", displayName, UserId.ToString());
+                    await data.Database.ExecuteSqlRawAsync("UPDATE Tags SET AddedBy={0} WHERE AddedBy={1}", displayName, UserId.ToString());
+
                     await data.Database.ExecuteSqlRawAsync("UPDATE Tenants SET LastModifiedBy={0} WHERE LastModifiedBy={1}", displayName, UserId.ToString());
                     await data.Database.ExecuteSqlRawAsync("UPDATE Tenants SET AddedBy={0} WHERE AddedBy={1}", displayName, UserId.ToString());
 
@@ -193,15 +208,13 @@ public partial class DataAccess
                 await data.SaveChangesAsync();
                 output.Result = true;
 
-                if (!ForceDeleteImmediately) {
-                    await SignalRUpdate(new DataObjects.SignalRUpdate {
-                        TenantId = tenantId,
-                        ItemId = UserId,
-                        UpdateType = DataObjects.SignalRUpdateType.User,
-                        Message = "Deleted",
-                        UserId = CurrentUserId(CurrentUser),
-                    });
-                }
+                await SignalRUpdate(new DataObjects.SignalRUpdate {
+                    TenantId = tenantId,
+                    ItemId = UserId,
+                    UpdateType = DataObjects.SignalRUpdateType.User,
+                    Message = "Deleted",
+                    UserId = CurrentUserId(CurrentUser),
+                });
             } catch (Exception ex) {
                 output.Messages.Add("Error Deleting User " + UserId.ToString() + ":");
                 output.Messages.AddRange(RecurseException(ex));
@@ -426,6 +439,8 @@ public partial class DataAccess
                 Photo = await GetUserPhoto(rec.UserId),
                 UserPreferences = preferences,
             };
+
+            GetDataApp(rec, output);
         }
 
         return output;
@@ -450,7 +465,7 @@ public partial class DataAccess
                     preferences = new DataObjects.UserPreferences();
                 }
 
-                output.Add(new DataObjects.ActiveUser {
+                var u = new DataObjects.ActiveUser {
                     UserId = rec.UserId,
                     TenantId = GuidValue(rec.TenantId),
                     Admin = rec.Admin,
@@ -461,7 +476,11 @@ public partial class DataAccess
                     DisplayName = "",
                     Photo = await GetUserPhoto(rec.UserId),
                     UserPreferences = preferences,
-                });
+                };
+
+                GetDataApp(rec, u, CurrentUser);
+
+                output.Add(u);
             }
         }
 
@@ -706,6 +725,8 @@ public partial class DataAccess
             if(_inMemoryDatabase && output.DepartmentId.HasValue && String.IsNullOrEmpty(output.DepartmentName)) {
                 output.DepartmentName = GetDepartmentName(output.TenantId, GuidValue(output.DepartmentId));
             }
+
+            GetDataApp(rec, output, CurrentUser);
         }
 
         return output;
@@ -723,13 +744,17 @@ public partial class DataAccess
 
             if (recs != null && recs.Any()) {
                 foreach (var rec in recs) {
-                    output.Add(new DataObjects.UserAccount {
+                    var u = new DataObjects.UserAccount {
                         UserId = rec.UserId,
                         TenantId = rec.TenantId,
                         Enabled = rec.Enabled,
                         FirstName = StringValue(rec.FirstName),
                         LastName = StringValue(rec.LastName),
-                    });
+                    };
+
+                    GetDataApp(rec, u);
+
+                    output.Add(u);
                 }
             }
         }
@@ -1176,6 +1201,10 @@ public partial class DataAccess
             case "UDF10":
                 recs = Ascending ? recs.OrderBy(x => x.UDF10) : recs.OrderByDescending(x => x.UDF10);
                 break;
+
+            default:
+                recs = SortUsersApp(recs, StringValue(output.Sort), Ascending);
+                break;
         }
 
         if (recs != null && recs.Count() > 0) {
@@ -1259,7 +1288,9 @@ public partial class DataAccess
                     FailedLoginAttempts = IntValue(rec.FailedLoginAttempts),
                 };
 
-                if(_inMemoryDatabase && u.DepartmentId.HasValue && String.IsNullOrEmpty(u.DepartmentName)) {
+                GetDataApp(rec, u, CurrentUser);
+
+                if (_inMemoryDatabase && u.DepartmentId.HasValue && String.IsNullOrEmpty(u.DepartmentName)) {
                     var dept = departments.FirstOrDefault(x => x.DepartmentId == u.DepartmentId);
                     if(dept != null) {
                         u.DepartmentName = dept.DepartmentName;
@@ -1295,21 +1326,27 @@ public partial class DataAccess
 
                     Dictionary<string, object> decrypted = JwtDecode(tenant.TenantId, Token);
                     if(decrypted != null && decrypted.Any()) {
-                        try {
-                            string guid = decrypted["UserId"] + String.Empty;
-                            UserId = new Guid(guid);
-                        } catch { }
+                        if (decrypted.ContainsKey("UserId")) {
+                            try {
+                                string guid = decrypted["UserId"] + String.Empty;
+                                UserId = new Guid(guid);
+                            } catch { }
+                        }
 
-                        try {
-                            tokenFingerprint += decrypted["Fingerprint"];
-                        } catch { }
+                        if (decrypted.ContainsKey("Fingerprint")) {
+                            try {
+                                tokenFingerprint += decrypted["Fingerprint"];
+                            } catch { }
+                        }
 
-                        try {
-                            var sl = decrypted["SudoLogin"];
-                            if (sl != null) {
-                                sudoLogin = (bool)sl;
-                            }
-                        } catch { }
+                        if (decrypted.ContainsKey("SudoLogin")) {
+                            try {
+                                var sl = decrypted["SudoLogin"];
+                                if (sl != null) {
+                                    sudoLogin = (bool)sl;
+                                }
+                            } catch { }
+                        }
 
                         if (UserId != Guid.Empty) {
                             if (!String.IsNullOrWhiteSpace(fingerprint) || !String.IsNullOrWhiteSpace(tokenFingerprint)) {
@@ -1346,21 +1383,28 @@ public partial class DataAccess
             bool sudoLogin = false;
 
             Dictionary<string, object> decrypted = JwtDecode(TenantId, Token);
-            try {
-                string guid = decrypted["UserId"] + String.Empty;
-                UserId = new Guid(guid);
-            } catch { }
 
-            try {
-                tokenFingerprint += decrypted["Fingerprint"];
-            } catch { }
+            if (decrypted.ContainsKey("UserId")) {
+                try {
+                    string guid = decrypted["UserId"] + String.Empty;
+                    UserId = new Guid(guid);
+                } catch { }
+            }
 
-            try {
-                var sl = decrypted["SudoLogin"];
-                if (sl != null) {
-                    sudoLogin = (bool)sl;
-                }
-            } catch { }
+            if (decrypted.ContainsKey("Fingerprint")) {
+                try {
+                    tokenFingerprint += decrypted["Fingerprint"];
+                } catch { }
+            }
+
+            if (decrypted.ContainsKey("SudoLogin")) {
+                try {
+                    var sl = decrypted["SudoLogin"];
+                    if (sl != null) {
+                        sudoLogin = (bool)sl;
+                    }
+                } catch { }
+            }
 
             if (UserId != Guid.Empty) {
                 if (!String.IsNullOrWhiteSpace(fingerprint) || !String.IsNullOrWhiteSpace(tokenFingerprint)) {
@@ -1396,7 +1440,7 @@ public partial class DataAccess
                 var admin = BooleanValue(rec.Admin);
                 var appAdmin = await UserIsMainAdmin(rec.UserId);
 
-                output.Add(new DataObjects.UserListing {
+                var u = new DataObjects.UserListing {
                     UserId = rec.UserId,
                     FirstName = rec.FirstName,
                     LastName = rec.LastName,
@@ -1407,7 +1451,11 @@ public partial class DataAccess
                     Deleted = BooleanValue(rec.Deleted),
                     DeletedAt = rec.DeletedAt,
                     Location = rec.Location,
-                });
+                };
+
+                GetDataApp(rec, u);
+
+                output.Add(u);
             }
         }
 
@@ -1497,6 +1545,8 @@ public partial class DataAccess
                 };
 
                 u.DisplayName = DisplayNameFromLastAndFirst(u.LastName, u.FirstName, u.Email, u.DepartmentName, u.Location);
+
+                GetDataApp(rec, u);
 
                 output.Add(u);
             }
@@ -1899,13 +1949,15 @@ public partial class DataAccess
 
         rec.LastModified = now;
 
-        if(CurrentUser != null) {
+        if (CurrentUser != null) {
             rec.LastModifiedBy = CurrentUserIdString(CurrentUser);
 
             if (CurrentUser.Admin) {
                 rec.Deleted = output.Deleted;
             }
         }
+
+        SaveDataApp(rec, output, CurrentUser);
 
         try {
             if (newRecord) {
@@ -2043,6 +2095,8 @@ public partial class DataAccess
         if(CurrentUser != null) {
             rec.LastModifiedBy = CurrentUserIdString(CurrentUser);
         }
+
+        SaveDataApp(rec, user, CurrentUser);
 
         try {
             if (newRecord) {
@@ -2218,115 +2272,6 @@ public partial class DataAccess
 
         return output;
     }
-
-    //public async Task<DataObjects.User?> UpdateUserFromExternalDataSources(DataObjects.User User, DataObjects.TenantSettings? settings = null)
-    //{
-    //    DataObjects.User? output = null;
-
-    //    if (settings == null) {
-    //        settings = GetTenantSettings(User.TenantId);
-    //    }
-
-    //    if (settings != null && settings.ExternalUserDataSources != null && settings.ExternalUserDataSources.Any()) {
-    //        bool updated = false;
-    //        bool updatedDepartmentOrLocation = false;
-    //        var updatedUser = CopyUser(User);
-
-    //        foreach (var source in settings.ExternalUserDataSources.Where(x => x.Active == true).OrderBy(x => x.SortOrder).ThenBy(x => x.Name)) {
-    //            if (!String.IsNullOrWhiteSpace(source.Type)) {
-    //                switch (source.Type.ToUpper()) {
-    //                    case "SQL":
-    //                        if (!String.IsNullOrWhiteSpace(source.ConnectionString) && !String.IsNullOrWhiteSpace(source.Source)) {
-    //                            try {
-    //                                string connectionString = source.ConnectionString;
-
-    //                                string query = source.Source
-    //                                    .Replace("{{employeeid}}", User.EmployeeId)
-    //                                    .Replace("{{username}}", User.Username)
-    //                                    .Replace("{{email}}", User.Email);
-
-    //                                using (Sql2LINQ.Sql2LINQ s = new Sql2LINQ.Sql2LINQ(connectionString)) {
-    //                                    var records = s.RunQuery<DataObjects.User>(query);
-    //                                    if (records != null && records.Count() == 1) {
-    //                                        var userRecord = records.FirstOrDefault();
-    //                                        if (userRecord != null) {
-    //                                            if (!String.IsNullOrWhiteSpace(userRecord.FirstName) && updatedUser.FirstName != userRecord.FirstName) {
-    //                                                updatedUser.FirstName = userRecord.FirstName;
-    //                                                updated = true;
-    //                                            }
-    //                                            if (!String.IsNullOrWhiteSpace(userRecord.LastName) && updatedUser.LastName != userRecord.LastName) {
-    //                                                updatedUser.LastName = userRecord.LastName;
-    //                                                updated = true;
-    //                                            }
-    //                                            if (!String.IsNullOrWhiteSpace(userRecord.DepartmentName) && updatedUser.DepartmentName != userRecord.DepartmentName) {
-    //                                                updatedUser.DepartmentName = userRecord.DepartmentName;
-    //                                                updated = true;
-    //                                                updatedDepartmentOrLocation = true;
-    //                                            }
-    //                                            if (!String.IsNullOrWhiteSpace(userRecord.Location) && updatedUser.Location != userRecord.Location) {
-    //                                                updatedUser.Location = userRecord.Location;
-    //                                                updated = true;
-    //                                                updatedDepartmentOrLocation = true;
-    //                                            }
-    //                                        }
-    //                                    }
-    //                                }
-    //                            } catch { }
-    //                        }
-
-    //                        break;
-
-    //                    case "CSHARP":
-    //                        // By convention the code must have a namespace of CustomCode, a public class of CustomDynamicCode,
-    //                        // and a function named FindUser.
-    //                        if (!String.IsNullOrWhiteSpace(source.Source)) {
-    //                            string employeeId = StringValue(User.EmployeeId);
-    //                            string username = StringValue(User.Username);
-    //                            string email = StringValue(User.Email);
-
-    //                            var findUserResult = ExecuteDynamicCSharpCode<DataObjects.User>(source.Source, new object[] { employeeId, username, email, this }, null, "CustomCode", "CustomDynamicCode", "FindUser");
-    //                            if (findUserResult != null) {
-    //                                if (!String.IsNullOrWhiteSpace(findUserResult.FirstName) && updatedUser.FirstName != findUserResult.FirstName) {
-    //                                    updatedUser.FirstName = findUserResult.FirstName;
-    //                                    updated = true;
-    //                                }
-    //                                if (!String.IsNullOrWhiteSpace(findUserResult.LastName) && updatedUser.LastName != findUserResult.LastName) {
-    //                                    updatedUser.LastName = findUserResult.LastName;
-    //                                    updated = true;
-    //                                }
-    //                                if (!String.IsNullOrWhiteSpace(findUserResult.DepartmentName) && updatedUser.DepartmentName != findUserResult.DepartmentName) {
-    //                                    updatedUser.DepartmentName = findUserResult.DepartmentName;
-    //                                    updated = true;
-    //                                    updatedDepartmentOrLocation = true;
-    //                                }
-    //                                if (!String.IsNullOrWhiteSpace(findUserResult.Location) && updatedUser.Location != findUserResult.Location) {
-    //                                    updatedUser.Location = findUserResult.Location;
-    //                                    updated = true;
-    //                                    updatedDepartmentOrLocation = true;
-    //                                }
-    //                            }
-    //                        }
-
-    //                        break;
-    //                }
-    //            }
-    //        }
-
-    //        if (updated) {
-    //            if (updatedDepartmentOrLocation) {
-    //                var departmentId = await DepartmentIdFromNameAndLocation(updatedUser.TenantId, updatedUser.DepartmentName, updatedUser.Location);
-
-    //                if (departmentId != Guid.Empty && departmentId != updatedUser.DepartmentId) {
-    //                    updatedUser.DepartmentId = departmentId;
-    //                }
-    //            }
-
-    //            output = updatedUser;
-    //        }
-    //    }
-
-    //    return output;
-    //}
 
     public async Task UpdateUserLastLoginTime(Guid UserId, string? Source = "")
     {
@@ -2510,7 +2455,7 @@ public partial class DataAccess
                 try {
                     DateTime now = DateTime.UtcNow;
 
-                    await data.Users.AddAsync(new User {
+                    var u = new User {
                         Added = now,
                         Admin = false,
                         CanBeScheduled = false,
@@ -2528,7 +2473,11 @@ public partial class DataAccess
                         TenantId = user.TenantId,
                         UserId = Guid.NewGuid(),
                         Username = StringValue(user.Email),
-                    });
+                    };
+
+                    SaveDataApp(u, output);
+
+                    await data.Users.AddAsync(u);
 
                     await data.SaveChangesAsync();
                     output.ActionResponse.Result = true;

@@ -66,7 +66,7 @@ public partial class DataController
 
         string encrypted = da.EncryptObject(prompts);
         if (!String.IsNullOrWhiteSpace(encrypted)) {
-            output = new DataObjects.SimpleResponse { 
+            output = new DataObjects.SimpleResponse {
                 Result = true,
                 Message = encrypted,
             };

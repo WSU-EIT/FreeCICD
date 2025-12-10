@@ -6,7 +6,7 @@ namespace FreeCICD.Server.Controllers;
 public partial class DataController
 {
     [HttpGet]
-    [Authorize(Policy =Policies.Admin)]
+    [Authorize(Policy = Policies.Admin)]
     [Route("~/api/Data/DeleteUserGroup/{id}")]
     public async Task<ActionResult<DataObjects.BooleanResponse>> DeleteUserGroup(Guid id)
     {

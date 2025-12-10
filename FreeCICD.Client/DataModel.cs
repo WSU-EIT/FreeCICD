@@ -296,8 +296,8 @@ public partial class BlazorDataModel
     /// Gets or sets the base URL for the application.
     /// </summary>
     public string ApplicationUrl {
-        get { 
-            return !String.IsNullOrWhiteSpace(_Tenant.TenantSettings.ApplicationUrl) ? _Tenant.TenantSettings.ApplicationUrl : _ApplicationUrl; 
+        get {
+            return !String.IsNullOrWhiteSpace(_Tenant.TenantSettings.ApplicationUrl) ? _Tenant.TenantSettings.ApplicationUrl : _ApplicationUrl;
         }
         set {
             if (_ApplicationUrl != value) {
@@ -1168,14 +1168,14 @@ public partial class BlazorDataModel
             var stringObject1 = String.Empty;
             var stringObject2 = String.Empty;
 
-            try { 
+            try {
                 stringObject1 = System.Text.Json.JsonSerializer.Serialize(obj1);
             } catch {
                 return false;
             }
 
-            try { 
-                stringObject2 = System.Text.Json.JsonSerializer.Serialize(obj2); 
+            try {
+                stringObject2 = System.Text.Json.JsonSerializer.Serialize(obj2);
             } catch {
                 return false;
             }

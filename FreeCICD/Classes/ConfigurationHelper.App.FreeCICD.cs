@@ -1,5 +1,6 @@
 namespace FreeCICD;
 
+// FreeCICD-specific configuration properties for Azure DevOps integration
 public partial interface IConfigurationHelper
 {
     public string? PAT { get; }

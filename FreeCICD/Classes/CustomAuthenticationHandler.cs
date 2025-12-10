@@ -26,7 +26,7 @@ public static class CustomAuthorization
             if (!String.IsNullOrWhiteSpace(user.AuthToken)) {
                 identity.AddClaim(new Claim(ClaimTypes.Hash, user.AuthToken));
             }
-            
+
             if (!String.IsNullOrWhiteSpace(user.Email)) {
                 identity.AddClaim(new Claim(ClaimTypes.Email, user.Email));
             }
@@ -66,7 +66,7 @@ public static class CustomAuthorization
             await context.SignInAsync(
                 CookieAuthenticationDefaults.AuthenticationScheme,
                 principal,
-                new AuthenticationProperties { 
+                new AuthenticationProperties {
                     IsPersistent = true,
                     ExpiresUtc = DateTimeOffset.UtcNow.AddDays(1),
                     IssuedUtc = DateTimeOffset.UtcNow,

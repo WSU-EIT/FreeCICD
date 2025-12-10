@@ -37,8 +37,7 @@ public class RouteHelper
         }
     }
 
-    public string Action
-    {
+    public string Action {
         get {
             string output = String.Empty;
             if (!String.IsNullOrEmpty(_routeInfo.Action)) {
@@ -48,8 +47,7 @@ public class RouteHelper
         }
     }
 
-    public string Id
-    {
+    public string Id {
         get {
             string output = String.Empty;
             if (!String.IsNullOrEmpty(_routeInfo.Id)) {
@@ -59,8 +57,7 @@ public class RouteHelper
         }
     }
 
-    public List<string>? Extra
-    {
+    public List<string>? Extra {
         get {
             return _routeInfo.Extra;
         }
@@ -87,8 +84,7 @@ public class RouteHelper
         return output;
     }
 
-    public RouteInformation RouteInfo
-    {
+    public RouteInformation RouteInfo {
         get {
             return _routeInfo;
         }

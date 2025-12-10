@@ -1,5 +1,3 @@
-﻿using Microsoft.Extensions.Caching.Memory;
-
 namespace FreeCICD;
 
 // Use this file as a place to put any application-specific data access methods.
@@ -11,16 +9,13 @@ public partial interface IDataAccess
 
 public partial class DataAccess
 {
-
-  
-
-
     /// <summary>
     /// Use this area to add your custom language tags for your app, or to override built-in language tags (eg: AppTitle).
     /// </summary>
     private Dictionary<string, string> AppLanguage {
         get {
-            return new Dictionary<string, string> {
+            return new Dictionary<string, string>
+            {
                 //{ "AppTitle", "My Custom App Title" },
                 //{ "YourLanguageItem", "Your Language Item" },
             };
@@ -30,17 +25,6 @@ public partial class DataAccess
     private void DataAccessAppInit()
     {
         // Add any app-specific initialization logic here.
-        if (_serviceProvider != null) {
-            // Grab the global IMemoryCache registered in Program.cs / Startup.cs
-            var cache = _serviceProvider.GetService(typeof(IMemoryCache)) as IMemoryCache;
-            if (cache == null) {
-                throw new InvalidOperationException("IMemoryCache is not registered in the service provider.");
-            }
-
-            _cache = cache;
-        } else {
-            throw new InvalidOperationException("ServiceProvider is not available for DataAccess.");
-        }
     }
 
     /// <summary>
@@ -85,21 +69,63 @@ public partial class DataAccess
     }
 
     /// <summary>
-    /// This method is called when the tenant is being deleted to delete app-specific data for the tenant.
+    /// Called from various delete methods to delete any app-specific records before continuing with the delete process.
     /// </summary>
-    private async Task<DataObjects.BooleanResponse> DeleteTenantApp(Guid TenantId)
+    /// <param name="Rec">The EF record object.</param>
+    /// <param name="CurrentUser">The User object for the current user, if loaded.</param>
+    /// <returns>A BooleanResponse object.</returns>
+    private async Task<DataObjects.BooleanResponse> DeleteRecordsApp(object Rec, DataObjects.User? CurrentUser = null)
     {
         await Task.Delay(0); // Simulate a delay since this method has to be async. This can be removed once you implement your await logic.
 
         var output = new DataObjects.BooleanResponse();
 
         try {
-            // Implement your app-specific tenant deletion logic here to remove records from tables that are specific to your app.
-            // Example:
-            // data.MyTable.RemoveRange(data.MyTable.Where(x => x.TenantId == TenantId));
-            // await data.SaveChangesAsync();
+
+            if (Rec is EFModels.EFModels.Department) {
+                var rec = Rec as EFModels.EFModels.Department;
+                if (rec != null) {
+                    // Remove any related records.
+                }
+            }
+
+            if (Rec is EFModels.EFModels.DepartmentGroup) {
+                var rec = Rec as EFModels.EFModels.DepartmentGroup;
+                if (rec != null) {
+                    // Remove any related records.
+                }
+            }
+
+
+
+
+
+
+            if (Rec is EFModels.EFModels.Tenant) {
+                var rec = Rec as EFModels.EFModels.Tenant;
+                if (rec != null) {
+                    // Implement your app-specific tenant deletion logic here to remove records from tables that are specific to your app.
+                    // Example:
+                    // data.MyTable.RemoveRange(data.MyTable.Where(x => x.TenantId == TenantId));
+                    // await data.SaveChangesAsync();
+                }
+            }
+
+            if (Rec is EFModels.EFModels.User) {
+                var rec = Rec as EFModels.EFModels.User;
+                if (rec != null) {
+                    // Remove any related records.
+                }
+            }
+
+            if (Rec is EFModels.EFModels.UserGroup) {
+                var rec = Rec as EFModels.EFModels.UserGroup;
+                if (rec != null) {
+                    // Remove any related records.
+                }
+            }
         } catch (Exception ex) {
-            output.Messages.Add("An Error Occurred in DeleteTenantApp");
+            output.Messages.Add("An Error Occurred in DeleteUserApp");
             output.Messages.AddRange(RecurseException(ex));
         }
 
@@ -168,6 +194,184 @@ public partial class DataAccess
         // Do any lookups for your app-specific deleted records here and add them to the output.
 
         return output;
+    }
+
+    /// <summary>
+    /// This is called by various Get methods to map any app-specific fields from the EF model to the data object.
+    /// </summary>
+    /// <param name="Rec">The EF record object.</param>
+    /// <param name="DataObject">The DataObjects object being updated.</param>
+    /// <param name="CurrentUser">The current user object, if one exists.</param>
+    private void GetDataApp(object Rec, object DataObject, DataObjects.User? CurrentUser = null)
+    {
+        try {
+
+            if (Rec is EFModels.EFModels.Department && DataObject is DataObjects.Department) {
+                var rec = Rec as EFModels.EFModels.Department;
+                var department = DataObject as DataObjects.Department;
+
+                if (rec != null && department != null) {
+                    //department.Property = rec.Property;
+                }
+
+                return;
+            }
+
+            if (Rec is EFModels.EFModels.DepartmentGroup && DataObject is DataObjects.DepartmentGroup) {
+                var rec = Rec as EFModels.EFModels.DepartmentGroup;
+                var departmentGroup = DataObject as DataObjects.DepartmentGroup;
+
+                if (rec != null && departmentGroup != null) {
+                    //departmentGroup.Property = rec.Property;
+                }
+
+                return;
+            }
+
+
+
+
+
+
+            if (Rec is EFModels.EFModels.User && DataObject is DataObjects.ActiveUser) {
+                var rec = Rec as EFModels.EFModels.User;
+                var activeUser = DataObject as DataObjects.ActiveUser;
+
+                if (rec != null && activeUser != null) {
+                    //activeUser.Property = rec.Property;
+                }
+
+                return;
+            }
+
+            if (Rec is EFModels.EFModels.User && DataObject is DataObjects.User) {
+                var rec = Rec as EFModels.EFModels.User;
+                var user = DataObject as DataObjects.User;
+
+                if (rec != null && user != null) {
+                    //user.Property = rec.Property;
+                }
+
+                return;
+            }
+
+            if (Rec is EFModels.EFModels.User && DataObject is DataObjects.UserAccount) {
+                var rec = Rec as EFModels.EFModels.User;
+                var userAccount = DataObject as DataObjects.UserAccount;
+
+                if (rec != null && userAccount != null) {
+                    //userAccount.Property = rec.Property;
+                }
+
+                return;
+            }
+
+            if (Rec is EFModels.EFModels.User && DataObject is DataObjects.UserListing) {
+                var rec = Rec as EFModels.EFModels.User;
+                var userListing = DataObject as DataObjects.UserListing;
+
+                if (rec != null && userListing != null) {
+                    //userListing.Property = rec.Property;
+                }
+
+                return;
+            }
+
+            if (Rec is EFModels.EFModels.UserGroup && DataObject is DataObjects.UserGroup) {
+                var rec = Rec as EFModels.EFModels.UserGroup;
+                var userGroup = DataObject as DataObjects.UserGroup;
+
+                if (rec != null && userGroup != null) {
+                    //userGroup.Property = rec.Property;
+                }
+
+                return;
+            }
+        } catch { }
+    }
+
+    /// <summary>
+    /// This is called by various Save methods to map any app-specific fields from the data object to the EF model object.
+    /// </summary>
+    /// <param name="Rec">The EF record object being updated.</param>
+    /// <param name="DataObject">The DataObjects object.</param>
+    /// <param name="CurrentUser">The current user object, if one exists.</param>
+    private void SaveDataApp(object Rec, object DataObject, DataObjects.User? CurrentUser = null)
+    {
+        try {
+
+            if (Rec is EFModels.EFModels.Department && DataObject is DataObjects.Department) {
+                var rec = Rec as EFModels.EFModels.Department;
+                var department = DataObject as DataObjects.Department;
+
+                if (rec != null && department != null) {
+                    //rec.Property = department.Property;
+                }
+
+                return;
+            }
+
+            if (Rec is EFModels.EFModels.DepartmentGroup && DataObject is DataObjects.DepartmentGroup) {
+                var rec = Rec as EFModels.EFModels.DepartmentGroup;
+                var departmentGroup = DataObject as DataObjects.DepartmentGroup;
+
+                if (rec != null && departmentGroup != null) {
+                    //rec.Property = departmentGroup.Property;
+                }
+
+                return;
+            }
+
+
+
+
+
+
+            if (Rec is EFModels.EFModels.User && DataObject is DataObjects.User) {
+                var rec = Rec as EFModels.EFModels.User;
+                var user = DataObject as DataObjects.User;
+
+                if (rec != null && user != null) {
+                    //rec.Property = user.Property;
+                }
+
+                return;
+            }
+
+            if (Rec is EFModels.EFModels.UserGroup && DataObject is DataObjects.UserGroup) {
+                var rec = Rec as EFModels.EFModels.UserGroup;
+                var userGroup = DataObject as DataObjects.UserGroup;
+
+                if (rec != null && userGroup != null) {
+                    //rec.Property = userGroup.Property;
+                }
+
+                return;
+            }
+        } catch { }
+    }
+
+    /// <summary>
+    /// Called by the main method to get filtered users to apply any app-specific sorting.
+    /// </summary>
+    /// <param name="recs">The current records.</param>
+    /// <param name="SortBy">The sort field.</param>
+    /// <param name="Ascending">The boolean that indicates if we are sorting ascending.</param>
+    /// <returns></returns>
+    private IQueryable<EFModels.EFModels.User>? SortUsersApp(IQueryable<EFModels.EFModels.User>? recs, string SortBy, bool Ascending)
+    {
+        if (recs != null) {
+
+            switch (SortBy.ToUpper()) {
+                //case "PROPERTY":
+                //    recs = Ascending
+                //        ? recs.OrderBy(x => x.PROPERTY).ThenBy(x => x.FirstName).ThenBy(x => x.LastName)
+                //        : recs.OrderBy(x => x.PROPERTY).ThenBy(x => x.FirstName).ThenBy(x => x.LastName);
+                //    break;
+            }
+        }
+
+        return recs;
     }
 
     /// <summary>

@@ -65,7 +65,7 @@ public class AuthorizationController : ControllerBase
             Microsoft.AspNetCore.Http.CookieOptions option = new Microsoft.AspNetCore.Http.CookieOptions();
             option.Expires = now.AddYears(1);
 
-            context.Response.Cookies.Append(cookieName, value, option);
+            context.Response.Cookies.Append(da.CookiePrefix + cookieName, value, option);
         }
     }
 
@@ -73,7 +73,7 @@ public class AuthorizationController : ControllerBase
     {
         string output = "";
 
-        if(context != null) {
+        if (context != null) {
             try {
                 output += context.Request.Query[valueName].ToString();
             } catch { }
@@ -86,7 +86,7 @@ public class AuthorizationController : ControllerBase
     {
         string output = "";
 
-        if(context != null) {
+        if (context != null) {
             output = QueryStringValue(parameter);
 
             if (String.IsNullOrWhiteSpace(output)) {
@@ -251,7 +251,7 @@ public class AuthorizationController : ControllerBase
                 if (context.User.Identity != null) {
                     if (context.User.Identity.IsAuthenticated) {
                         validUser = true;
-                        
+
                         var claims = (System.Security.Claims.ClaimsIdentity)context.User.Identity;
 
                         if (claims != null && claims.Claims != null && claims.Claims.Any()) {

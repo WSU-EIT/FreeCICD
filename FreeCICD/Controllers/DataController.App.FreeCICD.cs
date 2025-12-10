@@ -3,15 +3,13 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace FreeCICD.Server.Controllers;
 
-// Use this file as a place to put any application-specific API endpoints.
+// FreeCICD-specific API endpoints for Azure DevOps integration
 
 public partial class DataController
 {
-   
     /// <summary>
-    /// these are the project repo and branch were we are storing the yml files for release pipelines
+    /// Gets DevOps config from appsettings (for logged-in users)
     /// </summary>
-    /// <returns></returns>
     private (string orgName, string pat, string projectId, string repoId, string branch) GetReleasePipelinesDevOpsConfig()
     {
         string orgName = configurationHelper?.OrgName ?? "";
@@ -22,19 +20,7 @@ public partial class DataController
         return (orgName, pat, projectId, repoId, branch);
     }
 
-    #region Git & Pipeline Endpoints (Authenticated)
-
-
-
-
-    //DataObjects.Endpoints.DevOps.GetDevOpsFiles 
-    //DataObjects.Endpoints.DevOps.GetDevOpsProjects 
-    //DataObjects.Endpoints.DevOps.GetDevOpsRepos 
-    //DataObjects.Endpoints.DevOps.GetDevOpsPipelines 
-    //DataObjects.Endpoints.DevOps.SaveDevOpsPipeline 
-    //DataObjects.Endpoints.DevOps.GetDevOpsIISInfo 
-
-    //DataObjects.Endpoints.DevOps.GetDevOpsBranches 
+    #region Git & Pipeline Endpoints
 
     [HttpGet($"~/{DataObjects.Endpoints.DevOps.GetDevOpsBranches}")]
     [AllowAnonymous]
@@ -94,8 +80,6 @@ public partial class DataController
     {
         List<DataObjects.DevopsGitRepoInfo> output;
 
-        // check pat or login
-
         if (CurrentUser.Enabled) {
             var config = GetReleasePipelinesDevOpsConfig();
             output = await da.GetDevOpsReposAsync(config.pat, config.orgName, projectId, connectionId);
@@ -108,15 +92,11 @@ public partial class DataController
         return Ok(output);
     }
 
-    //GetDevOpsPipelines
-
     [HttpGet($"~/{DataObjects.Endpoints.DevOps.GetDevOpsPipelines}")]
     [AllowAnonymous]
     public async Task<ActionResult<List<DataObjects.DevopsPipelineDefinition>>> GetDevOpsPipelines([FromQuery] string? projectId, [FromQuery] string? repoId, [FromQuery] string? pat = null, [FromQuery] string? orgName = null, [FromQuery] string? connectionId = null)
     {
         List<DataObjects.DevopsPipelineDefinition> output;
-
-        // check pat or login
 
         if (CurrentUser.Enabled) {
             var config = GetReleasePipelinesDevOpsConfig();
@@ -136,13 +116,11 @@ public partial class DataController
     {
         string output = string.Empty;
 
-        // check pat or login
-
         if (CurrentUser.Enabled) {
             var config = GetReleasePipelinesDevOpsConfig();
-            output = await da.GetGitFile(filePath, config.projectId, config.repoId, config.branch, config.pat, config.orgName, connectionId);
+            output = await da.GetGitFile(filePath ?? "", config.projectId, config.repoId, config.branch, config.pat, config.orgName, connectionId);
         } else if (!string.IsNullOrWhiteSpace(pat) && !string.IsNullOrWhiteSpace(orgName) && !string.IsNullOrEmpty(projectId)) {
-            output = await da.GetGitFile(filePath, projectId, repoId, branchName, pat, orgName, connectionId);
+            output = await da.GetGitFile(filePath ?? "", projectId, repoId, branchName, pat, orgName, connectionId);
         } else {
             return BadRequest("No PAT or OrgName provided and user is not logged in.");
         }
@@ -152,21 +130,19 @@ public partial class DataController
 
     [HttpGet($"~/{DataObjects.Endpoints.DevOps.GetDevOpsIISInfo}")]
     [AllowAnonymous]
-    public async Task<ActionResult<Dictionary<string,DataObjects.IISInfo?>>> GetDevOpsIISInfo()
+    public async Task<ActionResult<Dictionary<string, DataObjects.IISInfo?>>> GetDevOpsIISInfo()
     {
-        Dictionary<string, DataObjects.IISInfo?> output = new ();
+        Dictionary<string, DataObjects.IISInfo?> output = new();
 
         if (CurrentUser.Enabled) {
             output = await da.GetDevOpsIISInfoAsync();
-        } 
+        }
 
         return Ok(output);
     }
 
-
     /// <summary>
-    /// Shows a preview of the contents of the ylm file we are generating for a given DevopsPipelineRequest. The same request
-    /// can be used in the CreateOrUpdate DevOpsPipeline endpoint to create or update the pipeline.
+    /// Shows a preview of the contents of the yml file we are generating for a given DevopsPipelineRequest.
     /// </summary>
     [HttpPost($"{DataObjects.Endpoints.DevOps.PreviewDevOpsYmlFileContents}")]
     [AllowAnonymous]
@@ -219,5 +195,4 @@ public partial class DataController
     }
 
     #endregion Git & Pipeline Endpoints
-
 }

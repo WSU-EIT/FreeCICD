@@ -58,6 +58,12 @@ public partial class DataAccess
             var tenantSettings = GetTenantSettings(tenantId);
 
             if(ForceDeleteImmediately || tenantSettings.DeletePreference == DataObjects.DeletePreference.Immediate) {
+                var deleteAppRecords = await DeleteRecordsApp(rec, CurrentUser);
+                if (!deleteAppRecords.Result) {
+                    output.Messages.AddRange(deleteAppRecords.Messages);
+                    return output;
+                }
+
                 try {
                     data.UserInGroups.RemoveRange(data.UserInGroups.Where(x => x.GroupId == GroupId));
                 } catch (Exception ex) {
@@ -140,6 +146,8 @@ public partial class DataAccess
                 Settings = settings,
             };
 
+            GetDataApp(rec, output, CurrentUser);
+
             if(IncludeUsers && rec.UserInGroups != null && rec.UserInGroups.Any()) {
                 output.Users = new List<DataObjects.UserListing>();
 
@@ -201,7 +209,9 @@ public partial class DataAccess
                     Settings = settings,
                 };
 
-                if(IncludeUsers && rec.UserInGroups != null && rec.UserInGroups.Any()) {
+                GetDataApp(rec, group, CurrentUser);
+
+                if (IncludeUsers && rec.UserInGroups != null && rec.UserInGroups.Any()) {
                     group.Users = new List<DataObjects.UserListing>();
 
                     foreach(var user in rec.UserInGroups) {
@@ -326,6 +336,8 @@ public partial class DataAccess
                     rec.Deleted = output.Deleted;
                 }
             }
+
+            SaveDataApp(rec, output, CurrentUser);
 
             if (newRecord) {
                 await data.UserGroups.AddAsync(rec);

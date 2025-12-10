@@ -35,48 +35,48 @@ public partial class DataAccess
         }
 
         try {
-            var users = data.Users.Where(x => x.TenantId == TenantId).Select(o => o.UserId).ToList();
-
-            // {{ModuleItemStart:Tags}}
-            data.TagItems.RemoveRange(data.TagItems.Where(x => x.TenantId == TenantId));
-            await data.SaveChangesAsync();
-
-            data.Tags.RemoveRange(data.Tags.Where(x => x.TenantId == TenantId));
-            await data.SaveChangesAsync();
-            // {{ModuleItemEnd:Tags}}
-
-
-
-
-
-            data.FileStorages.RemoveRange(data.FileStorages.Where(x => x.TenantId == TenantId || users.Contains((Guid)x.UserId!)));
-            await data.SaveChangesAsync();
-            
-            data.Settings.RemoveRange(data.Settings.Where(x => x.TenantId == TenantId));
-            await data.SaveChangesAsync();
-            
-            data.DepartmentGroups.RemoveRange(data.DepartmentGroups.Where(x => x.TenantId == TenantId));
-            await data.SaveChangesAsync();
-            
-            data.Departments.RemoveRange(data.Departments.Where(x => x.TenantId == TenantId));
-            await data.SaveChangesAsync();
-            
-            data.Users.RemoveRange(data.Users.Where(x => x.TenantId == TenantId));
-            await data.SaveChangesAsync();
-            
-            data.UDFLabels.RemoveRange(data.UDFLabels.Where(x => x.TenantId == TenantId));
-            await data.SaveChangesAsync();
-            
-            data.Tenants.RemoveRange(data.Tenants.Where(x => x.TenantId == TenantId));
-            await data.SaveChangesAsync();
-
-            var deleteTenantApp = await DeleteTenantApp(TenantId);
-            if (!deleteTenantApp.Result) {
-                if (deleteTenantApp.Messages.Any()) {
-                    output.Messages.AddRange(deleteTenantApp.Messages);
-                } else {
-                    output.Messages.Add("An unknown error occurred calling DeleteTenantId");
+            var rec = await data.Tenants.FirstOrDefaultAsync(x => x.TenantId == TenantId);
+            if (rec != null) {
+                var deleteAppRecords = await DeleteRecordsApp(rec);
+                if (!deleteAppRecords.Result) {
+                    output.Messages.AddRange(deleteAppRecords.Messages);
+                    return output;
                 }
+
+                var users = data.Users.Where(x => x.TenantId == TenantId).Select(o => o.UserId).ToList();
+
+                // {{ModuleItemStart:Tags}}
+                data.TagItems.RemoveRange(data.TagItems.Where(x => x.TenantId == TenantId));
+                await data.SaveChangesAsync();
+
+                data.Tags.RemoveRange(data.Tags.Where(x => x.TenantId == TenantId));
+                await data.SaveChangesAsync();
+                // {{ModuleItemEnd:Tags}}
+
+
+
+
+
+                data.FileStorages.RemoveRange(data.FileStorages.Where(x => x.TenantId == TenantId || users.Contains((Guid)x.UserId!)));
+                await data.SaveChangesAsync();
+
+                data.Settings.RemoveRange(data.Settings.Where(x => x.TenantId == TenantId));
+                await data.SaveChangesAsync();
+
+                data.DepartmentGroups.RemoveRange(data.DepartmentGroups.Where(x => x.TenantId == TenantId));
+                await data.SaveChangesAsync();
+
+                data.Departments.RemoveRange(data.Departments.Where(x => x.TenantId == TenantId));
+                await data.SaveChangesAsync();
+
+                data.Users.RemoveRange(data.Users.Where(x => x.TenantId == TenantId));
+                await data.SaveChangesAsync();
+
+                data.UDFLabels.RemoveRange(data.UDFLabels.Where(x => x.TenantId == TenantId));
+                await data.SaveChangesAsync();
+
+                data.Tenants.Remove(rec);
+                await data.SaveChangesAsync();
             }
         } catch (Exception ex) {
             output.Messages.Add("An error occurred attempting to delete the tenant '" + TenantId.ToString() + "'");

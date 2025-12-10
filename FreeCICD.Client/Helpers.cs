@@ -6,7 +6,6 @@ using FreeCICD.Client.Pages.Settings.Tags;
 using FreeCICD.Client.Pages.Settings.Users;
 using FreeCICD.Client.Shared;
 using Humanizer;
-using Humanizer.Localisation;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -60,10 +59,10 @@ public static partial class Helpers
     /// <param name="tooltipService">A reference to the Radzen TooltipService.</param>
     /// <param name="navigationManager">A reference to the NavigationManager interface.</param>
     public static void Init(
-        IJSRuntime jSRuntime, 
-        BlazorDataModel model, 
-        HttpClient httpClient, 
-        ILocalStorageService localStorage, 
+        IJSRuntime jSRuntime,
+        BlazorDataModel model,
+        HttpClient httpClient,
+        ILocalStorageService localStorage,
         Radzen.DialogService dialogService,
         Radzen.TooltipService tooltipService,
         NavigationManager navigationManager
@@ -148,8 +147,7 @@ public static partial class Helpers
     /// Gets the list of allowed file types from the TenantSettings.
     /// </summary>
     /// <returns>A List of strings.</returns>
-    public static List<string> AllowedFileTypes
-    {
+    public static List<string> AllowedFileTypes {
         get {
             return Model.Tenant.TenantSettings.AllowedFileTypes;
         }
@@ -158,8 +156,7 @@ public static partial class Helpers
     /// <summary>
     /// The BaseUri from the NavigationManager
     /// </summary>
-    public static string BaseUri
-    {
+    public static string BaseUri {
         get {
             return NavManager.BaseUri;
         }
@@ -217,7 +214,7 @@ public static partial class Helpers
     {
         string output = "";
 
-        if(value.HasValue && (bool)value == true) {
+        if (value.HasValue && (bool)value == true) {
             if (!String.IsNullOrWhiteSpace(icon)) {
                 // First, see if this is an Icon
                 output = Icon(icon, true);
@@ -228,7 +225,7 @@ public static partial class Helpers
                 output = Icon("Checked", true);
             }
 
-            if(output != "") {
+            if (output != "") {
                 if (!output.Contains("<")) {
                     output = "<i class=\"" + output + "\"></i>";
                 }
@@ -258,11 +255,11 @@ public static partial class Helpers
     {
         string output = "";
 
-        if(labels == null || labels.Count() < 4) {
+        if (labels == null || labels.Count() < 4) {
             labels = new List<string> { "b", "kb", "m", "gb" };
         }
 
-        if(bytes > 0) {
+        if (bytes > 0) {
             if (bytes < 1024) {
                 output = ((int)bytes).ToString() + labels[0];
             } else if (bytes < (1024 * 1024)) {
@@ -380,8 +377,7 @@ public static partial class Helpers
     /// <summary>
     /// The default text to use for "Cancel" in the confirmation button control.
     /// </summary>
-    public static string ConfirmButtonTextCancel
-    {
+    public static string ConfirmButtonTextCancel {
         get {
             return Helpers.Text("Cancel");
         }
@@ -390,8 +386,7 @@ public static partial class Helpers
     /// <summary>
     /// The default text to use for "Confirm Delete" in the confirmation button control.
     /// </summary>
-    public static string ConfirmButtonTextConfirmDelete
-    {
+    public static string ConfirmButtonTextConfirmDelete {
         get {
             return Helpers.Text("ConfirmDelete");
         }
@@ -400,8 +395,7 @@ public static partial class Helpers
     /// <summary>
     /// The default text to use for "Delete" in the confirmation button control.
     /// </summary>
-    public static string ConfirmButtonTextDelete
-    {
+    public static string ConfirmButtonTextDelete {
         get {
             return Helpers.Text("Delete");
         }
@@ -410,8 +404,7 @@ public static partial class Helpers
     /// <summary>
     /// The default text to use for "Delete All" in the confirmation button control.
     /// </summary>
-    public static string ConfirmButtonTextDeleteAll
-    {
+    public static string ConfirmButtonTextDeleteAll {
         get {
             return Helpers.Text("DeleteAll");
         }
@@ -546,7 +539,7 @@ public static partial class Helpers
     /// <param name="value">The value to copy to the clipboard.</param>
     public static async Task CopyToClipboard(string value)
     {
-        if(jsRuntime != null) {
+        if (jsRuntime != null) {
             await jsRuntime.InvokeVoidAsync("CopyToClipboard", value);
         }
     }
@@ -573,8 +566,7 @@ public static partial class Helpers
     /// <summary>
     /// Gets the Uri as a string from the NavigationManager
     /// </summary>
-    public static string CurrentUrl
-    {
+    public static string CurrentUrl {
         get {
             return NavManager.Uri.ToString();
         }
@@ -663,7 +655,7 @@ public static partial class Helpers
     {
         string output = String.Empty;
 
-        if(Model != null) {
+        if (Model != null) {
             if (!String.IsNullOrWhiteSpace(text)) {
                 if (Model.DefaultLanguage.Phrases.Any()) {
                     var phrase = Model.DefaultLanguage.Phrases.FirstOrDefault(x => x.Id != null && x.Id.ToUpper() == text.ToUpper());
@@ -685,7 +677,7 @@ public static partial class Helpers
     /// <param name="elementId">The id of the HTML element.</param>
     public static async Task DelayedFocus(string elementId)
     {
-        if(jsRuntime != null) {
+        if (jsRuntime != null) {
             await jsRuntime.InvokeVoidAsync("DelayedFocus", elementId);
         }
     }
@@ -829,7 +821,7 @@ public static partial class Helpers
     {
         var output = default(T);
 
-        if(o != null) {
+        if (o != null) {
             try {
                 var json = ((System.Text.Json.JsonElement)o).GetRawText();
                 var jsonString = json.ToString();
@@ -1009,7 +1001,7 @@ public static partial class Helpers
         }
 
         if (!String.IsNullOrEmpty(DepartmentName) || !String.IsNullOrEmpty(Location)) {
-            if(
+            if (
                 Model.FeatureEnabledDepartments
             ) {
                 output += " [";
@@ -1087,7 +1079,7 @@ public static partial class Helpers
     {
         T? output = default(T);
 
-        if(o != null) {
+        if (o != null) {
             // To make a new copy serialize the object and then deserialize it back to a new object.
             var serialized = System.Text.Json.JsonSerializer.Serialize(o);
             if (!String.IsNullOrEmpty(serialized)) {
@@ -1632,7 +1624,7 @@ public static partial class Helpers
     {
         string output = String.Empty;
 
-        if(userListing != null) {
+        if (userListing != null) {
             output += userListing.FirstName;
 
             if (!String.IsNullOrWhiteSpace(userListing.LastName)) {
@@ -1951,7 +1943,7 @@ public static partial class Helpers
                     output = (T)value;
                 }
 
-                    
+
             } catch (Exception ex) {
                 if (ex != null) { }
             }
@@ -2173,7 +2165,7 @@ public static partial class Helpers
             type = type.GetElementType();
             list = true;
         } else if (type.IsGenericType) {
-            type = type.GetGenericArguments()[0]; 
+            type = type.GetGenericArguments()[0];
             list = true;
         }
 
@@ -2341,14 +2333,14 @@ public static partial class Helpers
                 case System.Text.Json.JsonValueKind.Undefined:
                     break;
             }
-        } catch (Exception ex) { 
-            if(ex != null) { }
+        } catch (Exception ex) {
+            if (ex != null) { }
         }
 
         if (!String.IsNullOrWhiteSpace(stringValue)) {
             try {
                 Type t = typeof(T);
-                if(t == typeof(System.Guid)) {
+                if (t == typeof(System.Guid)) {
                     Guid g = new Guid(stringValue);
                     output = (T)(object)g;
                 } else if (t == typeof(System.DateTime)) {
@@ -2379,10 +2371,10 @@ public static partial class Helpers
                     output = (T)(object)stringValue;
                 }
 
-            } catch(Exception ex) {
-                if(ex != null) { }
+            } catch (Exception ex) {
+                if (ex != null) { }
             }
-            
+
         }
 
         return output;
@@ -2510,7 +2502,7 @@ public static partial class Helpers
                         }
                     }
                 }
-            } catch(Exception ex) {
+            } catch (Exception ex) {
                 await ConsoleLog("An Exception Occurred Calling '" + url + "' - " + ex.Message);
             }
         }
@@ -2933,8 +2925,7 @@ public static partial class Helpers
     /// <summary>
     /// The value for our built-in Guid1.
     /// </summary>
-    public static Guid Guid1
-    {
+    public static Guid Guid1 {
         get {
             return new Guid("00000000-0000-0000-0000-000000000001");
         }
@@ -2943,8 +2934,7 @@ public static partial class Helpers
     /// <summary>
     /// The value for our built-in Guid2.
     /// </summary>
-    public static Guid Guid2
-    {
+    public static Guid Guid2 {
         get {
             return new Guid("00000000-0000-0000-0000-000000000002");
         }
@@ -3210,7 +3200,7 @@ public static partial class Helpers
             output += icon;
         }
 
-        if(!String.IsNullOrWhiteSpace(text)) {
+        if (!String.IsNullOrWhiteSpace(text)) {
             if (!String.IsNullOrEmpty(output)) {
                 output += " ";
             }
@@ -3223,13 +3213,12 @@ public static partial class Helpers
     /// <summary>
     /// The collection of icons for the application.
     /// </summary>
-    public static Dictionary<string, List<string>> Icons
-    {
+    public static Dictionary<string, List<string>> Icons {
         get {
             // Icons names are listed as the first item, and any matching text is included in the List<string> object.
             // Icons can come from various sources, so the first part of the icon name indicates the source,
             // then the second part indicates the source (eg: google:home, fa:fa fa-home, etc.)
-            Dictionary<string, List<string>> icons =    new Dictionary<string, List<string>> {
+            Dictionary<string, List<string>> icons = new Dictionary<string, List<string>> {
                 { "fa:fa-regular fa-address-card",               new List<string> { "ManageProfile", "ManageProfileInfo" }},
                 { "fa:fa-regular fa-circle",                     new List<string> { "TenantChange" }},
                 { "fa:fa-regular fa-circle-check",               new List<string> { "CurrentCredential", "OK", "Select", "Selected", "UserEnabled" }},
@@ -3301,8 +3290,7 @@ public static partial class Helpers
     /// <summary>
     /// Indicates if this helpers class has been initialized.
     /// </summary>
-    public static bool Initialized
-    {
+    public static bool Initialized {
         get {
             return _initialized;
         }
@@ -3532,11 +3520,11 @@ public static partial class Helpers
             output = Regex.Matches(input, "\n").Count + 1;
         }
 
-        if(output < MinimumLines) {
+        if (output < MinimumLines) {
             output = MinimumLines;
         }
 
-        if(output < 0) {
+        if (output < 0) {
             output = 0;
         }
 
@@ -3548,19 +3536,19 @@ public static partial class Helpers
     /// </summary>
     /// <param name="guids">The list of strings containing Guids.</param>
     /// <returns>A list of Guids.</returns>
-    public static List<Guid> LisOfGuidStringsToListOfGuid(List<string>? guids)
+    public static List<Guid> ListOfGuidStringsToListOfGuid(List<string>? guids)
     {
         List<Guid> output = new List<Guid>();
 
-        if(guids != null && guids.Any()) {
-            foreach(var item in guids) {
+        if (guids != null && guids.Any()) {
+            foreach (var item in guids) {
                 Guid? g = null;
 
                 try {
                     g = new Guid(item);
                 } catch { }
 
-                if(g != null) {
+                if (g != null) {
                     output.Add((Guid)g);
                 }
             }
@@ -3673,7 +3661,7 @@ public static partial class Helpers
     {
         string[] output = new string[] { };
 
-        if(values != null && values.Any()) {
+        if (values != null && values.Any()) {
             output = values.ToArray();
         }
 
@@ -3686,7 +3674,7 @@ public static partial class Helpers
     /// <param name="userId">The unique id of the user.</param>
     public async static Task LoadActiveUser(Guid? userId)
     {
-        if(GuidValue(userId) != Guid.Empty) {
+        if (GuidValue(userId) != Guid.Empty) {
             var activeUser = await GetOrPost<DataObjects.ActiveUser>("api/Data/GetActiveUser/" + userId.ToString());
             if (activeUser != null && activeUser.UserId == userId) {
                 var activeUsers = Model.ActiveUsers.ToList();
@@ -4052,7 +4040,7 @@ public static partial class Helpers
     /// <param name="forceReload">Option to force a full reload on navigate.</param>
     public static void NavigateTo(string subUrl, bool forceReload = false)
     {
-        if(subUrl.ToLower().StartsWith("http:") || subUrl.ToLower().StartsWith("https:")) {
+        if (subUrl.ToLower().StartsWith("http:") || subUrl.ToLower().StartsWith("https:")) {
             NavManager.NavigateTo(subUrl, forceReload);
         } else {
             NavManager.NavigateTo(Model.ApplicationUrlFull + subUrl, forceReload);
@@ -4385,8 +4373,7 @@ public static partial class Helpers
     /// <summary>
     /// Gets the current date and time in UTC.
     /// </summary>
-    public static DateTime Now
-    {
+    public static DateTime Now {
         get {
             var output = Convert.ToDateTime(DateTime.UtcNow.ToString("o"));
             return output;
@@ -4536,6 +4523,10 @@ public static partial class Helpers
     /// <param name="OnComplete">An optional Delegate to be invoked after the action has completed.</param>
     public async static Task QuickAction(string Action, Delegate? OnComplete = null)
     {
+        if (Helpers.StringLower(Action) == "adduser" && Model.FeatureEnabledDepartments && !Model.Departments.Any()) {
+            await Helpers.LoadDepartments();
+        }
+
         Model.QuickActionOnComplete = OnComplete;
         Model.QuickAction = Action;
         await jsRuntime.InvokeVoidAsync("ShowQuickActionMenu");
@@ -4555,7 +4546,7 @@ public static partial class Helpers
         }
 
         if (focus != String.Empty) {
-            await DelayedFocus(focus);
+            SetTimeout(async () => await DelayedFocus(focus));
         }
     }
 
@@ -4642,9 +4633,9 @@ public static partial class Helpers
         if (TagIds != null && TagIds.Any()) {
             List<DataObjects.OptionPair> tags = new List<DataObjects.OptionPair>();
 
-            foreach(var tagId in TagIds) {
+            foreach (var tagId in TagIds) {
                 var tag = Model.Tags.FirstOrDefault(x => x.TagId == tagId);
-                if(tag != null) {
+                if (tag != null) {
                     output += RenderTag(tag);
                 }
             }
@@ -4663,9 +4654,9 @@ public static partial class Helpers
 
         string currentUrl = Helpers.BaseUri;
 
-        if(Model.User.Enabled && Model.User.UserId != Guid.Empty) {
+        if (Model.User.Enabled && Model.User.UserId != Guid.Empty) {
             blazorDataModelLoader = await GetOrPost<DataObjects.BlazorDataModelLoader>("api/Data/GetBlazorDataModel/" + Model.User.UserId.ToString());
-        }else if (!String.IsNullOrWhiteSpace(Model.TenantCodeFromUrl)) {
+        } else if (!String.IsNullOrWhiteSpace(Model.TenantCodeFromUrl)) {
             blazorDataModelLoader = await GetOrPost<DataObjects.BlazorDataModelLoader>("api/Data/GetBlazorDataModelByTenantCode/" + Model.TenantCodeFromUrl);
         } else {
             blazorDataModelLoader = await GetOrPost<DataObjects.BlazorDataModelLoader>("api/Data/GetBlazorDataModel/");
@@ -4758,12 +4749,12 @@ public static partial class Helpers
 
             // Set the current tenant
             var tenant = Model.Tenants.FirstOrDefault(x => x.TenantId == Model.User.TenantId);
-            
-            if(tenant == null && !String.IsNullOrWhiteSpace(Model.TenantCodeFromUrl)) {
+
+            if (tenant == null && !String.IsNullOrWhiteSpace(Model.TenantCodeFromUrl)) {
                 tenant = Model.Tenants.FirstOrDefault(x => x.TenantCode.ToLower() == Model.TenantCodeFromUrl.ToLower());
             }
 
-            if(tenant == null) {
+            if (tenant == null) {
                 // See if we can match the current tenant based on the current URL and the ApplicationUrl setting for the tenant.
                 var tenantMatches = Model.Tenants.Where(x => !String.IsNullOrWhiteSpace(x.TenantSettings.ApplicationUrl) && x.TenantSettings.ApplicationUrl.ToLower() == currentUrl.ToLower()).ToList();
                 if (tenantMatches != null && tenantMatches.Count > 0) {
@@ -4783,7 +4774,7 @@ public static partial class Helpers
                 if (Model.TenantId != tenant.TenantId) {
                     Model.TenantId = tenant.TenantId;
                 }
-            } else if(Model.Tenant == null) {
+            } else if (Model.Tenant == null) {
                 Model.Tenant = new DataObjects.Tenant();
                 Model.TenantId = Guid.Empty;
             }
@@ -4822,12 +4813,12 @@ public static partial class Helpers
         // Only reload this list if this tenant has the users loaded.
         if (Model.Tenant.Users.Any()) {
             var users = await GetOrPost<List<DataObjects.UserListing>>("api/Data/ReloadTenantUsers");
-            if(users != null && users.Any()) {
+            if (users != null && users.Any()) {
                 Model.Tenant.Users = users;
 
                 // Also update the tenant object in Tenants.
                 var tenantInTenants = Model.Tenants.FirstOrDefault(x => x.TenantId == Model.TenantId);
-                if(tenantInTenants != null) {
+                if (tenantInTenants != null) {
                     tenantInTenants.Users = users;
                 }
             }
@@ -4840,7 +4831,7 @@ public static partial class Helpers
     public async static Task ReloadUser()
     {
         var user = await GetOrPost<DataObjects.User>("api/Data/ReloadUser/" + Model.User.UserId.ToString());
-        if(user != null && user.ActionResponse.Result) {
+        if (user != null && user.ActionResponse.Result) {
             Model.User = user;
             // Also save the latest token
             await CookieWrite("user-token", StringValue(Model.User.AuthToken));
@@ -4919,36 +4910,36 @@ public static partial class Helpers
 
         int totalSeconds = (int)seconds;
 
-        if(totalSeconds > 0) {
+        if (totalSeconds > 0) {
             int minutes = 0;
             int hours = 0;
             int days = 0;
 
-            if(totalSeconds >= 86400) {
+            if (totalSeconds >= 86400) {
                 days = (totalSeconds / 86400);
                 totalSeconds = totalSeconds - (86400 * days);
             }
 
-            if(totalSeconds >= 3600) {
+            if (totalSeconds >= 3600) {
                 hours = (totalSeconds / 3600);
                 totalSeconds = totalSeconds - (3600 * hours);
             }
 
-            if(totalSeconds > 60) {
+            if (totalSeconds > 60) {
                 minutes = (totalSeconds / 60);
                 totalSeconds = totalSeconds - (60 * minutes);
             }
 
-            if(days > 0) {
+            if (days > 0) {
                 output += days.ToString() + " " + (days > 1 ? Text("Days") : Text("Day"));
             }
 
-            if(hours > 0) {
-                if(output != "") { output += ", "; }
+            if (hours > 0) {
+                if (output != "") { output += ", "; }
                 output += hours.ToString() + " " + (hours > 1 ? Text("Hours") : Text("Hour"));
             }
 
-            if(minutes > 0) {
+            if (minutes > 0) {
                 if (output != "") { output += ", "; }
                 output += minutes.ToString() + " " + (minutes > 1 ? Text("Minutes") : Text("Minute"));
             }
@@ -5003,12 +4994,13 @@ public static partial class Helpers
     /// <param name="ExistingTags">An optional collection of any existing selected tags.</param>
     /// <param name="ShowCurrentTags">An option to show the currently-selected tags.</param>
     /// <param name="PreventDeselctingSelectedTags">An option to prevent the user from deselecting existing tags.</param>
-    public static async Task SelectTags(Delegate OnComplete, 
-        string Title = "", 
-        DataObjects.TagModule? Module = null, 
-        List<Guid>? ExistingTags = null, 
-        bool ShowCurrentTags = true, 
-        bool PreventDeselctingSelectedTags = false){
+    public static async Task SelectTags(Delegate OnComplete,
+        string Title = "",
+        DataObjects.TagModule? Module = null,
+        List<Guid>? ExistingTags = null,
+        bool ShowCurrentTags = true,
+        bool PreventDeselctingSelectedTags = false)
+    {
 
         if (String.IsNullOrWhiteSpace(Title)) {
             Title = Text("SelectTags");
@@ -5017,7 +5009,7 @@ public static partial class Helpers
         Dictionary<string, object> parameters = new Dictionary<string, object>();
         parameters.Add("OnComplete", OnComplete);
 
-        if(Module != null) {
+        if (Module != null) {
             parameters.Add("Module", Module);
         }
 
@@ -5123,8 +5115,7 @@ public static partial class Helpers
     public static void SetTimeout(Delegate methodToInvoke, int millisecondsDelay = 100)
     {
         System.Threading.Timer? timer = null;
-        timer = new System.Threading.Timer((obj) =>
-        {
+        timer = new System.Threading.Timer((obj) => {
             methodToInvoke.DynamicInvoke();
             timer?.Dispose();
         },
@@ -5279,7 +5270,7 @@ public static partial class Helpers
             } else {
                 await CookieWrite("user-token", "");
             }
-        }else {
+        } else {
             Model.User = new DataObjects.User();
             await CookieWrite("user-token", "");
         }
@@ -5288,7 +5279,7 @@ public static partial class Helpers
 
         //ForceModelUpdates();
 
-        if(user != null) {
+        if (user != null) {
             if (!String.IsNullOrWhiteSpace(tenantUrl)) {
                 // Need to do a full redirect to this tenant's URL.
                 await NavigateToViaJavascript(tenantUrl);
@@ -5306,8 +5297,7 @@ public static partial class Helpers
     /// <summary>
     /// The list of colors for tags.
     /// </summary>
-    public static List<string> TagColors
-    {
+    public static List<string> TagColors {
         get {
             return new List<string> {
                 "LIGHTCORAL", "SALMON", "DARKSALMON", "LIGHTSALMON", "CRIMSON",
@@ -5445,9 +5435,9 @@ public static partial class Helpers
     /// <param name="MarkUndefinedStrings">An option to mark undefined strings (those not included in your custom language definitions) by converting them to uppercase</param>
     /// <param name="textCase">An option to override the default text case for the text formatting.</param>
     /// <returns>The language item.</returns>
-    public static string Text(string? text, 
-        bool ReplaceSpaces = false, 
-        List<string>? ReplaceValues = null, 
+    public static string Text(string? text,
+        bool ReplaceSpaces = false,
+        List<string>? ReplaceValues = null,
         bool MarkUndefinedStrings = true,
         TextCase textCase = TextCase.Normal)
     {
@@ -5570,8 +5560,8 @@ public static partial class Helpers
     /// <param name="options">Any TooltipOptions to override the defaults.</param>
     public static void Tooltip(ElementReference element, string html, TooltipOptions? options = null)
     {
-        if(options == null) {
-            options = new TooltipOptions { 
+        if (options == null) {
+            options = new TooltipOptions {
                 Duration = 5000,
             };
         }
@@ -5588,7 +5578,7 @@ public static partial class Helpers
     {
         var output = filter;
 
-        if(output.Columns != null && output.Columns.Any()) {
+        if (output.Columns != null && output.Columns.Any()) {
             foreach (var column in output.Columns) {
                 if (!String.IsNullOrWhiteSpace(column.BooleanIcon)) {
                     string booleanIcon = Icon(column.BooleanIcon, true);
@@ -5597,10 +5587,10 @@ public static partial class Helpers
                     }
                 }
 
-                if(!String.IsNullOrWhiteSpace(column.Label) && column.Label.ToLower().StartsWith("icon:")) {
+                if (!String.IsNullOrWhiteSpace(column.Label) && column.Label.ToLower().StartsWith("icon:")) {
                     string label = column.Label.Substring(5);
                     string icon = Icon(label, true);
-                    if(!String.IsNullOrWhiteSpace(icon)) {
+                    if (!String.IsNullOrWhiteSpace(icon)) {
                         column.Label = icon;
                         if (String.IsNullOrWhiteSpace(column.BooleanIcon)) {
                             column.BooleanIcon = column.Label;
@@ -5623,7 +5613,7 @@ public static partial class Helpers
     /// <param name="UploadInstructions">Any upload instructions to show before the upload control.</param>
     /// <param name="SupportedFileTypes">A list of extensions if you wish to limit the upload types allowed.</param>
     /// <param name="AllowMultipleUploads">Option to indicate if the user can upload only a single file or multiple files.</param>
-    public static async Task UploadFile(Delegate OnUploadComplete, string Title = "", 
+    public static async Task UploadFile(Delegate OnUploadComplete, string Title = "",
         string UploadInstructions = "", List<string>? SupportedFileTypes = null, bool AllowMultipleUploads = false)
     {
         if (String.IsNullOrWhiteSpace(Title)) {
@@ -5713,8 +5703,7 @@ public static partial class Helpers
     /// <summary>
     /// Gets the Uri from the NavManager.
     /// </summary>
-    public static string Uri
-    {
+    public static string Uri {
         get {
             return NavManager.Uri;
         }
@@ -5813,9 +5802,9 @@ public static partial class Helpers
                         recs = recs.Where(x => x.FirstName != null && x.FirstName.ToLower().StartsWith(firstName) && x.Username?.ToLower() != "admin").ToList();
                     }
                 } else {
-                    recs = recs.Where(x =>  
+                    recs = recs.Where(x =>
                             (x.Username != null ? x.Username : "").ToLower() != "admin"
-                            && 
+                            &&
                             (
                                 (x.FirstName != null && x.FirstName.ToLower().Contains(search)) ||
                                 (x.LastName != null && x.LastName.ToLower().Contains(search)) ||
@@ -5919,12 +5908,12 @@ public static partial class Helpers
                 }
 
                 var tenant = Model.TenantList.FirstOrDefault(x => x.TenantCode.ToLower() == TenantCode.ToLower());
-                if(tenant == null) {
+                if (tenant == null) {
                     // The Tenant Code was not a valid Tenant Code, so redirect to the InvalidTenantCode page.
                     NavManager.NavigateTo(Model.ApplicationUrl + "InvalidTenantCode");
                 } else {
                     // It's a valid tenant code, so make sure it's the current tenant.
-                    if(Helpers.StringValue(Model.Tenant.TenantCode).ToLower() != TenantCode.ToLower()) {
+                    if (Helpers.StringValue(Model.Tenant.TenantCode).ToLower() != TenantCode.ToLower()) {
                         await SwitchTenant(tenant.TenantId);
                     }
                 }

@@ -1,70 +1,42 @@
-﻿using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.TeamFoundation.Build.WebApi;
-using Microsoft.TeamFoundation.Common;
 using Microsoft.TeamFoundation.Core.WebApi;
 using Microsoft.TeamFoundation.DistributedTask.WebApi;
 using Microsoft.TeamFoundation.SourceControl.WebApi;
 using Microsoft.VisualStudio.Services.Common;
 using Microsoft.VisualStudio.Services.WebApi;
-using Mysqlx.Crud;
-using NuGet.Packaging;
-using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-
 
 namespace FreeCICD;
 
-// Use this file as a place to put any application-specific data access methods.
+// FreeCICD-specific data access methods for Azure DevOps integration
 
 public partial interface IDataAccess
 {
     Task<DataObjects.DevopsGitRepoBranchInfo> GetDevOpsBranchAsync(string pat, string orgName, string projectId, string repoId, string branchName, string? connectionId = null);
-
     Task<List<DataObjects.DevopsGitRepoBranchInfo>> GetDevOpsBranchesAsync(string pat, string orgName, string projectId, string repoId, string? connectionId = null);
-
     Task<List<DataObjects.DevopsFileItem>> GetDevOpsFilesAsync(string pat, string orgName, string projectId, string repoId, string branchName, string? connectionId = null);
-
     Task<DataObjects.DevopsProjectInfo> GetDevOpsProjectAsync(string pat, string orgName, string projectId, string? connectionId = null);
-
     Task<List<DataObjects.DevopsProjectInfo>> GetDevOpsProjectsAsync(string pat, string orgName, string? connectionId = null);
-
     Task<DataObjects.DevopsGitRepoInfo> GetDevOpsRepoAsync(string pat, string orgName, string projectId, string repoId, string? connectionId = null);
-
     Task<List<DataObjects.DevopsGitRepoInfo>> GetDevOpsReposAsync(string pat, string orgName, string projectId, string? connectionId = null);
-
     Task<DataObjects.DevopsPipelineDefinition> GetDevOpsPipeline(string projectId, int pipelineId, string pat, string orgName, string? connectionId = null);
-
     Task<List<DataObjects.DevopsPipelineDefinition>> GetDevOpsPipelines(string projectId, string pat, string orgName, string? connectionId = null);
-
     Task<string> GenerateYmlFileContents(string devopsProjectId, string devopsRepoId, string devopsBranch, int? devopsPipelineId, string? devopsPipelineName, string codeProjectId, string codeRepoId, string codeBranchName, string codeCsProjectFile, Dictionary<GlobalSettings.EnvironmentType, DataObjects.EnvSetting> environmentSettings, string pat, string orgName, string? connectionId = null);
     Task<DataObjects.BuildDefinition> CreateOrUpdateDevopsPipeline(string devopsProjectId, string devopsRepoId, string devopsBranchName, int? devopsPipelineId, string? devopsPipelineName, string? devopsPipelineYmlFileName, string codeProjectId, string codeRepoId, string codeBranchName, string codeCsProjectFile, Dictionary<GlobalSettings.EnvironmentType, DataObjects.EnvSetting> environmentSettings, string pat, string orgName, string? connectionId = null);
-
-
     Task<DataObjects.GitUpdateResult> CreateOrUpdateGitFile(string projectId, string repoId, string branch, string filePath, string fileContent, string pat, string orgName, string? connectionId = null);
     Task<string> GetGitFile(string filePath, string projectId, string repoId, string branch, string pat, string orgName, string? connectionId = null);
-
     Task<List<DataObjects.DevopsVariableGroup>> GetProjectVariableGroupsAsync(string pat, string orgName, string projectId, string? connectionId = null);
     Task<DataObjects.DevopsVariableGroup> CreateVariableGroup(string projectId, string pat, string orgName, DataObjects.DevopsVariableGroup newGroup, string? connectionId = null);
     Task<DataObjects.DevopsVariableGroup> UpdateVariableGroup(string projectId, string pat, string orgName, DataObjects.DevopsVariableGroup updatedGroup, string? connectionId = null);
-
-
     Task<List<DataObjects.DevOpsBuild>> GetPipelineRuns(int pipelineId, string projectId, string pat, string orgName, int skip = 0, int top = 10, string? connectionId = null);
-
     Task<Dictionary<string, DataObjects.IISInfo?>> GetDevOpsIISInfoAsync();
-
-
 }
 
 public partial class DataAccess
 {
-    private IMemoryCache _cache;
+    private IMemoryCache? _cache;
 
-    // Modified CreateConnection accepts an optional org parameter.
     private VssConnection CreateConnection(string pat, string orgName)
     {
         var collectionUri = new Uri($"https://dev.azure.com/{orgName}");
@@ -73,6 +45,7 @@ public partial class DataAccess
     }
 
     #region Organization Operations
+
     public async Task<DataObjects.DevopsVariableGroup> CreateVariableGroup(string projectId, string pat, string orgName, DataObjects.DevopsVariableGroup newGroup, string? connectionId = null)
     {
         using (var connection = CreateConnection(pat, orgName)) {
@@ -80,13 +53,12 @@ public partial class DataAccess
             var projectClient = connection.GetClient<ProjectHttpClient>();
 
             try {
-
                 TeamProjectReference project = await projectClient.GetProject(projectId);
 
                 var parameters = new VariableGroupParameters {
                     Name = newGroup.Name,
                     Description = newGroup.Description,
-                    Type = "Vsts", // Common type for variable groups.
+                    Type = "Vsts",
                     Variables = newGroup.Variables.ToDictionary(
                         kv => kv.Name,
                         kv => new VariableValue {
@@ -97,14 +69,14 @@ public partial class DataAccess
                         StringComparer.OrdinalIgnoreCase),
                     VariableGroupProjectReferences = [new VariableGroupProjectReference {
                         Name = newGroup.Name,
-                        Description = project.Description, ProjectReference = new ProjectReference {
+                        Description = project.Description,
+                        ProjectReference = new ProjectReference {
                             Id = project.Id,
                             Name = project.Name
                         }
                     }]
                 };
 
-                // Use the overload that accepts a project ID so the group is created for that project.
                 var createdGroup = await taskAgentClient.AddVariableGroupAsync(parameters, new Guid(projectId), cancellationToken: CancellationToken.None);
 
                 var mappedGroup = new DataObjects.DevopsVariableGroup {
@@ -129,8 +101,6 @@ public partial class DataAccess
         }
     }
 
-
-    // Get Branch list for repo
     public async Task<DataObjects.DevopsGitRepoBranchInfo> GetDevOpsBranchAsync(string pat, string orgName, string projectId, string repoId, string branchName, string? connectionId = null)
     {
         var output = new DataObjects.DevopsGitRepoBranchInfo();
@@ -162,10 +132,7 @@ public partial class DataAccess
                     LastCommitDate = branch?.Commit?.Committer?.Date
                 };
 
-                // Remove any "refs/heads/" prefix for a cleaner branch name
                 var branchDisplayName = string.Empty + branch?.Name?.Replace("refs/heads/", "");
-
-                // Use the repository's web URL as the base and append the branch version query
                 branchInfo.ResourceUrl = $"{repoInfo.ResourceUrl}?version=GB{Uri.EscapeDataString(branchDisplayName)}";
 
                 if (!string.IsNullOrWhiteSpace(connectionId)) {
@@ -178,16 +145,14 @@ public partial class DataAccess
                 }
 
                 output = branchInfo;
-            } catch (Exception ex) {
-                //Console.WriteLine($"Error fetching branches for repo '{repoId}': {ex.Message}");
+            } catch (Exception) {
+                // Error fetching branch
             }
         }
 
-        await Task.CompletedTask;
         return output;
     }
 
-    // Get Branch list for repo
     public async Task<List<DataObjects.DevopsGitRepoBranchInfo>> GetDevOpsBranchesAsync(string pat, string orgName, string projectId, string repoId, string? connectionId = null)
     {
         var output = new List<DataObjects.DevopsGitRepoBranchInfo>();
@@ -222,10 +187,7 @@ public partial class DataAccess
                                 LastCommitDate = branch?.Commit?.Committer?.Date
                             };
 
-                            // Remove any "refs/heads/" prefix for a cleaner branch name
                             var branchDisplayName = string.Empty + branch?.Name?.Replace("refs/heads/", "");
-
-                            // Use the repository's web URL as the base and append the branch version query
                             branchInfo.ResourceUrl = $"{repoInfo.ResourceUrl}?version=GB{Uri.EscapeDataString(branchDisplayName)}";
 
                             if (!string.IsNullOrWhiteSpace(connectionId)) {
@@ -238,21 +200,19 @@ public partial class DataAccess
                             }
 
                             output.Add(branchInfo);
-                        } catch (Exception ex) {
-                            //Console.WriteLine($"Error processing branch '{branch?.Name}' in repo '{repo?.Name}': {ex.Message}");
+                        } catch (Exception) {
+                            // Error processing branch
                         }
                     }
                 }
-            } catch (Exception ex) {
-                //Console.WriteLine($"Error fetching branches for repo '{repoId}': {ex.Message}");
+            } catch (Exception) {
+                // Error fetching branches
             }
         }
 
-        await Task.CompletedTask;
         return output;
     }
 
-    // Get File list for branch
     public async Task<List<DataObjects.DevopsFileItem>> GetDevOpsFilesAsync(string pat, string orgName, string projectId, string repoId, string branchName, string? connectionId = null)
     {
         var output = new List<DataObjects.DevopsFileItem>();
@@ -291,7 +251,6 @@ public partial class DataAccess
                     VersionType = GitVersionType.Branch
                 };
 
-                // prefilter... 
                 var items = await gitClient.GetItemsAsync(
                     project: projectId.ToString(),
                     repositoryId: repoId.ToString(),
@@ -308,17 +267,8 @@ public partial class DataAccess
                             var url = item.Url;
                             int markerIndex = url.IndexOf(marker);
                             if (markerIndex >= 0) {
-                                // Include the marker in the left part
                                 string rightPart = url.Substring(markerIndex + marker.Length);
                                 var path = rightPart.Split("?")[0];
-                                // example path so we should take the org name then project name then repo name then the path.. looks like we can ignore branch?
-                                // https://dev.azure.com/wsueit/Pipelines/_git/Pipelines2?path=/CICD.Client/wwwroot/appsettings.json
-                                // or https://dev.azure.com/wsueit/Athletic%20Eligibility%202/_git/Athletic%20Eligibility%202?version=GBmaster&path=/AthleticEligibility.DataObjects/DataObjects.App.cs
-                                // looks like they get escaped... which is probably fine i bet its being escaped already
-                                //https://dev.azure.com/wsueit/Pipelines/_git/Pipelines2?version=GBmaster&path=/CICD.sln
-
-                                // Use the repository's web URL as the base and append the branch version query
-                                // branchInfo.ResourceUrl = $"{repoInfo.ResourceUrl}?version=GB{Uri.EscapeDataString(branchDisplayName)}";
                                 resourceUrl = $"{branchInfo.ResourceUrl}&path=/" + path;
                             }
 
@@ -343,14 +293,14 @@ public partial class DataAccess
                         }
                     }
                 }
-            } catch (Exception exFile) {
-                //Console.WriteLine($"Error fetching file structure for branch '{branch?.Name}' in repo '{repo?.Name}': {exFile.Message}");
+            } catch (Exception) {
+                // Error fetching file structure
             }
         }
 
-        await Task.CompletedTask;
         return output;
     }
+
     public async Task<DataObjects.DevopsProjectInfo> GetDevOpsProjectAsync(string pat, string orgName, string projectId, string? connectionId = null)
     {
         var output = new DataObjects.DevopsProjectInfo();
@@ -387,14 +337,14 @@ public partial class DataAccess
                     });
                 }
                 output = projInfo;
-            } catch (Exception ex) {
-                //Console.WriteLine($"Error fetching project '{projectId}': {ex.Message}");
+            } catch (Exception) {
+                // Error fetching project
             }
         }
 
         return output;
     }
-    // get project list
+
     public async Task<List<DataObjects.DevopsProjectInfo>> GetDevOpsProjectsAsync(string pat, string orgName, string? connectionId = null)
     {
         var output = new List<DataObjects.DevopsProjectInfo>();
@@ -415,9 +365,8 @@ public partial class DataAccess
                 try {
                     projects = (await projectClient.GetProjects()).ToList();
                     projects = projects.Where(o => !GlobalSettings.App.AzureDevOpsProjectNameStartsWithIgnoreValues.Any(v => (string.Empty + o.Name).ToLower().StartsWith((string.Empty + v).ToLower()))).ToList();
-                    //Console.WriteLine($"Found {projects.Count} projects in organization:");
-                } catch (Exception ex) {
-                    //Console.WriteLine($"Error fetching projects for organization: {ex.Message}");
+                } catch (Exception) {
+                    // Error fetching projects
                 }
 
                 var projectTasks = projects.Select(async project => {
@@ -426,7 +375,6 @@ public partial class DataAccess
                         ProjectId = project.Id.ToString(),
                         CreationDate = project.LastUpdateTime,
                         GitRepos = new List<DataObjects.DevopsGitRepoInfo>(),
-
                     };
 
                     if (!string.IsNullOrWhiteSpace(connectionId)) {
@@ -438,7 +386,6 @@ public partial class DataAccess
                         });
                     }
 
-                    // ok lets get the project... the get list isn't returning links
                     var p = await projectClient.GetProject(project.Id.ToString());
                     dynamic projectResource = p.Links.Links["web"];
                     projInfo.ResourceUrl = string.Empty + projectResource.Href;
@@ -448,18 +395,18 @@ public partial class DataAccess
 
                 var projectInfos = await Task.WhenAll(projectTasks);
                 output.AddRange(projectInfos);
-            } catch (Exception ex) {
-                //Console.WriteLine($"Error during DevOps connection processing: {ex.Message}");
+            } catch (Exception) {
+                // Error during DevOps connection processing
             }
         }
 
-        await Task.CompletedTask;
         return output;
     }
 
     public async Task<DataObjects.DevopsGitRepoInfo> GetDevOpsRepoAsync(string pat, string orgName, string projectId, string repoId, string? connectionId = null)
     {
         var output = new DataObjects.DevopsGitRepoInfo();
+
         if (!string.IsNullOrWhiteSpace(connectionId)) {
             await SignalRUpdate(new DataObjects.SignalRUpdate {
                 UpdateType = DataObjects.SignalRUpdateType.LoadingDevOpsInfoStatusUpdate,
@@ -474,7 +421,6 @@ public partial class DataAccess
                 var gitClient = connection.GetClient<GitHttpClient>();
                 var gitRepos = await gitClient.GetRepositoriesAsync(projectId);
                 if (gitRepos.Count > 0) {
-                    //Console.WriteLine("  Git Repositories:");
                     var repo = await gitClient.GetRepositoryAsync(projectId, repoId);
                     dynamic repoResource = repo.Links.Links["web"];
 
@@ -484,8 +430,6 @@ public partial class DataAccess
                     };
 
                     repoInfo.ResourceUrl = repoResource.Href;
-
-                    //Console.WriteLine($"    - {repo.Name}");
 
                     if (!string.IsNullOrWhiteSpace(connectionId)) {
                         await SignalRUpdate(new DataObjects.SignalRUpdate {
@@ -497,18 +441,15 @@ public partial class DataAccess
                     }
 
                     output = repoInfo;
-                } else {
-                    //Console.WriteLine("  No Git repositories found.");
                 }
-            } catch (Exception ex) {
-                //Console.WriteLine($"Error fetching Git repositories for project '{projectId}': {ex.Message}");
+            } catch (Exception) {
+                // Error fetching Git repositories
             }
         }
 
         return output;
     }
 
-    // Get Repo list for project
     public async Task<List<DataObjects.DevopsGitRepoInfo>> GetDevOpsReposAsync(string pat, string orgName, string projectId, string? connectionId = null)
     {
         var output = new List<DataObjects.DevopsGitRepoInfo>();
@@ -528,7 +469,6 @@ public partial class DataAccess
                 var gitRepos = await gitClient.GetRepositoriesAsync(projectId);
 
                 if (gitRepos.Count > 0) {
-                    //Console.WriteLine("  Git Repositories:");
                     var repoTasks = gitRepos.Select(async repo => {
                         var repoInfo = new DataObjects.DevopsGitRepoInfo {
                             RepoName = repo.Name,
@@ -538,8 +478,6 @@ public partial class DataAccess
                         var r = await gitClient.GetRepositoryAsync(projectId, repo.Id);
                         dynamic repoResource = r.Links.Links["web"];
                         repoInfo.ResourceUrl = repoResource.Href;
-
-                        //Console.WriteLine($"    - {repo.Name}");
 
                         if (!string.IsNullOrWhiteSpace(connectionId)) {
                             await SignalRUpdate(new DataObjects.SignalRUpdate {
@@ -555,37 +493,30 @@ public partial class DataAccess
 
                     var repos = await Task.WhenAll(repoTasks);
                     output.AddRange(repos);
-                } else {
-                    //Console.WriteLine("  No Git repositories found.");
                 }
-            } catch (Exception ex) {
-                //Console.WriteLine($"Error fetching Git repositories for project '{projectId}': {ex.Message}");
+            } catch (Exception) {
+                // Error fetching Git repositories
             }
         }
 
-        await Task.CompletedTask;
         return output;
     }
+
     public async Task<DataObjects.DevopsVariableGroup> UpdateVariableGroup(string projectId, string pat, string orgName, DataObjects.DevopsVariableGroup updatedGroup, string? connectionId = null)
     {
         using (var connection = CreateConnection(pat, orgName)) {
             var taskAgentClient = connection.GetClient<TaskAgentHttpClient>();
             var projectClient = connection.GetClient<ProjectHttpClient>();
 
-
             TeamProjectReference project = await projectClient.GetProject(projectId);
 
-            // get all the groups by its project id
             var devopsVariableGroups = await taskAgentClient.GetVariableGroupsAsync(new Guid(projectId));
-            // now look for the group by its id
             var group = devopsVariableGroups.FirstOrDefault(g => g.Id == updatedGroup.Id);
 
-            // Prepare the parameters from the updated group.
             var parameters = new VariableGroupParameters {
-
                 Name = updatedGroup.Name,
                 Description = updatedGroup.Description,
-                Type = "Vsts", // adjust if needed
+                Type = "Vsts",
                 Variables = updatedGroup.Variables.ToDictionary(
                     kv => kv.Name,
                     kv => new VariableValue {
@@ -595,18 +526,17 @@ public partial class DataAccess
                     },
                     StringComparer.OrdinalIgnoreCase),
                 VariableGroupProjectReferences = [new VariableGroupProjectReference {
-                        Name = project.Name,
-                        Description = project.Description, ProjectReference = new ProjectReference {
-                            Id = project.Id,
-                            Name = project.Name
-                        }
-                    }]
+                    Name = project.Name,
+                    Description = project.Description,
+                    ProjectReference = new ProjectReference {
+                        Id = project.Id,
+                        Name = project.Name
+                    }
+                }]
             };
 
             try {
-                // Call the update API on Azure DevOps.
-                var updatedVariableGroup = await taskAgentClient.UpdateVariableGroupAsync(group.Id, parameters, cancellationToken: CancellationToken.None);
-                // Map the returned object to your DataObjects model.
+                var updatedVariableGroup = await taskAgentClient.UpdateVariableGroupAsync(group!.Id, parameters, cancellationToken: CancellationToken.None);
                 var mappedGroup = new DataObjects.DevopsVariableGroup {
                     Id = updatedVariableGroup.Id,
                     Name = updatedVariableGroup.Name,
@@ -629,24 +559,17 @@ public partial class DataAccess
 
     public async Task<List<DataObjects.DevopsVariableGroup>> GetProjectVariableGroupsAsync(string pat, string orgName, string projectId, string? connectionId = null)
     {
-        // Create a connection to your Azure DevOps organization
         var connection = CreateConnection(pat, orgName);
-
         var variableGroups = new List<DataObjects.DevopsVariableGroup>();
 
         try {
-            // Get the TaskAgentHttpClient which provides access to variable groups, among other resources
             var taskAgentClient = connection.GetClient<TaskAgentHttpClient>();
-
-
             var projectClient = connection.GetClient<ProjectHttpClient>();
 
             var project = await projectClient.GetProject(projectId);
             dynamic projectResource = project.Links.Links["web"];
             var projectUrl = Uri.EscapeUriString(string.Empty + projectResource.Href);
 
-            // Retrieve all variable groups for the specified project.
-            // Optional parameters can be provided if you want to filter or include secrets.
             var devopsVariableGroups = await taskAgentClient.GetVariableGroupsAsync(project.Id);
 
             variableGroups = devopsVariableGroups.Select(g => {
@@ -666,18 +589,18 @@ public partial class DataAccess
                 };
 
                 return vargroup;
-
-
             }).ToList();
-
-        } catch (Exception ex) {
+        } catch (Exception) {
+            // Error getting variable groups
         }
 
         return variableGroups;
     }
+
     #endregion Organization Operations
 
     #region Git File Operations
+
     public async Task<DataObjects.GitUpdateResult> CreateOrUpdateGitFile(string projectId, string repoId, string branch, string filePath, string fileContent, string pat, string orgName, string? connectionId = null)
     {
         var result = new DataObjects.GitUpdateResult();
@@ -693,11 +616,11 @@ public partial class DataAccess
                     recursionLevel: VersionControlRecursionType.None,
                     includeContent: false,
                     versionDescriptor: null);
-            } catch (Exception ex) {
-                // pass if its not existing then w/e
+            } catch (Exception) {
+                // File doesn't exist
             }
+
             if (existingItem == null) {
-                // Lookup the latest commit ID for the branch
                 try {
                     var branchRefs = await gitClient.GetRefsAsync(new Guid(projectId), new Guid(repoId), includeMyBranches: true);
                     var branchRef = branchRefs.FirstOrDefault();
@@ -706,39 +629,37 @@ public partial class DataAccess
                     }
                     var latestCommitId = branchRef.ObjectId;
 
-                    // Build the changes for creating the file
                     var changes = new List<GitChange>
                     {
-                    new GitChange
-                    {
-                        ChangeType = VersionControlChangeType.Add,
-                        Item = new GitItem { Path = filePath },
-                        NewContent = new ItemContent
+                        new GitChange
                         {
-                            Content = fileContent,
-                            ContentType = ItemContentType.RawText
+                            ChangeType = VersionControlChangeType.Add,
+                            Item = new GitItem { Path = filePath },
+                            NewContent = new ItemContent
+                            {
+                                Content = fileContent,
+                                ContentType = ItemContentType.RawText
+                            }
                         }
-                    }
-                };
+                    };
 
-                    // Create the push object with proper branch reference update
                     var push = new GitPush {
                         Commits = new List<GitCommitRef>
                         {
-                        new GitCommitRef
-                        {
-                            Comment = "Creating file",
-                            Changes = changes
-                        }
-                    },
+                            new GitCommitRef
+                            {
+                                Comment = "Creating file",
+                                Changes = changes
+                            }
+                        },
                         RefUpdates = new List<GitRefUpdate>
                         {
-                        new GitRefUpdate
-                        {
-                            Name = $"refs/heads/{branch}",
-                            OldObjectId = latestCommitId
+                            new GitRefUpdate
+                            {
+                                Name = $"refs/heads/{branch}",
+                                OldObjectId = latestCommitId
+                            }
                         }
-                    }
                     };
 
                     try {
@@ -754,9 +675,6 @@ public partial class DataAccess
                     result.Message = $"Error creating file: {ex.Message}";
                 }
             } else {
-
-
-
                 var changes = new List<GitChange>
                 {
                     new GitChange
@@ -798,6 +716,7 @@ public partial class DataAccess
         }
         return result;
     }
+
     public async Task<string> GetGitFile(string filePath, string projectId, string repoId, string branch, string pat, string orgName, string? connectionId = null)
     {
         using (var connection = CreateConnection(pat, orgName)) {
@@ -822,92 +741,6 @@ public partial class DataAccess
         }
     }
 
-    public async Task<DataObjects.GitUpdateResult> UpdateGitFileContent(string projectId, string repoId, string branch, string filePath, string fileContent, string pat, string orgName, string? connectionId = null)
-    {
-        var result = new DataObjects.GitUpdateResult();
-        using (var connection = CreateConnection(pat, orgName)) {
-            var gitClient = connection.GetClient<GitHttpClient>();
-            var versionDescriptor = new GitVersionDescriptor {
-                Version = branch,
-                VersionType = GitVersionType.Branch
-            };
-
-            GitItem existingItem = null;
-            try {
-                existingItem = await gitClient.GetItemAsync(
-                    project: projectId,
-                    repositoryId: repoId,
-                    path: filePath,
-                    scopePath: null,
-                    recursionLevel: VersionControlRecursionType.None,
-                    includeContent: false,
-                    versionDescriptor: versionDescriptor);
-            } catch {
-                existingItem = null;
-            }
-
-            var changes = new List<GitChange>();
-            if (existingItem != null) {
-                changes.Add(new GitChange {
-                    ChangeType = VersionControlChangeType.Edit,
-                    Item = new GitItem { Path = filePath },
-                    NewContent = new ItemContent {
-                        Content = fileContent,
-                        ContentType = ItemContentType.RawText
-                    }
-                });
-            } else {
-                changes.Add(new GitChange {
-                    ChangeType = VersionControlChangeType.Add,
-                    Item = new GitItem { Path = filePath },
-                    NewContent = new ItemContent {
-                        Content = fileContent,
-                        ContentType = ItemContentType.RawText
-                    }
-                });
-            }
-
-            var commit = new GitCommitRef {
-                Comment = existingItem != null ? "Updating file" : "Adding file",
-                Changes = changes
-            };
-
-            var push = new GitPush {
-                Commits = new List<GitCommitRef> { commit }
-            };
-
-            string oldObjectId;
-            if (existingItem != null) {
-                oldObjectId = existingItem.CommitId;
-            } else {
-                var branchRefs = await gitClient.GetRefsAsync(projectId, filter: $"refs/heads/{branch}");
-                var branchRef = branchRefs.FirstOrDefault();
-                if (branchRef == null) {
-                    throw new Exception($"Branch '{branch}' not found.");
-                }
-                oldObjectId = branchRef.ObjectId;
-            }
-
-            push.RefUpdates = new List<GitRefUpdate>
-            {
-                new GitRefUpdate
-                {
-                    Name = $"refs/heads/{branch}",
-                    OldObjectId = oldObjectId
-                }
-            };
-
-            try {
-                GitPush updatedPush = await gitClient.CreatePushAsync(push, projectId, repoId);
-                result.Success = updatedPush != null;
-                result.Message = updatedPush != null ? "Push completed successfully." : "Push failed.";
-            } catch (Exception ex) {
-                result.Success = false;
-                result.Message = $"Error during push: {ex.Message}";
-            }
-        }
-        return result;
-    }
     #endregion Git File Operations
 
     #region Pipeline Operations
@@ -920,13 +753,12 @@ public partial class DataAccess
                 var builds = await buildClient.GetBuildsAsync(projectId, definitions: new List<int> { pipelineId });
                 var pagedBuilds = builds.Skip(skip).Take(top).ToList();
                 var devOpsBuilds = pagedBuilds.Select(b => {
-
                     dynamic resource = b.Links.Links["web"];
                     var url = Uri.EscapeUriString(string.Empty + resource.Href);
 
                     var item = new DataObjects.DevOpsBuild {
                         Id = b.Id,
-                        Status = b.Status.ToString(),
+                        Status = b.Status.ToString() ?? string.Empty,
                         Result = b.Result.HasValue ? b.Result.Value.ToString() : "",
                         QueueTime = b?.QueueTime ?? DateTime.UtcNow,
                         ResourceUrl = url
@@ -944,6 +776,7 @@ public partial class DataAccess
     public async Task<DataObjects.DevopsPipelineDefinition> GetDevOpsPipeline(string projectId, int pipelineId, string pat, string orgName, string? connectionId = null)
     {
         var output = new DataObjects.DevopsPipelineDefinition();
+
         if (!string.IsNullOrWhiteSpace(connectionId)) {
             await SignalRUpdate(new DataObjects.SignalRUpdate {
                 UpdateType = DataObjects.SignalRUpdateType.LoadingDevOpsInfoStatusUpdate,
@@ -952,8 +785,8 @@ public partial class DataAccess
                 Message = "Start of lookup of pipeline"
             });
         }
+
         if (pipelineId == 0) {
-            // no pipeline yet
             output.Name = "No pipeline yet";
         } else {
             using (var connection = CreateConnection(pat, orgName)) {
@@ -1029,12 +862,11 @@ public partial class DataAccess
                             Name = defRef?.Name ?? string.Empty,
                             QueueStatus = defRef?.QueueStatus.ToString() ?? string.Empty,
                             YamlFileName = yamlFilename,
-                            Path = defRef.Path,
+                            Path = defRef?.Path ?? string.Empty,
                             RepoGuid = fullDef?.Repository?.Id.ToString() ?? string.Empty,
                             RepositoryName = fullDef?.Repository?.Name ?? string.Empty,
                             DefaultBranch = fullDef?.Repository?.DefaultBranch ?? string.Empty,
                             ResourceUrl = pipelineUrl
-
                         };
 
                         if (!string.IsNullOrWhiteSpace(connectionId)) {
@@ -1047,8 +879,8 @@ public partial class DataAccess
                         }
 
                         pipelines.Add(pipeline);
-                    } catch (Exception innerEx) {
-                        //Console.WriteLine($"Error retrieving full definition for pipeline {defRef.Id}: {innerEx.Message}");
+                    } catch (Exception) {
+                        // Error retrieving full definition
                     }
                 }
                 return pipelines;
@@ -1058,7 +890,6 @@ public partial class DataAccess
         }
     }
 
-    // Private mapping helper for pipeline definitions
     private DataObjects.BuildDefinition MapBuildDefinition(Microsoft.TeamFoundation.Build.WebApi.BuildDefinition src)
     {
         dynamic resource = src.Links.Links["web"];
@@ -1075,6 +906,7 @@ public partial class DataAccess
             ResourceUrl = url
         };
     }
+
     public async Task<string> GenerateYmlFileContents(string devopsProjectId, string devopsRepoId, string devopsBranch, int? devopsPipelineId, string? devopsPipelineName, string codeProjectId, string codeRepoId, string codeBranchName, string codeCsProjectFile, Dictionary<GlobalSettings.EnvironmentType, DataObjects.EnvSetting> environmentSettings, string pat, string orgName, string? connectionId = null)
     {
         string output = GlobalSettings.App.BuildPipelineTemplate;
@@ -1087,7 +919,7 @@ public partial class DataAccess
 
         var pipelineVariables = await GeneratePipelineVariableReplacementText(codeProject.ProjectName, codeCsProjectFile, environmentSettings);
         var deployStages = await GeneratePipelineDeployStagesReplacementText(environmentSettings);
-        // replace all the {{REPLACE THIS}} stuff with their valus
+
         output = output.Replace("{{DEVOPS_PROJECTNAME}}", $"{devopsProject.ProjectName}");
         output = output.Replace("{{DEVOPS_REPO_BRANCH}}", $"{devopsBranch}");
         output = output.Replace("{{CODE_PROJECT_NAME}}", $"{codeProject.ProjectName}");
@@ -1097,16 +929,14 @@ public partial class DataAccess
         output = output.Replace("{{PIPELINE_POOL}}", GlobalSettings.App.BuildPiplelinePool);
         output = output.Replace("{{DEPLOY_STAGES}}", $"{deployStages}");
 
-        await Task.CompletedTask;
         return output;
     }
+
     public async Task<string> GeneratePipelineVariableReplacementText(string projectName, string csProjectFile, Dictionary<GlobalSettings.EnvironmentType, DataObjects.EnvSetting> environmentSettings)
     {
         string output = string.Empty;
 
-        // so we also need the variables for the pipeline like the csproj
-        var variableDictionary = new Dictionary<string, string>() { 
-            // now add one
+        var variableDictionary = new Dictionary<string, string>() {
             { "CI_ProjectName", projectName ?? "" },
             { "CI_BUILD_CsProjectPath", csProjectFile ?? "" },
             { "CI_BUILD_Namespace", "" }
@@ -1120,10 +950,8 @@ public partial class DataAccess
         string authUsername = String.Empty;
 
         foreach (var envKey in GlobalSettings.App.EnviormentTypeOrder) {
-            // use the global list for ordering
             if (environmentSettings.ContainsKey(envKey)) {
                 var env = environmentSettings[envKey];
-                //add a comment at the start of the yml section
                 sb.AppendLine("");
                 sb.AppendLine($"# Environment: {env.EnvName}");
                 sb.AppendLine($"  - name: CI_{envKey}_IISDeploymentType");
@@ -1216,30 +1044,22 @@ public partial class DataAccess
         return output;
     }
 
-
-
     public async Task<DataObjects.BuildDefinition> CreateOrUpdateDevopsPipeline(string devopsProjectId, string devopsRepoId, string devopsBranchName, int? devopsPipelineId, string? devopsPipelineName, string? devopsPipelineYmlFileName, string codeProjectId, string codeRepoId, string codeBranchName, string codeCsProjectFile, Dictionary<GlobalSettings.EnvironmentType, DataObjects.EnvSetting> environmentSettings, string pat, string orgName, string? connectionId = null)
     {
         DataObjects.BuildDefinition output = new DataObjects.BuildDefinition();
         try {
-
-            // ok first lookup the existing info
             var devopsProject = await GetDevOpsProjectAsync(pat, orgName, devopsProjectId);
             var devopsPipeline = await GetDevOpsPipeline(devopsProjectId, devopsPipelineId ?? 0, pat, orgName);
             var devopsRepo = await GetDevOpsRepoAsync(pat, orgName, devopsProjectId, devopsRepoId);
             var devopsBranch = await GetDevOpsBranchAsync(pat, orgName, devopsProjectId, devopsRepoId, devopsBranchName);
 
-            // now get the code existing info
             var codeProject = await GetDevOpsProjectAsync(pat, orgName, codeProjectId);
             var codeRepo = await GetDevOpsRepoAsync(pat, orgName, codeProjectId, codeRepoId);
             var codeBranch = await GetDevOpsBranchAsync(pat, orgName, codeProjectId, codeRepoId, codeBranchName);
 
-            // so now check the enviornment settings for variable group names
             List<DataObjects.DevopsVariableGroup> variableGroups = new List<DataObjects.DevopsVariableGroup>();
             var projectVariableGroups = await GetProjectVariableGroupsAsync(pat, orgName, devopsProjectId, connectionId);
 
-
-            // fallback: if we're editing an existing pipeline but no name was provided, use the existing pipeline's name
             if (devopsPipelineId.HasValue && devopsPipelineId.Value > 0 && string.IsNullOrWhiteSpace(devopsPipelineName)) {
                 devopsPipelineName = devopsPipeline.Name;
             }
@@ -1255,43 +1075,39 @@ public partial class DataAccess
                             Name = env.VariableGroupName,
                             Description = $"Variable group for project {codeProject.ProjectName}",
                             Variables = new List<DataObjects.DevopsVariable> {
-                            new DataObjects.DevopsVariable {
-                                Name = $"BasePath",
-                                Value = env.VirtualPath,
-                                IsSecret = false,
-                                IsReadOnly = false
-                            },
-                            new DataObjects.DevopsVariable {
-                                Name = $"ConnectionStrings.AppData",
-                                Value = $"Data Source=localhost;Initial Catalog={devopsProject.ProjectName};TrustServerCertificate=True;Integrated Security=true;MultipleActiveResultSets=True;",
-                                IsSecret = false,
-                                IsReadOnly = false
-                            },
-                            new DataObjects.DevopsVariable {
-                                Name = $"LocalModelUrl",
-                                Value = string.Empty,
-                                IsSecret = false,
-                                IsReadOnly = false
+                                new DataObjects.DevopsVariable {
+                                    Name = $"BasePath",
+                                    Value = env.VirtualPath,
+                                    IsSecret = false,
+                                    IsReadOnly = false
+                                },
+                                new DataObjects.DevopsVariable {
+                                    Name = $"ConnectionStrings.AppData",
+                                    Value = $"Data Source=localhost;Initial Catalog={devopsProject.ProjectName};TrustServerCertificate=True;Integrated Security=true;MultipleActiveResultSets=True;",
+                                    IsSecret = false,
+                                    IsReadOnly = false
+                                },
+                                new DataObjects.DevopsVariable {
+                                    Name = $"LocalModelUrl",
+                                    Value = string.Empty,
+                                    IsSecret = false,
+                                    IsReadOnly = false
+                                }
                             }
-                        }
                         });
                     }
                 }
             }
 
-            // ok so here we can generate the yml file contents and use it to update stuff
             string ymlFileContents = await GenerateYmlFileContents(devopsProjectId, devopsRepoId, devopsBranchName, devopsPipelineId, devopsPipelineName, codeProjectId, codeRepoId, codeBranchName, codeCsProjectFile, environmentSettings, pat, orgName);
 
             var devopsPipelinePath = $"Projects/{codeProject.ProjectName}";
 
-            // so if we are passed in a file path use it, otherwise stick to the default which is based on the pipeline name.
-            // If we are creating a new pipeline the filename is typically null, updating an existing one it should be passed in.
             var devopsYmlFilePath = devopsPipelineYmlFileName;
             if (string.IsNullOrWhiteSpace(devopsYmlFilePath)) {
                 devopsYmlFilePath = $"Projects/{codeProject.ProjectName}/{devopsPipelineName}.yml";
             }
 
-            // ok first we need to create the yml, file if it does not exist, so lets do that
             await CreateOrUpdateGitFile(devopsProject.ProjectId, devopsRepo.RepoId, devopsBranch.BranchName, devopsYmlFilePath, $"{ymlFileContents}", pat, orgName, connectionId);
 
             string ymlFilePathTrimmed = (string.Empty + devopsYmlFilePath).TrimStart('/', '\\');
@@ -1307,7 +1123,6 @@ public partial class DataAccess
                 };
 
                 if (devopsPipelineId > 0) {
-
                     try {
                         var buildClient = connection.GetClient<BuildHttpClient>();
 
@@ -1316,11 +1131,9 @@ public partial class DataAccess
                         fullDefinition.Triggers?.Clear();
 
                         var trigger = new ContinuousIntegrationTrigger {
-
-                            SettingsSourceType = 2, // 2 means use the YAML file as the source for CI triggers
+                            SettingsSourceType = 2,
                             BatchChanges = true,
                             MaxConcurrentBuildsPerBranch = 1
-
                         };
 
                         fullDefinition.Triggers?.Add(trigger);
@@ -1329,26 +1142,20 @@ public partial class DataAccess
                         fullDefinition.Repository.DefaultBranch = devopsBranchName;
                         fullDefinition.Repository.Type = "TfsGit";
 
-                        // <-- set your default VM/pool here -->
                         fullDefinition.Queue = agentPoolQueue;
                         fullDefinition.QueueStatus = DefinitionQueueStatus.Enabled;
 
-                        // target repository‑level clean options:
                         fullDefinition.Repository.Properties[RepositoryProperties.CleanOptions] =
                             ((int)RepositoryCleanOptions.AllBuildDir).ToString();
 
-                        // set it to be a shallow fetch
                         fullDefinition.Repository.Properties[RepositoryProperties.FetchDepth] = "1";
 
                         var result = await buildClient.UpdateDefinitionAsync(fullDefinition, devopsProjectId);
                         output = MapBuildDefinition(result);
-                        // todo update output
-
                     } catch (Exception ex) {
                         throw new Exception($"Error updating pipeline: {ex.Message}");
                     }
                 } else {
-                    // need to create
                     try {
                         var buildClient = connection.GetClient<BuildHttpClient>();
 
@@ -1358,32 +1165,25 @@ public partial class DataAccess
                             Queue = agentPoolQueue,
                             Project = new TeamProjectReference {
                                 Id = new Guid(devopsProject.ProjectId),
-
                             },
                             Repository = new BuildRepository {
                                 Id = devopsRepo.RepoId,
                                 Type = "TfsGit",
                                 DefaultBranch = devopsBranch.BranchName,
                             },
-
                             Process = new YamlProcess { YamlFilename = ymlFilePathTrimmed },
                             QueueStatus = DefinitionQueueStatus.Enabled
                         };
 
-
-                        // target repository‑level clean options:
                         definition.Repository.Properties[RepositoryProperties.CleanOptions] =
                             ((int)RepositoryCleanOptions.AllBuildDir).ToString();
-
 
                         definition.Repository.Properties[RepositoryProperties.FetchDepth] = "1";
 
                         var trigger = new ContinuousIntegrationTrigger {
-
-                            SettingsSourceType = 2, // 2 means use the YAML file as the source for CI triggers
+                            SettingsSourceType = 2,
                             BatchChanges = true,
                             MaxConcurrentBuildsPerBranch = 1
-
                         };
 
                         definition.Triggers.Add(trigger);
@@ -1395,40 +1195,34 @@ public partial class DataAccess
                     }
                 }
             }
-            output.YmlFileContents = await GetGitFile(devopsYmlFilePath, devopsProjectId, devopsRepoId, devopsBranchName, pat, orgName, connectionId); ;
+            output.YmlFileContents = await GetGitFile(devopsYmlFilePath, devopsProjectId, devopsRepoId, devopsBranchName, pat, orgName, connectionId);
             return output;
-
-        } catch (Exception ex) {
-            //Console.WriteLine($"Error creating or updating DevOps pipeline: {ex.Message}");
-        } finally {
-            await Task.CompletedTask;
+        } catch (Exception) {
+            // Error creating or updating DevOps pipeline
         }
         return output;
     }
 
     #endregion Pipeline Operations
 
-    #region IIS Info provider methods
+    #region IIS Info Provider Methods
 
     public async Task<Dictionary<string, DataObjects.IISInfo?>> GetDevOpsIISInfoAsync()
     {
-        // Ensure we have a cache instance even if this partial wasn't wired via DI
         _cache ??= new MemoryCache(new MemoryCacheOptions());
 
         var result = new Dictionary<string, DataObjects.IISInfo?>();
         var jsonOptions = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
-        // Try to use the content root; fall back to the assembly base directory
         string basePath;
         try { basePath = Directory.GetCurrentDirectory(); } catch { basePath = AppContext.BaseDirectory; }
 
-        // Set up a file provider so cache entries can expire when the files change
         Microsoft.Extensions.FileProviders.IFileProvider fileProvider =
             new Microsoft.Extensions.FileProviders.PhysicalFileProvider(basePath);
 
         async Task load(string envKey)
         {
-            var fileName = $"IISInfo_{envKey}.json";        // e.g. IISInfo_AzureDev.json
+            var fileName = $"IISInfo_{envKey}.json";
             var fullPath = Path.Combine(basePath, fileName);
             if (!File.Exists(fullPath)) return;
 
@@ -1437,7 +1231,6 @@ public partial class DataAccess
                 var json = await File.ReadAllTextAsync(fullPath);
                 data = System.Text.Json.JsonSerializer.Deserialize<DataObjects.IISInfo>(json, jsonOptions);
 
-                // Cache for a few minutes and also invalidate if the file changes
                 var cacheOptions = new MemoryCacheEntryOptions()
                     .SetAbsoluteExpiration(TimeSpan.FromMinutes(5))
                     .AddExpirationToken(fileProvider.Watch(fileName));
@@ -1455,5 +1248,5 @@ public partial class DataAccess
         return result;
     }
 
-    #endregion IIS Info provider methods
+    #endregion IIS Info Provider Methods
 }

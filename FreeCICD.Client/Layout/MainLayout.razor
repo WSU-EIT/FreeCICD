@@ -13,22 +13,22 @@
 <PageTitle>@Helpers.Text("AppTitle")</PageTitle>
 
 @if (IncludeCustomCss) { // For clients that are using custom theme CSS and font settings that gets rendered here.
-<style>
-    @if(!String.IsNullOrWhiteSpace(Model.Tenant.TenantSettings.ThemeFontCssImport)){
-        @((MarkupString)Model.Tenant.TenantSettings.ThemeFontCssImport)
-    }
-    @if(!String.IsNullOrWhiteSpace(Model.Tenant.TenantSettings.ThemeCss)){
-        @((MarkupString)Model.Tenant.TenantSettings.ThemeCss)
-    }
-    @((MarkupString)IncludeCustomCssFont)
-</style>
+                        <style>
+        @if (!String.IsNullOrWhiteSpace(Model.Tenant.TenantSettings.ThemeFontCssImport)) {
+                @((MarkupString)Model.Tenant.TenantSettings.ThemeFontCssImport)
+        }
+        @if (!String.IsNullOrWhiteSpace(Model.Tenant.TenantSettings.ThemeCss)) {
+                @((MarkupString)Model.Tenant.TenantSettings.ThemeCss)
+        }
+        @((MarkupString)IncludeCustomCssFont)
+    </style>
 }
 
 <div id="page-area" class="@PageAreaClass">
     <OffcanvasPopoutMenu />
 
     @if (!Loading) {
-        if(Model.AppSettings.MaintenanceMode  && !BypassMaintenanceMode){
+        if (Model.AppSettings.MaintenanceMode && !BypassMaintenanceMode) {
             <div class="maintenance-mode container-fluid">
                 <h1 class="page-title">
                     <Language Tag="MaintenanceMode" IncludeIcon="true" />
@@ -40,7 +40,7 @@
         } else {
             <NavigationMenu />
 
-            @if (!Model.AppOnline){
+            @if (!Model.AppOnline) {
                 <div class="container-fluid">
                     <div role="alert" class="alert alert-danger">
                         <Language Tag="ServerOffline" />
@@ -153,13 +153,13 @@
 
                     <table class="padded">
                         <tbody>
-                        @foreach (var user in Model.UsersOnSamePage.OrderBy(x => x.FirstName).ThenBy(x => x.LastName)) {
-                            string icon = Helpers.UserIcon(user.Photo);
-                            <tr>
-                                <td>@((MarkupString)icon)</td>
-                                <td>@user.FirstName @user.LastName</td>
-                            </tr>
-                        }
+                            @foreach (var user in Model.UsersOnSamePage.OrderBy(x => x.FirstName).ThenBy(x => x.LastName)) {
+                                string icon = Helpers.UserIcon(user.Photo);
+                                <tr>
+                                    <td>@((MarkupString)icon)</td>
+                                    <td>@user.FirstName @user.LastName</td>
+                                </tr>
+                            }
                         </tbody>
                     </table>
                 </div>
@@ -179,7 +179,7 @@
 </div>
 
 <RadzenDialog />
-<RadzenTooltip/>
+<RadzenTooltip />
 
 @code {
     private bool hubConfigured = false;
@@ -198,8 +198,7 @@
 
     protected DotNetObjectReference<MainLayout>? dotNetHelper;
 
-    public void Dispose()
-    {
+    public void Dispose() {
         dotNetHelper?.Dispose();
 
         Model.Subscribers_OnChange.Remove("MainLayout");
@@ -208,9 +207,8 @@
         NavManager.LocationChanged -= LocationChanged;
     }
 
-    protected override async Task OnInitializedAsync()
-    {
-        if (!Model.Subscribers_OnChange.Contains("MainLayout")){
+    protected override async Task OnInitializedAsync() {
+        if (!Model.Subscribers_OnChange.Contains("MainLayout")) {
             Model.Subscribers_OnChange.Add("MainLayout");
             Model.OnChange += StateHasChanged;
         }
@@ -246,8 +244,7 @@
         }, new System.Threading.AutoResetEvent(false), 0, 10000);
     }
 
-    protected async override Task OnAfterRenderAsync(bool firstRender)
-    {
+    protected async override Task OnAfterRenderAsync(bool firstRender) {
         if (firstRender) {
             dotNetHelper = DotNetObjectReference.Create(this);
             await jsRuntime.InvokeVoidAsync("SetDotNetHelper", dotNetHelper);
@@ -272,7 +269,7 @@
                 await ValidateLogin();
             }
 
-            if(!Validating && Model.LoggedIn && StartupValidated && Model.User.Admin && !DeletedRecordCountsLoaded) {
+            if (!Validating && Model.LoggedIn && StartupValidated && Model.User.Admin && !DeletedRecordCountsLoaded) {
                 DeletedRecordCountsLoaded = true;
                 await Helpers.GetDeletedRecordCount();
                 StateHasChanged();
@@ -281,8 +278,8 @@
 
         Loading = false;
 
-        if(Model.Loaded) {
-            if(!hubConfigured){
+        if (Model.Loaded) {
+            if (Model.LoggedIn && !hubConfigured) {
                 hubConfigured = true;
 
                 hubConnection = new HubConnectionBuilder()
@@ -291,7 +288,7 @@
                     .WithAutomaticReconnect()
                     .Build();
 
-                hubConnection.On<DataObjects.SignalRUpdate>("SignalRUpdate", async(update) => {
+                hubConnection.On<DataObjects.SignalRUpdate>("SignalRUpdate", async (update) => {
                     await ProcessSignalRUpdate(update);
                 });
 
@@ -300,9 +297,9 @@
                 await hubConnection.InvokeAsync("JoinTenantId", Model.TenantId);
             }
 
-            if(!versionInfoLoaded) {
+            if (!versionInfoLoaded) {
                 var info = await Helpers.GetOrPost<DataObjects.VersionInfo>("api/Data/GetVersionInfo");
-                if(info != null) {
+                if (info != null) {
                     versionInfo = info;
                     versionInfoLoaded = true;
                 }
@@ -311,18 +308,17 @@
     }
 
     [JSInvokable]
-    public void DotNetHelperHandler(params string[] arguments){
-        if (arguments != null){
+    public void DotNetHelperHandler(params string[] arguments) {
+        if (arguments != null) {
             Model.DotNetHelperHandler(arguments.ToList());
         }
     }
 
-    protected bool BypassMaintenanceMode
-    {
+    protected bool BypassMaintenanceMode {
         get {
-            if(Model.User.AppAdmin) {
+            if (Model.User.AppAdmin) {
                 return true;
-            }else if (Model.View == "login" && !String.IsNullOrWhiteSpace(Model.TenantCodeFromUrl) && Model.TenantCodeFromUrl.ToLower() == "admin") {
+            } else if (Model.View == "login" && !String.IsNullOrWhiteSpace(Model.TenantCodeFromUrl) && Model.TenantCodeFromUrl.ToLower() == "admin") {
                 // Allow logging in to the Admin tenant
                 return true;
             }
@@ -331,20 +327,19 @@
         }
     }
 
-    protected async Task CheckForUpdates()
-    {
+    protected async Task CheckForUpdates() {
         if (versionInfoLoaded) {
             bool reload = false;
             bool wasOnline = Model.AppOnline;
 
             var info = await Helpers.GetOrPost<DataObjects.VersionInfo>("api/Data/GetVersionInfo");
 
-            if(info != null){
+            if (info != null) {
                 if (!String.IsNullOrWhiteSpace(info.Version)) {
                     Model.AppOnline = true;
                 }
 
-                if(versionInfo.Released != info.Released || versionInfo.RunningSince != info.RunningSince || versionInfo.Version != info.Version) {
+                if (versionInfo.Released != info.Released || versionInfo.RunningSince != info.RunningSince || versionInfo.Version != info.Version) {
                     reload = true;
                 }
 
@@ -352,13 +347,13 @@
                     var uri = Helpers.ToAbsoluteUri(Helpers.Uri);
                     string redirect = uri.ToString();
 
-                    if(!String.IsNullOrWhiteSpace(redirect)){
-                        if (redirect.ToLower().Contains("serverupdated")){
+                    if (!String.IsNullOrWhiteSpace(redirect)) {
+                        if (redirect.ToLower().Contains("serverupdated")) {
                             // Already in the process of redirecting
                         } else {
-                            Helpers.NavigateTo("ServerUpdated?Redirect=" + Helpers.UrlEncode(redirect));    
+                            Helpers.NavigateTo("ServerUpdated?Redirect=" + Helpers.UrlEncode(redirect));
                         }
-                    }else{
+                    } else {
                         Helpers.NavigateToRoot();
                     }
                 }
@@ -369,32 +364,29 @@
                 StateHasChanged();
             }
 
-            if(wasOnline != Model.AppOnline) {
+            if (wasOnline != Model.AppOnline) {
                 if (Model.AppOnline) {
                     updateTimer?.Change(0, 10000);
                 } else {
-                    updateTimer?.Change(0, 2000);        
+                    updateTimer?.Change(0, 2000);
                 }
             }
         }
     }
 
-    protected void CloseMessage(string messageId)
-    {
+    protected void CloseMessage(string messageId) {
         Model.Messages = Model.Messages.Where(x => x.Id != messageId).ToList();
     }
 
-    public async ValueTask DisposeAsync()
-    {
+    public async ValueTask DisposeAsync() {
         if (hubConnection is not null) {
             await hubConnection.DisposeAsync();
         }
     }
 
-    protected bool IncludeCustomCss
-    {
+    protected bool IncludeCustomCss {
         get {
-            if(Model.Tenant.TenantSettings.Theme == "custom") {
+            if (Model.Tenant.TenantSettings.Theme == "custom") {
                 return true;
             } else if (!String.IsNullOrWhiteSpace(Model.Tenant.TenantSettings.ThemeFontCssImport)) {
                 return true;
@@ -406,8 +398,7 @@
         }
     }
 
-    protected string IncludeCustomCssFont
-    {
+    protected string IncludeCustomCssFont {
         get {
             string output = String.Empty;
 
@@ -424,8 +415,7 @@
     public bool IsSignalRConnected =>
         hubConnection?.State == HubConnectionState.Connected;
 
-    void LocationChanged(object? sender, LocationChangedEventArgs e)
-    {
+    void LocationChanged(object? sender, LocationChangedEventArgs e) {
         // Remove any messages
         Model.Messages = new List<Message>();
         Model.NavigationId = String.Empty;
@@ -441,8 +431,7 @@
         });
     }
 
-    protected void MessageWatcher()
-    {
+    protected void MessageWatcher() {
         if (Model.Messages.Any()) {
             int maxMessages = Model.Tenant.TenantSettings.MaxToastMessages;
             int totalPersistentMessages = 0;
@@ -476,10 +465,9 @@
         }
     }
 
-    protected string PageAreaClass
-    {
+    protected string PageAreaClass {
         get {
-            if(Model.AppSettings.MaintenanceMode && !BypassMaintenanceMode) {
+            if (Model.AppSettings.MaintenanceMode && !BypassMaintenanceMode) {
                 return "maintenance-mode";
             }
 
@@ -487,9 +475,8 @@
         }
     }
 
-    protected async Task ProcessSignalRUpdate(DataObjects.SignalRUpdate update)
-    {
-        if(update != null && (update.TenantId == null || update.TenantId == Model.TenantId)) {
+    protected async Task ProcessSignalRUpdate(DataObjects.SignalRUpdate update) {
+        if (update != null && (update.TenantId == null || update.TenantId == Model.TenantId)) {
             var itemId = update.ItemId;
             string message = update.Message.ToLower();
             var userId = update.UserId;
@@ -509,7 +496,7 @@
                     break;
 
                 case DataObjects.SignalRUpdateType.Language:
-                    if(userId != Model.User.UserId){
+                    if (userId != Model.User.UserId) {
                         await Helpers.ReloadModel();
                     }
                     break;
@@ -517,7 +504,7 @@
                 case DataObjects.SignalRUpdateType.LastAccessTime:
                     // Update the users last access time in the ActiveUsers list.
                     var activeUserItem = Model.ActiveUsers.FirstOrDefault(x => x.UserId == userId);
-                    if(activeUserItem != null) {
+                    if (activeUserItem != null) {
                         activeUserItem.LastAccess = DateTime.UtcNow;
                         StateHasChanged();
                     }
@@ -529,18 +516,18 @@
                     switch (message) {
                         case "applicationsettingsupdate":
                             var appSettings = Helpers.DeserializeObject<DataObjects.ApplicationSettingsUpdate>(update.ObjectAsString);
-                            if(appSettings != null) {
+                            if (appSettings != null) {
                                 Model.AppSettings = appSettings;
 
-                                if(Model.ApplicationUrl != appSettings.ApplicationURL && !String.IsNullOrWhiteSpace(appSettings.ApplicationURL)) {
+                                if (Model.ApplicationUrl != appSettings.ApplicationURL && !String.IsNullOrWhiteSpace(appSettings.ApplicationURL)) {
                                     Model.ApplicationUrl = appSettings.ApplicationURL;
                                 }
 
-                                if(Model.ShowTenantListingWhenMissingTenantCode != appSettings.ShowTenantListingWhenMissingTenantCode) {
+                                if (Model.ShowTenantListingWhenMissingTenantCode != appSettings.ShowTenantListingWhenMissingTenantCode) {
                                     Model.ShowTenantListingWhenMissingTenantCode = appSettings.ShowTenantListingWhenMissingTenantCode;
                                 }
 
-                                if(Model.UseTenantCodeInUrl != appSettings.UseTenantCodeInUrl) {
+                                if (Model.UseTenantCodeInUrl != appSettings.UseTenantCodeInUrl) {
                                     Model.UseTenantCodeInUrl = appSettings.UseTenantCodeInUrl;
 
                                     Helpers.NavigateToRoot(true);
@@ -549,7 +536,7 @@
                             break;
 
                         default:
-                            if(userId != Model.User.UserId) {
+                            if (userId != Model.User.UserId) {
                                 await Helpers.ReloadModel();
                             }
                             break;
@@ -565,12 +552,12 @@
                 case DataObjects.SignalRUpdateType.Tenant:
                     switch (message) {
                         case "deleted":
-                            if(itemId == Model.TenantId) {
+                            if (itemId == Model.TenantId) {
                                 // The current tenant was deleted, so log any users out that are logged in to this tenant.
                                 Helpers.NavigateTo("Logout");
                             } else {
                                 // Not the current tenant, but if this user has this tenant in their list then reload the model.
-                                if(Model.Tenants.Any(x => x.TenantId == update.TenantId)) {
+                                if (Model.Tenants.Any(x => x.TenantId == update.TenantId)) {
                                     await Helpers.ReloadModel();
                                     StateHasChanged();
                                 }
@@ -578,7 +565,7 @@
                             break;
 
                         case "saved":
-                            if(Model.Tenants.Any(x => x.TenantId == update.TenantId)){
+                            if (Model.Tenants.Any(x => x.TenantId == update.TenantId)) {
                                 await Helpers.ReloadModel();
                                 StateHasChanged();
                             }
@@ -591,7 +578,7 @@
 
                 case DataObjects.SignalRUpdateType.Undelete:
                     // Not all undelete types require reloading data, but those that do are handled here.
-                    switch(message) {
+                    switch (message) {
 
                         case "departmentgroup":
                             var undeletedDepartmentGroup = Helpers.DeserializeObject<DataObjects.DepartmentGroup>(update.ObjectAsString);
@@ -651,15 +638,15 @@
 
                 case DataObjects.SignalRUpdateType.User:
                     var user = Helpers.DeserializeObject<DataObjects.User>(update.ObjectAsString);
-                    if(user != null) {
+                    if (user != null) {
                         var existingUser = Model.Users.FirstOrDefault(x => x.UserId == user.UserId);
-                        if(existingUser != null) {
+                        if (existingUser != null) {
                             existingUser = user;
-                        }else {
+                        } else {
                             Model.Users.Add(user);
                         }
 
-                        if(Model.User.UserId == user.UserId) {
+                        if (Model.User.UserId == user.UserId) {
                             Model.User = user;
 
                             if (!user.Enabled) {
@@ -669,7 +656,7 @@
                         }
                     }
 
-                    if(itemId == Model.User.UserId) {
+                    if (itemId == Model.User.UserId) {
                         switch (message) {
                             case "deleteduserphoto":
                                 Model.User.Photo = null;
@@ -690,10 +677,10 @@
 
                 case DataObjects.SignalRUpdateType.UserPreferences:
                     var userPreferences = Helpers.DeserializeObject<DataObjects.UserPreferences>(update.ObjectAsString);
-                    if(userPreferences != null) {
+                    if (userPreferences != null) {
                         // Update the item in the ActiveUsers list.
                         var activeUserItem2 = Model.ActiveUsers.FirstOrDefault(x => x.UserId == userId);
-                        if(activeUserItem2 != null) {
+                        if (activeUserItem2 != null) {
                             activeUserItem2.UserPreferences = userPreferences;
                             activeUserItem2.LastAccess = DateTime.UtcNow;
                         } else {
@@ -719,12 +706,11 @@
         }
     }
 
-    protected async Task SavePendingUserPreferences()
-    {
+    protected async Task SavePendingUserPreferences() {
         if (Model.LoggedIn) {
             string json = Helpers.SerializeObject(Model.User.UserPreferences);
 
-            if(LastUserPreferencesJson != json) {
+            if (LastUserPreferencesJson != json) {
                 // Initially, the LastUserPreferencesJson will be empty. Don't save on that initial load of the object.
                 if (!String.IsNullOrEmpty(LastUserPreferencesJson)) {
                     await Helpers.SaveUserPreferences();
@@ -736,28 +722,25 @@
     }
 
     [JSInvokable]
-    public void SetFingerprint(string fingerprint)
-    {
+    public void SetFingerprint(string fingerprint) {
         Model.Fingerprint = fingerprint;
     }
 
-    protected async Task ThemeWatcher()
-    {
+    protected async Task ThemeWatcher() {
         string theme = Model.Theme;
 
-        if(!String.IsNullOrWhiteSpace(Model.Tenant.TenantSettings.Theme)) {
-            theme = Model.Tenant.TenantSettings.Theme; 
+        if (!String.IsNullOrWhiteSpace(Model.Tenant.TenantSettings.Theme)) {
+            theme = Model.Tenant.TenantSettings.Theme;
         }
 
         await jsRuntime.InvokeVoidAsync("SetPreferredColorScheme", theme);
     }
 
-    protected async Task ValidateLogin()
-    {
+    protected async Task ValidateLogin() {
         if (!Validating) {
             Validating = true;
 
-            if(Model.User.ActionResponse.Result){
+            if (Model.User.ActionResponse.Result) {
                 if (!Model.LoggedIn) {
                     await Helpers.ReloadModel();
                 }
@@ -840,7 +823,7 @@
                             var requestedUrl = Helpers.Uri;
                             var baseUrl = Helpers.BaseUri;
 
-                            if(requestedUrl != baseUrl) {
+                            if (requestedUrl != baseUrl) {
                                 await Helpers.CookieWrite("requested-url", requestedUrl);
                             }
 
@@ -854,24 +837,23 @@
         }
     }
 
-    protected async Task ValidateStartupState()
-    {
+    protected async Task ValidateStartupState() {
         bool redirected = false;
 
         DataObjects.SimplePost post = new DataObjects.SimplePost {
-            SingleItem = Helpers.BaseUri,    
+            SingleItem = Helpers.BaseUri,
         };
 
         var response = await Http.PostAsJsonAsync("api/Data/GetStartupState", post);
-        if(response != null && response.IsSuccessStatusCode) {
+        if (response != null && response.IsSuccessStatusCode) {
             var startupState = await response.Content.ReadFromJsonAsync<DataObjects.BooleanResponse>();
-            if(startupState != null) {
+            if (startupState != null) {
                 if (startupState.Messages.Any()) {
                     bool firstMessage = true;
                     string message = String.Empty;
                     Model.StartupErrors = new List<string>();
 
-                    foreach(var msg in startupState.Messages) {
+                    foreach (var msg in startupState.Messages) {
                         if (firstMessage) {
                             message = startupState.Messages[0];
                             firstMessage = false;

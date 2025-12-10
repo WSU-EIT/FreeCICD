@@ -2,7 +2,9 @@ using Azure.Identity;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.CodeAnalysis;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Graph.Models;
+using Plugins;
 using System.Net.Http;
 using System.Reflection;
 using Utilities;
@@ -22,6 +24,7 @@ public partial interface IDataAccess
     string CleanHtml(string? html);
     string ConnectionString(bool full = false);
     string ConnectionStringReport(string input);
+    string CookiePrefix { get; }
     string CookieRead(string cookieName);
     void CookieWrite(string cookieName, string value, string cookieDomain = "");
     string Copyright { get; }
@@ -362,6 +365,12 @@ public partial class DataAccess
         return output;
     }
 
+    public string CookiePrefix {
+        get {
+            return _cookiePrefix;
+        }
+    }
+
     public string CookieRead(string cookieName)
     {
         string output = String.Empty;
@@ -370,7 +379,7 @@ public partial class DataAccess
             if (_httpContext != null) {
                 try {
                     if(_httpContext.Request != null) {
-                        var ck = _httpContext.Request.Cookies[cookieName];
+                        var ck = _httpContext.Request.Cookies[_cookiePrefix + cookieName];
                         if (!String.IsNullOrWhiteSpace(ck)) {
                             output = ck;
                         }
@@ -380,7 +389,7 @@ public partial class DataAccess
                 }
                 if (output.ToLower() == "cleared") { output = String.Empty; }
             } else if (_httpRequest != null) {
-                var cookieValue = _httpRequest.Cookies[cookieName];
+                var cookieValue = _httpRequest.Cookies[_cookiePrefix + cookieName];
                 if(!String.IsNullOrWhiteSpace(cookieValue)) {
                     output = cookieValue;
                 }
@@ -402,9 +411,9 @@ public partial class DataAccess
             }
 
             if (_httpContext != null) {
-                _httpContext.Response.Cookies.Append(cookieName, value, option);
+                _httpContext.Response.Cookies.Append(_cookiePrefix + cookieName, value, option);
             } else if (_httpResponse != null) {
-                _httpResponse.Cookies.Append(cookieName, value, option);
+                _httpResponse.Cookies.Append(_cookiePrefix + cookieName, value, option);
             }
         }
     }
@@ -1483,7 +1492,11 @@ public partial class DataAccess
             if (property.IsDefined(typeof(SensitiveAttribute))) {
                 object? defaultValue = null;
                 try {
-                    defaultValue = Activator.CreateInstance(propertyType);
+                    if (propertyType == typeof(System.String)) {
+                        defaultValue = String.Empty;
+                    } else {
+                        defaultValue = Activator.CreateInstance(propertyType);
+                    }
                 } catch { }
 
                 // For specific item types return a value instead of null.
@@ -1507,7 +1520,6 @@ public partial class DataAccess
 
         return o;
     }
-
 
     public string Replace(string input, string replaceText, string withText)
     {

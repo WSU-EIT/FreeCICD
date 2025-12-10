@@ -18,7 +18,8 @@ public partial class DataController
     [HttpGet]
     [AllowAnonymous]
     [Route("~/api/Data/DeletePendingDeletedRecords")]
-    public async Task<ActionResult<DataObjects.BooleanResponse>> DeletePendingDeletedRecords() {
+    public async Task<ActionResult<DataObjects.BooleanResponse>> DeletePendingDeletedRecords()
+    {
         var output = await da.DeletePendingDeletedRecords();
         return Ok(output);
     }
@@ -106,7 +107,7 @@ public partial class DataController
     {
         var output = new List<string>();
 
-        if(configurationHelper.GloballyDisabledModules != null && configurationHelper.GloballyDisabledModules.Any()) {
+        if (configurationHelper.GloballyDisabledModules != null && configurationHelper.GloballyDisabledModules.Any()) {
             output = configurationHelper.GloballyDisabledModules;
         }
 
@@ -120,7 +121,7 @@ public partial class DataController
     {
         var output = new List<string>();
 
-        if(configurationHelper.GloballyEnabledModules != null && configurationHelper.GloballyEnabledModules.Any()) {
+        if (configurationHelper.GloballyEnabledModules != null && configurationHelper.GloballyEnabledModules.Any()) {
             output = configurationHelper.GloballyEnabledModules;
         }
 
@@ -196,10 +197,11 @@ public partial class DataController
             var processedInApp = await SignalRUpdateApp(update);
             if (!processedInApp) {
                 if (update.TenantId.HasValue) {
-                    await _signalR.Clients.Group(((Guid)update.TenantId).ToString()).SendAsync("SignalRUpdate", update);
+                    // This is a tenant-specific update. Send only to those people in that tenant group.
+                    await _signalR.Clients.Group(update.TenantId.Value.ToString()).SignalRUpdate(update);
                 } else {
                     // This is a non-tenant-specific update.
-                    await _signalR.Clients.All.SendAsync("SignalRUpdate", update);
+                    await _signalR.Clients.All.SignalRUpdate(update);
                 }
             }
         }
