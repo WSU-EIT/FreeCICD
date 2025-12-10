@@ -9,6 +9,40 @@ parameters:
 steps:
 - checkout: BuildRepo
   displayName: "Check out BuildRepo"
+  
+- task: PowerShell@2
+  displayName: "Create Source Snapshot (.zip)"
+  inputs:
+    targetType: inline
+    script: |
+      $src = "$(Build.SourcesDirectory)"
+      $outDir = "$(Build.ArtifactStagingDirectory)"
+      $zipPath = Join-Path $outDir "${{ parameters.buildProjectName }}.source.$(Build.BuildNumber).zip"
+
+      Write-Host "Zipping source from: $src"
+      Write-Host "Destination zip:     $zipPath"
+
+      # Exclude common folders not needed in a source snapshot
+      $exclude = @('.git', '.github', '.vs', 'bin', 'obj', 'node_modules')
+
+      $items = Get-ChildItem -LiteralPath $src -Force
+      $includeItems = $items | Where-Object { $exclude -notcontains $_.Name }
+
+      if (-not (Test-Path $outDir)) {
+        New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+      }
+
+      # Compress only the selected items at the root of the repo
+      if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+      Compress-Archive -Path $includeItems.FullName -DestinationPath $zipPath -Force
+
+      Write-Host "Created source snapshot at: $zipPath"
+
+- task: PublishBuildArtifacts@1
+  displayName: "Publish Source Snapshot Artifact"
+  inputs:
+    PathtoPublish: "$(Build.ArtifactStagingDirectory)\\${{ parameters.buildProjectName }}.source.$(Build.BuildNumber).zip"
+    ArtifactName: "${{ parameters.buildProjectName }}.SourceSnapshot"
 
 - script: |
     echo "=== Building and Publishing ==="

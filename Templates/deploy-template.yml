@@ -24,7 +24,7 @@ parameters:
 
   - name: releaseRetention
     type: string
-    default: '3'
+    default: '2'
 
   - name: artifactDir
     type: string
@@ -32,7 +32,7 @@ parameters:
     
   - name: IISDeploymentType 
     type: string
-    default: 'IISWebApplication' # Options: 'IISWebsite', 'IISWebApplication'
+    default: 'IISWebApplication' # Options: 'IISWebsite', 'IISWebsiteAuth', 'IISWebApplication', 'IISWebApplicationAuth'
     
   - name: WebsiteName
     type: string
@@ -93,6 +93,7 @@ steps:
   # 1) Expand the Zip, Echo Variables, and Set Deploy Directory Variable
   #
   - task: PowerShell@2
+    name: MakeVariables
     displayName: "Extract Zip and Echo Variables"
     inputs:
       targetType: inline
@@ -152,7 +153,7 @@ steps:
         ### **End Modified Section**
 
         Write-Host "=== Deployment Completed (no IIS actions yet) ==="
-
+        
   #
   # New Step: Copy IIS Info JSON Files to Deploy Folder
   #
@@ -214,6 +215,10 @@ steps:
             Write-Host "Switch says: We're deploying an IIS Web Application."
             Write-Host "##vso[task.setvariable variable=DEPLOY_TYPE]IISWebApplication"
           }
+          'IISWebApplicationAuth' {
+            Write-Host "Switch says: We're deploying an IIS Web Application with Auth."
+            Write-Host "##vso[task.setvariable variable=DEPLOY_TYPE]IISWebApplicationAuth"
+          }
           'IISWebsite' {
             Write-Host "Switch says: We're deploying an IIS Website."
             Write-Host "##vso[task.setvariable variable=DEPLOY_TYPE]IISWebsite"
@@ -260,34 +265,11 @@ steps:
         Write-Host "##vso[task.setvariable variable=bindings]$bindings"
 
   #
-  # 4.a) Deploy IIS Website
-  #
-  - task: IISWebAppManagementOnMachineGroup@0
-    displayName: "Deploy IIS Website"
-    condition: eq(variables['DEPLOY_TYPE'], 'IISWebsite')
-    inputs:
-      IISDeploymentType: 'IISWebsite'
-      ActionIISWebsite: 'CreateOrUpdateWebsite'
-      WebsiteName: '${{ parameters.WebsiteName }}'
-      WebsitePhysicalPath: '$(deployDir)'
-      WebsitePhysicalPathAuth: 'WebsiteUserPassThrough'
-      AddBinding: true
-      Bindings: '$(bindings)'
-      CreateOrUpdateAppPoolForWebsite: true
-      ConfigureAuthenticationForWebsite: true
-      AppPoolNameForWebsite: '${{ parameters.AppPoolName }}'
-      DotNetVersionForWebsite:  '${{ parameters.DotNetVersion }}'
-      PipeLineModeForWebsite: '${{ parameters.PipeLineMode }}'
-      AppPoolIdentityForWebsite: '${{ parameters.AppPoolIdentity }}'
-      AnonymousAuthenticationForWebsite: true
-      WindowsAuthenticationForWebsite: false
-
-  #
-  # 4.b) Deploy IIS Website with custom auth
+  # 4.a) Deploy IIS Website / Web App with custom auth – set permissions
   #
   - task: PowerShell@2
     displayName: "Set File & Folder Permissions for AuthUsername"
-    condition: eq(variables['DEPLOY_TYPE'], 'IISWebsiteAuth')
+    condition: or(eq(variables['DEPLOY_TYPE'], 'IISWebsiteAuth'), eq(variables['DEPLOY_TYPE'], 'IISWebApplicationAuth'))
     inputs:
       targetType: inline
       script: |
@@ -308,6 +290,9 @@ steps:
         Write-Host "Items to process: $($itemsToProcess -join ', ')"
         foreach ($item in $itemsToProcess) {
             $itemPath = Join-Path $deployDir $item
+            if ($item.Contains(':')) {
+              $itemPath = $item
+            }
             $isFile = $item.Contains('.')
             if ($isFile) {
                 Write-Host "FILE: Attempting to set permissions for '$itemPath'"
@@ -371,6 +356,32 @@ steps:
         }
         Write-Host "=== Completed Setting Permissions for AuthUsername ==="
 
+  #
+  # 4.b) Deploy IIS Website
+  #
+  - task: IISWebAppManagementOnMachineGroup@0
+    displayName: "Deploy IIS Website"
+    condition: eq(variables['DEPLOY_TYPE'], 'IISWebsite')
+    inputs:
+      IISDeploymentType: 'IISWebsite'
+      ActionIISWebsite: 'CreateOrUpdateWebsite'
+      WebsiteName: '${{ parameters.WebsiteName }}'
+      WebsitePhysicalPath: '$(deployDir)'
+      WebsitePhysicalPathAuth: 'WebsiteUserPassThrough'
+      AddBinding: true
+      Bindings: '$(bindings)'
+      CreateOrUpdateAppPoolForWebsite: true
+      ConfigureAuthenticationForWebsite: true
+      AppPoolNameForWebsite: '${{ parameters.AppPoolName }}'
+      DotNetVersionForWebsite:  '${{ parameters.DotNetVersion }}'
+      PipeLineModeForWebsite: '${{ parameters.PipeLineMode }}'
+      AppPoolIdentityForWebsite: '${{ parameters.AppPoolIdentity }}'
+      AnonymousAuthenticationForWebsite: true
+      WindowsAuthenticationForWebsite: false
+
+  #
+  # 4.c) Deploy IIS Website (Auth)
+  #
   - task: IISWebAppManagementOnMachineGroup@0
     displayName: "Deploy IIS Website (Auth)"
     condition: eq(variables['DEPLOY_TYPE'], 'IISWebsiteAuth')
@@ -381,7 +392,7 @@ steps:
       WebsitePhysicalPath: '$(deployDir)'
       WebsitePhysicalPathAuth: 'WebsiteUserPassThrough'
       AddBinding: true
-      Bindings: '${{ parameters.CustomBindings }}'
+      Bindings: '$(bindings)'
       CreateOrUpdateAppPoolForWebsite: true
       ConfigureAuthenticationForWebsite: true
       AppPoolNameForWebsite: '${{ parameters.AppPoolName }}'
@@ -394,7 +405,7 @@ steps:
       WindowsAuthenticationForWebsite: false
 
   #
-  # 4.c) Deploy IIS Virtual Application
+  # 4.d) Deploy IIS Virtual Application
   #
   - task: IISWebAppManagementOnMachineGroup@0
     displayName: "Deploy IIS Virtual Application"
@@ -409,6 +420,107 @@ steps:
       DotNetVersionForApplication:  '${{ parameters.DotNetVersion }}'
       PipeLineModeForApplication:  '${{ parameters.PipeLineMode }}'
       AppPoolIdentityForApplication:  '${{ parameters.AppPoolIdentity }}'
+
+  #
+  # 4.e) Deploy IIS Virtual Application with Auth
+  #
+  - task: IISWebAppManagementOnMachineGroup@0
+    displayName: "Deploy IIS Virtual Application with Auth"
+    condition: eq(variables['DEPLOY_TYPE'], 'IISWebApplicationAuth')
+    inputs:
+      IISDeploymentType: 'IISWebApplication'
+      ParentWebsiteNameForApplication:  '${{ parameters.WebsiteName }}'
+      VirtualPathForApplication:        '${{ parameters.VirtualPath }}'
+      PhysicalPathForApplication:       '$(deployDir)'
+      CreateOrUpdateAppPoolForApplication: true
+      AppPoolNameForApplication:        '${{ parameters.AppPoolName }}'
+      DotNetVersionForApplication:      '${{ parameters.DotNetVersion }}'
+      PipeLineModeForApplication:       '${{ parameters.PipeLineMode }}'
+      AppPoolIdentityForApplication:    'SpecificUser'
+      AppPoolUsernameForApplication:    '${{ parameters.AuthUsername }}'
+      AppPoolPasswordForApplication:    '${{ parameters.AuthPassword }}'
+      AnonymousAuthenticationForApplication: true
+      WindowsAuthenticationForApplication:  false
+
+  #
+  # 5) Configure IIS Always-On (App Pool & Preload)
+  #
+  - task: PowerShell@2
+    displayName: "Configure IIS Always-On (App Pool & Preload)"
+    inputs:
+      targetType: inline
+      script: |
+        Write-Host "=== Configuring IIS Always-On (App Pool & Preload) ==="
+
+        $appPoolName = '${{ parameters.AppPoolName }}'
+        $siteName    = '${{ parameters.WebsiteName }}'
+        $deployType  = "$(DEPLOY_TYPE)"
+
+        if ([string]::IsNullOrWhiteSpace($appPoolName) -or [string]::IsNullOrWhiteSpace($siteName)) {
+          Write-Host "AppPoolName or WebsiteName not provided. Skipping Always-On configuration."
+          exit 0
+        }
+
+        # Determine application path based on deployment type
+        if ($deployType -eq 'IISWebApplication' -or $deployType -eq 'IISWebApplicationAuth') {
+          $appPath = '${{ parameters.VirtualPath }}'
+          if ([string]::IsNullOrWhiteSpace($appPath)) {
+            $appPath = '/'
+          }
+        }
+        else {
+          # Website root application
+          $appPath = '/'
+        }
+
+        Write-Host "Using deployment type: $deployType"
+        Write-Host "Site Name: $siteName"
+        Write-Host "App Pool Name: $appPoolName"
+        Write-Host "Application Path: $appPath"
+
+        try {
+          Import-Module WebAdministration -ErrorAction Stop
+          Write-Host "Loaded WebAdministration module."
+
+          # Set app pool to AlwaysRunning
+          $appPoolPath = "IIS:\AppPools\$appPoolName"
+          if (Test-Path $appPoolPath) {
+            Write-Host "Setting startMode=AlwaysRunning on app pool '$appPoolName'..."
+            Set-ItemProperty $appPoolPath -Name startMode -Value "AlwaysRunning"
+          }
+          else {
+            throw "App pool '$appPoolName' not found at path '$appPoolPath'."
+          }
+
+          # Enable preload on application/website
+          $siteAppPath = "IIS:\Sites\$siteName$appPath"
+          if (Test-Path $siteAppPath) {
+            Write-Host "Enabling preloadEnabled on '$siteAppPath'..."
+            Set-ItemProperty $siteAppPath -Name preloadEnabled -Value $true
+          }
+          else {
+            throw "Site/application path '$siteAppPath' not found."
+          }
+
+          # Enable applicationInitialization doAppInitAfterRestart if possible
+          try {
+            Write-Host "Enabling applicationInitialization.doAppInitAfterRestart on '$siteAppPath'..."
+            Set-WebConfigurationProperty `
+              -pspath $siteAppPath `
+              -Filter 'system.webServer/applicationInitialization' `
+              -Name 'doAppInitAfterRestart' `
+              -Value 'True'
+          }
+          catch {
+            Write-Host "WARNING: Failed to set doAppInitAfterRestart (Application Initialization may not be installed or configured). Error: $($_.Exception.Message)"
+          }
+
+          Write-Host "=== IIS Always-On configuration completed successfully. ==="
+        }
+        catch {
+          Write-Error "Failed to configure IIS Always-On settings: $($_.Exception.Message)"
+          throw
+        }
 
   - task: PowerShell@2
     displayName: "Retention Policy: Remove Old Release Folders (with Info Dump)"

@@ -2,10 +2,10 @@
 variables:
   # Build pipeline variables
   - name: CI_PIPELINE_COMMON_PublishArgs
-    value: '--configuration Release --runtime win-x64 -p:PublishTrimmed=false'  # Example publish arguments
+    value: '--configuration Release -p:PublishTrimmed=false'  # Example publish arguments
 
   - name: CI_PIPELINE_COMMON_ReleaseRetention
-    value: '3'   # App pool identity for PROD
+    value: '2'   # App pool identity for PROD
     
   # Deploy pipeline variables for application folders
   - name: CI_PIPELINE_COMMON_ApplicationFolder_DEV
@@ -38,3 +38,6 @@ variables:
 
   - name: CI_PIPELINE_COMMON_AppPoolIdentity_CMS
     value: 'ApplicationPoolIdentity'   # App pool identity for CMS
+
+  - name: GrantAccessToFilesAndFolders
+    value: ''
