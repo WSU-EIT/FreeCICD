@@ -269,18 +269,64 @@
                                 break;
 
                             case DataObjects.StepNameList.Completed:
-                                <div class="card-header bg-success text-white d-flex justify-content-between align-items-center flex-wrap gap-2 py-3">
-                                    <div class="d-flex align-items-center gap-2">
-                                        <span class="badge bg-light text-success"><i class="fa fa-check"></i></span>
-                                        <span class="fw-semibold">Completed</span>
+                                @* Header changes based on save state *@
+                                @if (_isSaving)
+                                {
+                                    <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center flex-wrap gap-2 py-3">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <div class="spinner-border spinner-border-sm" role="status">
+                                                <span class="visually-hidden">Saving...</span>
+                                            </div>
+                                            <span class="fw-semibold">Saving Pipeline...</span>
+                                        </div>
+                                        <div class="d-flex gap-2">
+                                            <span class="text-muted small">Please don't navigate away</span>
+                                        </div>
                                     </div>
-                                    <div class="d-flex gap-2">
-                                        <button class="btn btn-light btn-sm" @onclick="StartOver">
-                                            <i class="fa fa-refresh me-1"></i>
-                                            Create Another Pipeline
-                                        </button>
+                                }
+                                else if (!string.IsNullOrWhiteSpace(_saveErrorMessage))
+                                {
+                                    <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center flex-wrap gap-2 py-3">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <span class="badge bg-light text-danger"><i class="fa fa-times"></i></span>
+                                            <span class="fw-semibold">Save Failed</span>
+                                        </div>
+                                        <div class="d-flex gap-2">
+                                            <button class="btn btn-light btn-sm" @onclick="PrevStep">
+                                                <i class="fa fa-arrow-left me-1"></i>
+                                                Back to Preview
+                                            </button>
+                                            <button class="btn btn-outline-light btn-sm" @onclick="StartOver">
+                                                <i class="fa fa-refresh me-1"></i>
+                                                Start Over
+                                            </button>
+                                        </div>
                                     </div>
-                                </div>
+                                }
+                                else if (_saveCompleted)
+                                {
+                                    <div class="card-header bg-success text-white d-flex justify-content-between align-items-center flex-wrap gap-2 py-3">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <span class="badge bg-light text-success"><i class="fa fa-check"></i></span>
+                                            <span class="fw-semibold">Completed</span>
+                                        </div>
+                                        <div class="d-flex gap-2">
+                                            <button class="btn btn-light btn-sm" @onclick="StartOver">
+                                                <i class="fa fa-refresh me-1"></i>
+                                                Create Another Pipeline
+                                            </button>
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    @* Fallback - shouldn't normally reach here *@
+                                    <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center flex-wrap gap-2 py-3">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <span class="fw-semibold">Processing...</span>
+                                        </div>
+                                    </div>
+                                }
                                 break;
                         }
                     }
@@ -507,49 +553,82 @@
                                     break;
 
                                 case DataObjects.StepNameList.Completed:
-                                    <div class="text-center py-4">
-                                        <div class="mb-3">
-                                            <i class="fa fa-check-circle text-success" style="font-size: 4rem;"></i>
+                                    @if (_isSaving)
+                                    {
+                                        @* Saving state - show spinner and warning *@
+                                        <div class="text-center py-5">
+                                            <div class="mb-4">
+                                                <div class="spinner-border text-warning" style="width: 4rem; height: 4rem;" role="status">
+                                                    <span class="visually-hidden">Saving...</span>
+                                                </div>
+                                            </div>
+                                            <h4 class="text-warning">Saving Pipeline Changes</h4>
+                                            <p class="text-muted">
+                                                Please don't navigate away until this finishes. This may take a moment...
+                                            </p>
                                         </div>
-                                        <p class="lead">
-                                            The YAML Pipeline has been created. Remember to edit your variable groups before triggering a deployment.
-                                        </p>
-                                        <div class="mt-4 text-start">
-                                            <h5>Resources Created / Accessible</h5>
-                                            <ul class="list-group list-group-flush">
-                                                @if (LastSavedPipelineDefinition == null || string.IsNullOrWhiteSpace(LastSavedPipelineDefinition.ResourceUrl)) {
-                                                    <li class="list-group-item">
-                                                        <div class="alert alert-warning d-flex align-items-center mb-0" role="alert">
-                                                            <div class="spinner-border spinner-border-sm me-2" role="status" aria-label="Saving pipeline">
-                                                                <span class="visually-hidden">Saving...</span>
-                                                            </div>
-                                                            <div>
-                                                                Saving pipeline changes. Please don't navigate away until this finishes.
-                                                            </div>
-                                                        </div>
-                                                    </li>
-                                                } else {
-                                                    <li class="list-group-item">
-                                                        <i class="fa fa-code-branch text-primary me-2"></i>
-                                                        <a target="_blank" href="@LastSavedPipelineDefinition.ResourceUrl">Pipeline: @LastSavedPipelineDefinition.Name</a>
-                                                    </li>
-                                                }
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(_saveErrorMessage))
+                                    {
+                                        @* Error state - show error message and retry options *@
+                                        <div class="text-center py-4">
+                                            <div class="mb-3">
+                                                <i class="fa fa-exclamation-circle text-danger" style="font-size: 4rem;"></i>
+                                            </div>
+                                            <h4 class="text-danger">Failed to Save Pipeline</h4>
+                                            <div class="alert alert-danger mt-3 text-start" style="max-width: 600px; margin: 0 auto;">
+                                                <strong>Error:</strong> @_saveErrorMessage
+                                            </div>
+                                            <p class="text-muted mt-3">
+                                                You can go back to review your settings and try again, or start over.
+                                            </p>
+                                        </div>
+                                    }
+                                    else if (_saveCompleted)
+                                    {
+                                        @* Success state - show green check and resources *@
+                                        <div class="text-center py-4">
+                                            <div class="mb-3">
+                                                <i class="fa fa-check-circle text-success" style="font-size: 4rem;"></i>
+                                            </div>
+                                            <h4 class="text-success">Pipeline Created Successfully!</h4>
+                                            <p class="lead">
+                                                Remember to edit your variable groups before triggering a deployment.
+                                            </p>
+                                            <div class="mt-4 text-start" style="max-width: 600px; margin: 0 auto;">
+                                                <h5>Resources Created / Accessible</h5>
+                                                <ul class="list-group list-group-flush">
+                                                    @if (LastSavedPipelineDefinition != null && !string.IsNullOrWhiteSpace(LastSavedPipelineDefinition.ResourceUrl))
+                                                    {
+                                                        <li class="list-group-item">
+                                                            <i class="fa fa-code-branch text-success me-2"></i>
+                                                            <a target="_blank" href="@LastSavedPipelineDefinition.ResourceUrl">
+                                                                <strong>Pipeline:</strong> @LastSavedPipelineDefinition.Name
+                                                            </a>
+                                                            <i class="fa fa-external-link ms-1 small text-muted"></i>
+                                                        </li>
+                                                    }
 
-                                                @if (SelectedProjectInfo != null && !string.IsNullOrWhiteSpace(SelectedProjectInfo.ResourceUrl)) {
-                                                    <li class="list-group-item">
-                                                        <i class="fa fa-folder text-primary me-2"></i>
-                                                        <a target="_blank" href="@SelectedProjectInfo.ResourceUrl">Project: @SelectedProjectInfo.ProjectName</a>
-                                                    </li>
-                                                }
-                                                @if (SelectedBranchInfo != null && !string.IsNullOrWhiteSpace(SelectedBranchInfo.ResourceUrl)) {
-                                                    <li class="list-group-item">
-                                                        <i class="fa fa-code-branch text-primary me-2"></i>
-                                                        <a target="_blank" href="@SelectedBranchInfo.ResourceUrl">Branch: @SelectedBranchInfo.BranchName</a>
-                                                    </li>
-                                                }
-                                            </ul>
+                                                    @if (SelectedProjectInfo != null && !string.IsNullOrWhiteSpace(SelectedProjectInfo.ResourceUrl))
+                                                    {
+                                                        <li class="list-group-item">
+                                                            <i class="fa fa-folder text-primary me-2"></i>
+                                                            <a target="_blank" href="@SelectedProjectInfo.ResourceUrl">Project: @SelectedProjectInfo.ProjectName</a>
+                                                            <i class="fa fa-external-link ms-1 small text-muted"></i>
+                                                        </li>
+                                                    }
+                                                    @if (SelectedBranchInfo != null && !string.IsNullOrWhiteSpace(SelectedBranchInfo.ResourceUrl))
+                                                    {
+                                                        <li class="list-group-item">
+                                                            <i class="fa fa-code-branch text-primary me-2"></i>
+                                                            <a target="_blank" href="@SelectedBranchInfo.ResourceUrl">Branch: @SelectedBranchInfo.BranchName</a>
+                                                            <i class="fa fa-external-link ms-1 small text-muted"></i>
+                                                        </li>
+                                                    }
+                                                </ul>
+                                            </div>
                                         </div>
-                                    </div>
+                                    }
                                     break;
                             }
                         }
@@ -645,6 +724,8 @@
     private List<LoadingMessage> _loadingMessages = new List<LoadingMessage>();
     private bool _isPreviewLoading = false;
     private bool _isSaving = false;
+    private bool _saveCompleted = false;
+    private string _saveErrorMessage = string.Empty;
 
     protected DataObjects.DevopsProjectInfo? SelectedProjectInfo => DevopsProjectInfos?.FirstOrDefault(p => p.ProjectId == SelectedProjectId);
     protected DataObjects.DevopsGitRepoInfo? SelectedRepoInfo => SelectedProjectInfo?.GitRepos.FirstOrDefault(r => r.RepoId == SelectedRepoId);
@@ -733,16 +814,35 @@
                 break;
 
             case DataObjects.StepNameList.YAMLPreviewAndSave:
+                // Reset save state
+                _isSaving = true;
+                _saveCompleted = false;
+                _saveErrorMessage = string.Empty;
+                LastSavedPipelineDefinition = null;
+                StateHasChanged();
+                
                 try {
-                    StateHasChanged();
                     _loadingMessages.Insert(0, new LoadingMessage { Message = "Saving pipeline… please don't navigate away.", Created = DateTime.UtcNow });
                     StateHasChanged();
-                    LastSavedPipelineDefinition = null;
+                    
                     var createOrUpdateResult = await Helpers.GetOrPost<DataObjects.BuildDefinition>($"{DataObjects.Endpoints.DevOps.CreateOrUpdateDevOpsPipeline}", DevOpsPipelineRequest);
-                    if (createOrUpdateResult != null && createOrUpdateResult.Id > 0) { LastSavedPipelineDefinition = createOrUpdateResult; _loadingMessages.Insert(0, new LoadingMessage { Message = "Pipeline created/updated successfully.", Created = DateTime.UtcNow }); }
-                    else { _loadingMessages.Insert(0, new LoadingMessage { Message = $"Error", Created = DateTime.UtcNow }); }
-                } catch (Exception ex) { _loadingMessages.Insert(0, new LoadingMessage { Message = $"Exception: {ex.Message}", Created = DateTime.UtcNow }); }
-                finally { StateHasChanged(); }
+                    
+                    if (createOrUpdateResult != null && createOrUpdateResult.Id > 0) {
+                        LastSavedPipelineDefinition = createOrUpdateResult;
+                        _saveCompleted = true;
+                        _loadingMessages.Insert(0, new LoadingMessage { Message = "Pipeline created/updated successfully.", Created = DateTime.UtcNow });
+                    } else {
+                        _saveErrorMessage = "The server returned an empty or invalid response.";
+                        _loadingMessages.Insert(0, new LoadingMessage { Message = $"Error: {_saveErrorMessage}", Created = DateTime.UtcNow });
+                    }
+                } catch (Exception ex) {
+                    _saveErrorMessage = ex.Message;
+                    _loadingMessages.Insert(0, new LoadingMessage { Message = $"Exception: {ex.Message}", Created = DateTime.UtcNow });
+                }
+                finally {
+                    _isSaving = false;
+                    StateHasChanged();
+                }
                 break;
         }
     }
@@ -926,6 +1026,11 @@
         NewYamlContent = string.Empty;
         LastSavedPipelineDefinition = null;
         EnvSettings.Clear();
+        
+        // Reset save state
+        _isSaving = false;
+        _saveCompleted = false;
+        _saveErrorMessage = string.Empty;
         
         // Reset to appropriate starting step
         if (Model.LoggedIn)
