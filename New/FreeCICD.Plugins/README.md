@@ -10,9 +10,9 @@ The `FreeCICD.Plugins` project provides a **dynamic C# code execution engine** t
 
 ```
 FreeCICD.Plugins/
-??? Plugins.cs                     # Plugin system and dynamic compiler
-??? Encryption.cs                  # AES encryption for sensitive plugin code
-??? FreeCICD.Plugins.csproj        # Project file
++-- Plugins.cs                     # Plugin system and dynamic compiler
++-- Encryption.cs                  # AES encryption for sensitive plugin code
++-- FreeCICD.Plugins.csproj        # Project file
 ```
 
 ---
@@ -20,49 +20,49 @@ FreeCICD.Plugins/
 ## Architecture Diagram
 
 ```
-???????????????????????????????????????????????????????????????????????????????
-?                         PLUGIN SYSTEM ARCHITECTURE                           ?
-???????????????????????????????????????????????????????????????????????????????
++-----------------------------------------------------------------------------+
+|                         PLUGIN SYSTEM ARCHITECTURE                          |
++-----------------------------------------------------------------------------+
 
-                              ???????????????????
-                              ?  Plugins Folder ?
-                              ? (*.cs, *.plugin)?
-                              ???????????????????
-                                       ?
-                                       ?
-???????????????????????????????????????????????????????????????????????????????
-?                          IPlugins Interface                                  ?
-???????????????????????????????????????????????????????????????????????????????
-?                                                                             ?
-?   Load(path)                                                                ?
-?      ?                                                                      ?
-?      ??? Scan for *.cs, *.plugin files                                      ?
-?      ?                                                                      ?
-?      ??? For each file:                                                     ?
-?      ?   ??? Read source code                                               ?
-?      ?   ??? Load .assemblies file (if exists)                              ?
-?      ?   ??? Extract namespace and class name                               ?
-?      ?   ??? Execute Properties() method                                    ?
-?      ?   ??? Register Plugin object                                         ?
-?      ?                                                                      ?
-?      ??? Return List<Plugin>                                                ?
-?                                                                             ?
-?   ExecuteDynamicCSharpCode<T>(...)                                          ?
-?      ?                                                                      ?
-?      ??? Decrypt code (if encrypted)                                        ?
-?      ??? Add missing using statements                                       ?
-?      ??? Load reference assemblies                                          ?
-?      ?   ??? Basic.Reference.Assemblies.Net100                              ?
-?      ?   ??? ServerReferences                                               ?
-?      ?   ??? AdditionalAssemblies                                           ?
-?      ?                                                                      ?
-?      ??? Compile with Roslyn CSharpCompilation                              ?
-?      ?                                                                      ?
-?      ??? Load compiled assembly                                             ?
-?      ?                                                                      ?
-?      ??? Invoke specified function                                          ?
-?                                                                             ?
-???????????????????????????????????????????????????????????????????????????????
+                              +-----------------+
+                              |  Plugins Folder |
+                              | (*.cs, *.plugin)|
+                              +-----------------+
+                                       |
+                                       |
++-----------------------------------------------------------------------------+
+|                          IPlugins Interface                                 |
++-----------------------------------------------------------------------------+
+|                                                                             |
+|   Load(path)                                                                |
+|      |                                                                      |
+|      +-> Scan for *.cs, *.plugin files                                     |
+|      |                                                                      |
+|      +-> For each file:                                                    |
+|      |   +-> Read source code                                              |
+|      |   +-> Load .assemblies file (if exists)                             |
+|      |   +-> Extract namespace and class name                              |
+|      |   +-> Execute Properties() method                                   |
+|      |   +-> Register Plugin object                                        |
+|      |                                                                      |
+|      +-> Return List<Plugin>                                               |
+|                                                                             |
+|   ExecuteDynamicCSharpCode<T>(...)                                          |
+|      |                                                                      |
+|      +-> Decrypt code (if encrypted)                                       |
+|      +-> Add missing using statements                                      |
+|      +-> Load reference assemblies                                         |
+|      |   +-> Basic.Reference.Assemblies.Net100                             |
+|      |   +-> ServerReferences                                              |
+|      |   +-> AdditionalAssemblies                                          |
+|      |                                                                      |
+|      +-> Compile with Roslyn CSharpCompilation                             |
+|      |                                                                      |
+|      +-> Load compiled assembly                                            |
+|      |                                                                      |
+|      +-> Invoke specified function                                         |
+|                                                                             |
++-----------------------------------------------------------------------------+
 ```
 
 ---
@@ -70,61 +70,61 @@ FreeCICD.Plugins/
 ## Plugin Execution Flow
 
 ```
-???????????????????????????????????????????????????????????????????????????????
-?                         PLUGIN EXECUTION FLOW                                ?
-???????????????????????????????????????????????????????????????????????????????
++-----------------------------------------------------------------------------+
+|                         PLUGIN EXECUTION FLOW                               |
++-----------------------------------------------------------------------------+
 
     Request                    Plugin System                    Result
-      ?                             ?                              ?
-      ?  ExecuteDynamicCSharpCode   ?                              ?
-      ? ?????????????????????????????                              ?
-      ?                             ?                              ?
-      ?                    ???????????????????                     ?
-      ?                    ? Is code         ?                     ?
-      ?                    ? encrypted?      ?                     ?
-      ?                    ???????????????????                     ?
-      ?                             ?                              ?
-      ?                      YES    ?    NO                        ?
-      ?                       ?     ?     ?                        ?
-      ?                       ?     ?     ?                        ?
-      ?                   Decrypt   ?     ?                        ?
-      ?                   code      ?     ?                        ?
-      ?                       ?     ?     ?                        ?
-      ?                       ?????????????                        ?
-      ?                             ?                              ?
-      ?                             ?                              ?
-      ?                    Add using statements                    ?
-      ?                             ?                              ?
-      ?                             ?                              ?
-      ?                    Load reference assemblies               ?
-      ?                    ??????????????????????                  ?
-      ?                    ? • .NET 10 base     ?                  ?
-      ?                    ? • Server refs      ?                  ?
-      ?                    ? • Additional refs  ?                  ?
-      ?                    ??????????????????????                  ?
-      ?                             ?                              ?
-      ?                             ?                              ?
-      ?                    ??????????????????????                  ?
-      ?                    ?  Roslyn Compiler   ?                  ?
-      ?                    ?  CSharpCompilation ?                  ?
-      ?                    ??????????????????????                  ?
-      ?                             ?                              ?
-      ?                    ???????????????????                     ?
-      ?                    ? Compilation     ?                     ?
-      ?                    ? successful?     ?                     ?
-      ?                    ???????????????????                     ?
-      ?                             ?                              ?
-      ?                      YES    ?    NO                        ?
-      ?                       ?     ?     ?                        ?
-      ?                       ?     ?     ?                        ?
-      ?               Load assembly ?  Log errors                  ?
-      ?               Create instance   return null                ?
-      ?               Invoke method ?                              ?
-      ?                       ?     ?                              ?
-      ?                       ?     ?                              ?
-      ?????????????????????????????????????????????????????????????
-      ?   Return T result                                          ?
-      ?                                                            ?
+      |                             |                              |
+      |  ExecuteDynamicCSharpCode   |                              |
+      | --------------------------> |                              |
+      |                             |                              |
+      |                    +-----------------+                     |
+      |                    | Is code         |                     |
+      |                    | encrypted?      |                     |
+      |                    +-----------------+                     |
+      |                             |                              |
+      |                      YES    |    NO                        |
+      |                       |     |     |                        |
+      |                       |     |     |                        |
+      |                   Decrypt   |     |                        |
+      |                   code      |     |                        |
+      |                       |     |     |                        |
+      |                       +-----+-----+                        |
+      |                             |                              |
+      |                             |                              |
+      |                    Add using statements                    |
+      |                             |                              |
+      |                             |                              |
+      |                    Load reference assemblies               |
+      |                    +--------------------+                  |
+      |                    | • .NET 10 base     |                  |
+      |                    | • Server refs      |                  |
+      |                    | • Additional refs  |                  |
+      |                    +--------------------+                  |
+      |                             |                              |
+      |                             |                              |
+      |                    +--------------------+                  |
+      |                    |  Roslyn Compiler   |                  |
+      |                    |  CSharpCompilation |                  |
+      |                    +--------------------+                  |
+      |                             |                              |
+      |                    +-----------------+                     |
+      |                    | Compilation     |                     |
+      |                    | successful?     |                     |
+      |                    +-----------------+                     |
+      |                             |                              |
+      |                      YES    |    NO                        |
+      |                       |     |     |                        |
+      |                       |     |     |                        |
+      |               Load assembly |  Log errors                  |
+      |               Create instance   return null                |
+      |               Invoke method |                              |
+      |                       |     |                              |
+      |                       |     |                              |
+      | <--------------------- | <-- |                             |
+      |   Return T result                                          |
+      |                                                            |
 ```
 
 ---
@@ -132,22 +132,22 @@ FreeCICD.Plugins/
 ## Plugin Types
 
 ```
-???????????????????????????????????????????????????????????????????????????????
-?                           PLUGIN TYPES                                       ?
-???????????????????????????????????????????????????????????????????????????????
-?                                                                             ?
-?  ???????????????   ???????????????   ???????????????   ???????????????     ?
-?  ?    Auth     ?   ? UserUpdate  ?   ?   Custom    ?   ?   Prompts   ?     ?
-?  ?             ?   ?             ?   ?             ?   ?             ?     ?
-?  ? Invoker:    ?   ? Invoker:    ?   ? Invoker:    ?   ? Invoker:    ?     ?
-?  ?  "Login"    ?   ? "UpdateUser"?   ?  "Execute"  ?   ?  "Execute"  ?     ?
-?  ???????????????   ???????????????   ???????????????   ???????????????     ?
-?        ?                 ?                 ?                 ?              ?
-?        ?                 ?                 ?                 ?              ?
-?  Custom auth       Update user        Generic code      UI prompts         ?
-?  providers         after login        execution         with results       ?
-?                                                                             ?
-???????????????????????????????????????????????????????????????????????????????
++-----------------------------------------------------------------------------+
+|                           PLUGIN TYPES                                      |
++-----------------------------------------------------------------------------+
+|                                                                             |
+|  +-----------+   +-----------+   +-----------+   +-----------+             |
+|  |    Auth     |   | UserUpdate  |   |   Custom    |   |   Prompts   |     |
+|  |             |   |             |   |             |   |             |     |
+|  | Invoker:    |   | Invoker:    |   | Invoker:    |   | Invoker:    |     |
+|  |  "Login"    |   | "UpdateUser"|   |  "Execute"  |   |  "Execute"  |     |
+|  +-----------+   +-----------+   +-----------+   +-----------+             |
+|        |                 |                 |                 |              |
+|        |                 |                 |                 |              |
+|  Custom auth       Update user        Generic code      UI prompts         |
+|  providers         after login        execution         with results       |
+|                                                                             |
++-----------------------------------------------------------------------------+
 ```
 
 ---
@@ -337,39 +337,39 @@ typeof(System.Net.Http.HttpClient).Assembly.Location
 Plugins with `ContainsSensitiveData = true` have their code encrypted:
 
 ```
-???????????????????????????????????????????????????????????????????????????????
-?                         CODE ENCRYPTION FLOW                                 ?
-???????????????????????????????????????????????????????????????????????????????
++-----------------------------------------------------------------------------+
+|                         CODE ENCRYPTION FLOW                                |
++-----------------------------------------------------------------------------+
 
     Plugin Code                  Encryption                   Stored Code
-         ?                           ?                             ?
-         ?  ContainsSensitiveData    ?                             ?
-         ?  = true                   ?                             ?
-         ? ???????????????????????????                             ?
-         ?                           ?                             ?
-         ?                    ???????????????                      ?
-         ?                    ? AES-256     ?                      ?
-         ?                    ? Encryption  ?                      ?
-         ?                    ???????????????                      ?
-         ?                           ?                             ?
-         ?                           ?                             ?
-         ?                    Prepend IV to                        ?
-         ?                    encrypted bytes                      ?
-         ?                           ?                             ?
-         ?                           ?                             ?
-         ?                    Convert to hex                       ?
-         ?                    string                               ?
-         ?                           ?                             ?
-         ?                           ???????????????????????????????
-         ?                                                         ?
-         ?                           On Execution:                 ?
-         ?                           ???????????????????????????????
-         ?                           ?                             ?
-         ?                    Detect "0x" prefix                   ?
-         ?                    Decrypt before compile               ?
-         ?                           ?                             ?
-         ?????????????????????????????                             ?
-         ?   Decrypted code                                        ?
+         |                           |                             |
+         |  ContainsSensitiveData    |                             |
+         |  = true                   |                             |
+         | ------------------------> |                             |
+         |                           |                             |
+         |                    +-------------+                      |
+         |                    | AES-256     |                      |
+         |                    | Encryption  |                      |
+         |                    +-------------+                      |
+         |                           |                             |
+         |                           |                             |
+         |                    Prepend IV to                        |
+         |                    encrypted bytes                      |
+         |                           |                             |
+         |                           |                             |
+         |                    Convert to hex                       |
+         |                    string                               |
+         |                           |                             |
+         |                           | --------------------------> |
+         |                                                         |
+         |                           On Execution:                 |
+         |                           | <-------------------------- |
+         |                           |                             |
+         |                    Detect "0x" prefix                   |
+         |                    Decrypt before compile               |
+         |                           |                             |
+         | <------------------------ |                             |
+         |   Decrypted code                                        |
 
 ```
 
