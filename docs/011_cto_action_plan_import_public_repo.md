@@ -309,285 +309,220 @@
 
 ---
 
-## Implementation Plan
+## ⚠️ Conflict Resolution & Safety Safeguards
 
-### Phase 1: Data Layer (1 hour)
+### The Problem: Duplicate Names
+
+When importing a repository, we may encounter:
+1. **Project name already exists** in Azure DevOps organization
+2. **Repository name already exists** in target project
+3. **Same URL imported twice** (accidental re-import)
+
+### Resolution Options
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  PHASE 1: DATA OBJECTS + INTERFACE                                          │
+│                    CONFLICT RESOLUTION STRATEGIES                           │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  Task 1.1: Add Data Objects (20 min)                                        │
-│  ─────────────────────────────────────                                      │
-│  File: FreeCICD.DataObjects/DataObjects.App.FreeCICD.cs                     │
+│   When REPOSITORY NAME conflicts in target project:                         │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │                                                                     │   │
+│   │  ⚠️ Repository "aspnetcore" already exists in project "MyProject"   │   │
+│   │                                                                     │   │
+│   │  Choose how to proceed:                                             │   │
+│   │                                                                     │   │
+│   │  ○ Import to NEW branch in existing repo                            │   │
+│   │    Branch name: [imported/github-2024-01-15___________]             │   │
+│   │    ⚠️ Will NOT overwrite main branch                                │   │
+│   │                                                                     │   │
+│   │  ○ Replace existing repo (MERGE into main branch)                   │   │
+│   │    ⚠️ DANGER: This will overwrite all content in main branch!       │   │
+│   │    Type "REPLACE aspnetcore" to confirm: [________________]         │   │
+│   │                                                                     │   │
+│   │  ○ Rename and create NEW repository                                 │   │
+│   │    New name: [aspnetcore-github_________________________]           │   │
+│   │    ✓ Safe: Creates separate repo, no data loss                      │   │
+│   │                                                                     │   │
+│   │  ○ Cancel import                                                    │   │
+│   │                                                                     │   │
+│   │                              [Continue]  [Cancel]                   │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                             │
-│  Add:                                                                       │
-│    • enum ImportStatus { NotStarted, Queued, InProgress, Completed, Failed }│
-│    • class PublicGitRepoInfo                                                │
-│    • class ImportPublicRepoRequest                                          │
-│    • class ImportPublicRepoResponse                                         │
-│                                                                             │
-│  Task 1.2: Add API Endpoint Constants (5 min)                               │
-│  ──────────────────────────────────────────────                             │
-│  File: FreeCICD.DataObjects/DataObjects.App.FreeCICD.cs                     │
-│                                                                             │
-│  Add to Endpoints class:                                                    │
-│    public static class Import                                               │
-│    {                                                                        │
-│        public const string ValidateUrl = "api/Data/ValidatePublicRepoUrl";  │
-│        public const string Start = "api/Data/StartPublicRepoImport";        │
-│        public const string GetStatus = "api/Data/GetPublicRepoImportStatus";│
-│    }                                                                        │
-│                                                                             │
-│  Task 1.3: Add Interface Methods (15 min)                                   │
-│  ─────────────────────────────────────────                                  │
-│  File: FreeCICD.DataAccess/DataAccess.App.FreeCICD.cs                       │
-│                                                                             │
-│  Add to IDataAccess:                                                        │
-│    • Task<PublicGitRepoInfo> ValidatePublicGitRepoAsync(string url)         │
-│    • Task<DevopsProjectInfo> CreateDevOpsProjectAsync(...)                  │
-│    • Task<DevopsGitRepoInfo> CreateDevOpsRepoAsync(...)    ← CRITICAL       │
-│    • Task<ImportPublicRepoResponse> ImportPublicRepoAsync(...)              │
-│    • Task<ImportPublicRepoResponse> GetImportStatusAsync(...)               │
-│                                                                             │
-│  NOTE: CreateDevOpsRepoAsync is required because Azure DevOps Import API    │
-│  requires the target repository to exist BEFORE starting the import.        │
+│   When PROJECT NAME conflicts:                                              │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │                                                                     │   │
+│   │  ⚠️ Project "aspnetcore" already exists                             │   │
+│   │                                                                     │   │
+│   │  Choose how to proceed:                                             │   │
+│   │                                                                     │   │
+│   │  ○ Use existing project (import repo into it)                       │   │
+│   │    Will create new repository in existing project                   │   │
+│   │                                                                     │   │
+│   │  ○ Rename new project                                               │   │
+│   │    New name: [aspnetcore-imported_______________________]           │   │
+│   │                                                                     │   │
+│   │  ○ Cancel import                                                    │   │
+│   │                                                                     │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Phase 2: Import Logic (2 hours)
+### Safety Safeguards
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  PHASE 2: DATAACCESS IMPLEMENTATION                                         │
+│                    MANDATORY SAFEGUARDS                                     │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  Task 2.1: Implement URL Validation (25 min)                                │
-│  ────────────────────────────────────────────                               │
-│  Method: ValidatePublicGitRepoAsync()                                       │
+│   1. PRE-IMPORT CONFLICT CHECK                                              │
+│   ─────────────────────────────                                             │
+│   Before showing "Start Import" button:                                     │
+│   • Check if project name exists → Show conflict UI                         │
+│   • Check if repo name exists in target project → Show conflict UI          │
+│   • Never auto-proceed on conflicts                                         │
 │                                                                             │
-│  Logic:                                                                     │
-│    1. Parse URL to detect source (GitHub, GitLab, Bitbucket, other)         │
-│    2. For GitHub: Call api.github.com/repos/{owner}/{repo}                  │
-│    3. For others: Extract name from URL pattern                             │
-│    4. Handle errors: 404, rate limit, network timeout                       │
-│    5. Return PublicGitRepoInfo                                              │
+│   2. DUPLICATE URL DETECTION                                                │
+│   ──────────────────────────────                                            │
+│   Track imported URLs (store in local repo or Azure DevOps wiki):           │
+│   • If same URL was imported before → Show warning:                         │
+│     "This repository was already imported on {date} to {project/repo}"      │
+│   • Offer: "Import again anyway" or "Go to existing repo"                   │
 │                                                                             │
-│  Task 2.2: Implement Project Creation (20 min)                              │
-│  ───────────────────────────────────────────────                            │
-│  Method: CreateDevOpsProjectAsync()                                         │
+│   3. DESTRUCTIVE ACTION CONFIRMATION                                        │
+│   ────────────────────────────────────                                      │
+│   Any action that could overwrite data requires:                            │
+│   • Red warning banner with ⚠️ icon                                         │
+│   • Explicit "Type X to confirm" input                                      │
+│   • 3-second delay before action button is enabled                          │
+│   • Button text changes to "I understand, proceed" (not just "OK")          │
 │                                                                             │
-│  Logic:                                                                     │
-│    1. Build TeamProject with name, description, Git source control          │
-│    2. Call ProjectHttpClient.QueueCreateProject()                           │
-│    3. Poll GetProject() until state = "wellFormed" (max 60 seconds)         │
-│    4. Return DevopsProjectInfo                                              │
+│   4. BRANCH-BASED IMPORT (DEFAULT SAFE OPTION)                              │
+│   ─────────────────────────────────────────────                             │
+│   When repo exists, DEFAULT to creating new branch:                         │
+│   • Branch name: "imported/{source}-{YYYY-MM-DD}"                           │
+│   • Example: "imported/github-2024-01-15"                                   │
+│   • User can merge manually if desired                                      │
+│   • No automatic overwrites ever                                            │
 │                                                                             │
-│  Task 2.3: Implement Repo Creation (15 min)          ← NEW (from review)    │
-│  ─────────────────────────────────────────────                              │
-│  Method: CreateDevOpsRepoAsync()                                            │
-│                                                                             │
-│  Logic:                                                                     │
-│    1. Check if repo name already exists in project                          │
-│    2. Call GitHttpClient.CreateRepositoryAsync()                            │
-│    3. Return DevopsGitRepoInfo                                              │
-│                                                                             │
-│  Task 2.4: Implement Import Request (20 min)                                │
-│  ────────────────────────────────────────────                               │
-│  Method: ImportPublicRepoAsync()                                            │
-│                                                                             │
-│  Logic:                                                                     │
-│    1. If NewProjectName provided: CreateDevOpsProjectAsync()                │
-│    2. Create empty repo: CreateDevOpsRepoAsync()                            │
-│    3. Build GitImportRequest with source URL                                │
-│    4. Call GitHttpClient.CreateImportRequestAsync()                         │
-│    5. Return ImportPublicRepoResponse with requestId                        │
-│                                                                             │
-│  Task 2.5: Implement Status Polling (15 min)                                │
-│  ────────────────────────────────────────────                               │
-│  Method: GetImportStatusAsync()                                             │
-│                                                                             │
-│  Logic:                                                                     │
-│    1. Call GitHttpClient.GetImportRequestAsync()                            │
-│    2. Map Azure DevOps status to our ImportStatus enum                      │
-│    3. Extract error message if failed                                       │
-│    4. Return ImportPublicRepoResponse                                       │
-│                                                                             │
-│  Task 2.6: Add API Controller Endpoints (25 min)                            │
-│  ─────────────────────────────────────────────────                          │
-│  File: FreeCICD/Controllers/DataController.App.FreeCICD.cs                  │
-│                                                                             │
-│  Add endpoints:                                                             │
-│    [HttpPost("api/Data/ValidatePublicRepoUrl")]                             │
-│    [HttpPost("api/Data/StartPublicRepoImport")]                             │
-│    [HttpGet("api/Data/GetPublicRepoImportStatus/{projectId}/{repoId}/{id}")]│
+│   5. AUTO-RENAME SUGGESTIONS                                                │
+│   ────────────────────────────                                              │
+│   When name conflicts, suggest alternatives:                                │
+│   • "{name}-github" (indicate source)                                       │
+│   • "{name}-imported" (indicate action)                                     │
+│   • "{name}-{date}" (indicate when)                                         │
+│   • "{name}-2", "{name}-3" (incremental)                                    │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Phase 3: UI Components (3 hours)
+### Import Mode Enum
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  PHASE 3: BLAZOR UI                                                         │
+│                    NEW DATA MODEL: ImportMode                               │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  Task 3.1: Create Import Modal Component (1.5 hr)                           │
-│  ───────────────────────────────────────────────                           │
-│  File: FreeCICD.Client/Shared/AppComponents/ImportPublicRepo.App.FreeCICD.razor│
+│   enum ImportConflictMode                                                   │
+│   {                                                                         │
+│       CreateNew,           // Create new repo (default, always safe)        │
+│       ImportToBranch,      // Import to new branch in existing repo         │
+│       ReplaceMain,         // DANGER: Replace main branch content           │
+│       Cancel               // User chose to cancel                          │
+│   }                                                                         │
 │                                                                             │
-│  Structure:                                                                 │
-│    • Step 1: URL input + Validate button                                    │
-│    • Step 2: Repo info display + destination options                        │
-│    • Step 3: Progress indicator (polling with Timer)                        │
-│    • Step 4: Success + next actions / Error with retry                      │
+│   class ImportConflictInfo                                                  │
+│   {                                                                         │
+│       bool HasProjectConflict;                                              │
+│       string? ExistingProjectId;                                            │
+│       string? ExistingProjectName;                                          │
 │                                                                             │
-│  State Management:                                                          │
-│    • string _sourceUrl                                                      │
-│    • PublicGitRepoInfo? _repoInfo                                           │
-│    • bool _useExistingProject                                               │
-│    • string? _selectedProjectId                                             │
-│    • string? _newProjectName                                                │
-│    • string? _targetRepoName                                                │
-│    • ImportPublicRepoResponse? _importResult                                │
-│    • ImportStep _currentStep (enum: Url, Configure, Progress, Complete)     │
-│    • bool _isLoading, _isValidating, _isImporting                           │
-│    • Timer? _pollTimer                                                      │
-│    • string? _errorMessage                                                  │
+│       bool HasRepoConflict;                                                 │
+│       string? ExistingRepoId;                                               │
+│       string? ExistingRepoName;                                             │
 │                                                                             │
-│  Task 3.2: Implement Step 1 - URL Validation (20 min)                       │
-│  ────────────────────────────────────────────────────                       │
-│    • Text input for URL                                                     │
-│    • "Validate" button                                                      │
-│    • Show loading spinner during validation                                 │
-│    • Display validation errors inline                                       │
-│    • On success: auto-advance to Step 2                                     │
+│       bool IsDuplicateImport;                                               │
+│       DateTime? PreviousImportDate;                                         │
+│       string? PreviousImportRepoUrl;                                        │
 │                                                                             │
-│  Task 3.3: Implement Step 2 - Configuration (30 min)                        │
-│  ────────────────────────────────────────────────────                       │
-│    • Display repo info (name, owner, description)                           │
-│    • Radio: Create new project / Use existing                               │
-│    • If new: text input for project name                                    │
-│    • If existing: dropdown (reuse GetDevOpsProjectsAsync)                   │
-│    • Text input for repo name (pre-filled, editable)                        │
-│    • Check for repo name conflicts before enabling Import button            │
-│    • Checkbox: "Launch CI/CD Wizard after import"                           │
+│       List<string> SuggestedRepoNames;    // Auto-generated alternatives    │
+│       List<string> SuggestedProjectNames;                                   │
+│   }                                                                         │
 │                                                                             │
-│  Task 3.4: Implement Step 3 - Progress (20 min)                             │
-│  ──────────────────────────────────────────────────                         │
-│    • Progress spinner                                                       │
-│    • Status text (Creating project... Creating repo... Importing...)        │
-│    • Poll every 3 seconds using Timer                                       │
-│    • Show navigate-away warning                                             │
-│                                                                             │
-│  Task 3.5: Implement Step 4 - Complete/Error (20 min)                       │
-│  ────────────────────────────────────────────────────                       │
-│    • Success: Show green checkmark, repo link, wizard button                │
-│    • Error: Show error message from matrix, retry button                    │
-│    • Link to view repo in Azure DevOps                                      │
-│                                                                             │
-│  Task 3.6: Add Entry Point to Home Page (20 min)                            │
-│  ─────────────────────────────────────────────────                          │
-│  File: FreeCICD.Client/Shared/AppComponents/Index.App.FreeCICD.razor        │
-│                                                                             │
-│  Add:                                                                       │
-│    • Card: "📥 Import from Public Repo"                                     │
-│    • Subtitle: "Clone from GitHub, GitLab, etc."                            │
-│    • Click handler: Open ImportPublicRepo modal                             │
-│                                                                             │
-│  Task 3.7: Add Client-Side API Calls (20 min)                               │
-│  ─────────────────────────────────────────────                              │
-│  File: FreeCICD.Client/Helpers/ImportHelpers.cs (new file)                  │
-│                                                                             │
-│  Add static methods:                                                        │
-│    • ValidatePublicRepoUrl(string url) → PublicGitRepoInfo                  │
-│    • StartImport(ImportPublicRepoRequest request) → ImportPublicRepoResponse│
-│    • GetImportStatus(projectId, repoId, requestId) → ImportPublicRepoResponse│
+│   // Updated ImportPublicRepoRequest                                        │
+│   class ImportPublicRepoRequest                                             │
+│   {                                                                         │
+│       // ... existing fields ...                                            │
+│       ImportConflictMode ConflictMode;    // How to handle conflicts        │
+│       string? NewBranchName;              // For ImportToBranch mode        │
+│       string? RenameRepoTo;               // Override repo name             │
+│       bool ConfirmDestructive;            // Must be true for ReplaceMain   │
+│   }                                                                         │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Phase 4: Testing & Polish (2.5 hours)
+### API Changes
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  PHASE 4: TESTING & POLISH                                                  │
+│                    NEW ENDPOINT: Check Conflicts                            │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  Task 4.1: Test URL Validation (30 min)                                     │
-│  ─────────────────────────────────────                                      │
-│  Test cases:                                                                │
-│    ✓ Valid GitHub URL (https://github.com/WSU-EIT/FreeCICD)                 │
-│    ✓ Valid GitHub URL with .git suffix                                      │
-│    ✓ Invalid URL (404) → "Repository not found or is private"              │
-│    ✓ Private repo → Same error as 404 (can't distinguish)                  │
-│    ✓ GitLab URL (pattern match only)                                       │
-│    ✓ Invalid URL format → "Please enter a valid Git repository URL"        │
+│   POST /api/Data/CheckImportConflicts                                       │
+│   ────────────────────────────────────                                      │
+│   Request:  {                                                               │
+│     "sourceUrl": "https://github.com/...",                                  │
+│     "targetProjectId": "...",      // or null for new project               │
+│     "newProjectName": "...",       // for new project                       │
+│     "targetRepoName": "..."        // optional override                     │
+│   }                                                                         │
+│   Response: ImportConflictInfo                                              │
+│   Purpose:  Check for conflicts BEFORE showing import button                │
 │                                                                             │
-│  Task 4.2: Test Import Flow - Existing Project (30 min)                     │
-│  ───────────────────────────────────────────────────────                    │
-│  Test cases:                                                                │
-│    ✓ Import into existing project - success                                │
-│    ✓ Repo name conflict detection                                          │
-│    ✓ Import progress polling                                               │
-│    ✓ Wizard launch after complete                                          │
-│                                                                             │
-│  Task 4.3: Test Import Flow - New Project (30 min)                          │
-│  ─────────────────────────────────────────────────                          │
-│  Test cases:                                                                │
-│    ✓ Create new project + import - success                                 │
-│    ✓ Project name conflict detection                                       │
-│    ✓ Project creation timeout handling                                     │
-│                                                                             │
-│  Task 4.4: Test Error Scenarios (30 min)                                    │
-│  ─────────────────────────────────                                          │
-│  From error matrix:                                                         │
-│    ✓ GitHub rate limit handling                                            │
-│    ✓ PAT lacks permissions                                                 │
-│    ✓ Network timeout during polling                                        │
-│    ✓ Import failure (bad source URL)                                       │
-│                                                                             │
-│  Task 4.5: UX Polish (30 min)                                               │
-│  ───────────────────────────────                                            │
-│    ✓ Loading spinners on all async operations                              │
-│    ✓ Clear error messages (not technical jargon)                           │
-│    ✓ Enter key to submit forms                                             │
-│    ✓ Focus management (auto-focus URL input)                               │
-│    ✓ Navigate-away warning during import                                   │
-│    ✓ Mobile-responsive modal                                               │
+│   Called: After URL validation, before user clicks "Import"                 │
+│   UI:     If conflicts found, show conflict resolution UI                   │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Implementation Checklist (Revised)
+## Implementation Checklist (Revised with Conflict Resolution)
 
 ### Phase 1: Data Layer (1 hour) ✅ COMPLETE
 - [x] 1.1 Add `ImportStatus` enum to DataObjects
 - [x] 1.2 Add `PublicGitRepoInfo` class
-- [x] 1.3 Add `ImportPublicRepoRequest` class
-- [x] 1.4 Add `ImportPublicRepoResponse` class
-- [x] 1.5 Add API endpoint constants to `Endpoints.Import`
-- [x] 1.6 Add method signatures to DataAccess (including `CreateDevOpsRepoAsync`)
+- [x] 1.3 Add `ImportPublicRepoRequest` class (with conflict fields)
+- [x] 1.4 Add `ImportPublicRepoResponse` class (with conflict info)
+- [x] 1.5 Add `ImportConflictMode` enum
+- [x] 1.6 Add `ImportConflictInfo` class
+- [x] 1.7 Add API endpoint constants to `Endpoints.Import`
+- [x] 1.8 Add method signatures to DataAccess
 
-### Phase 2: Import Logic (2 hours) ✅ COMPLETE
+### Phase 2: Import Logic (2.5 hours) ✅ MOSTLY COMPLETE
 - [x] 2.1 Implement `ValidatePublicGitRepoAsync()` — GitHub API + pattern matching
-- [x] 2.2 Implement `CreateDevOpsProjectAsync()` — with polling
-- [x] 2.3 Implement `CreateDevOpsRepoAsync()` — with conflict check
-- [x] 2.4 Implement `ImportPublicRepoAsync()` — orchestrates all
-- [x] 2.5 Implement `GetImportStatusAsync()` — status polling
-- [ ] 2.6 Add endpoint `POST /api/Data/ValidatePublicRepoUrl`
-- [ ] 2.7 Add endpoint `POST /api/Data/StartPublicRepoImport`
-- [ ] 2.8 Add endpoint `GET /api/Data/GetPublicRepoImportStatus/{projectId}/{repoId}/{requestId}`
+- [x] 2.2 Implement `CheckImportConflictsAsync()` — conflict detection + suggestions
+- [x] 2.3 Implement `CreateDevOpsProjectAsync()` — with polling
+- [x] 2.4 Implement `CreateDevOpsRepoAsync()` — with conflict check
+- [x] 2.5 Implement `ImportPublicRepoAsync()` — orchestrates all
+- [x] 2.6 Implement `GetImportStatusAsync()` — status polling
+- [ ] 2.7 Add endpoint `POST /api/Data/ValidatePublicRepoUrl`
+- [ ] 2.8 Add endpoint `POST /api/Data/CheckImportConflicts`
+- [ ] 2.9 Add endpoint `POST /api/Data/StartPublicRepoImport`
+- [ ] 2.10 Add endpoint `GET /api/Data/GetPublicRepoImportStatus/{projectId}/{repoId}/{requestId}`
 
-### Phase 3: UI Components (3 hours) ⬜
+### Phase 3: UI Components (3.5 hours) ⬜
 - [ ] 3.1 Create `ImportPublicRepo.App.FreeCICD.razor` modal component
 - [ ] 3.2 Implement Step 1: URL input + validation
 - [ ] 3.3 Implement Step 2: Repo info + project selection
-- [ ] 3.4 Implement Step 2b: Repo name conflict check
+- [ ] 3.4 Implement Conflict Resolution UI:
+  - [ ] Show conflict warning with ⚠️ icon
+  - [ ] Radio options: New branch / Replace (danger) / Rename / Cancel
+  - [ ] Auto-suggest alternative names
+  - [ ] Type-to-confirm for destructive actions
+  - [ ] 3-second delay before enabling destructive button
 - [ ] 3.5 Implement Step 3: Progress indicator with polling
 - [ ] 3.6 Implement Step 4: Success/error display
 - [ ] 3.7 Add import card to home page (`Index.App.FreeCICD.razor`)
@@ -596,14 +531,17 @@
 ### Phase 4: Testing & Polish (2.5 hours) ⬜
 - [ ] 4.1 Test GitHub URL validation (valid, 404, rate limit)
 - [ ] 4.2 Test non-GitHub URLs (GitLab, generic)
-- [ ] 4.3 Test import into existing project
-- [ ] 4.4 Test import with new project creation
-- [ ] 4.5 Test repo name conflict detection
-- [ ] 4.6 Test all error scenarios from matrix
-- [ ] 4.7 Test navigate-away behavior
-- [ ] 4.8 UX polish (loading, focus, keyboard)
+- [ ] 4.3 Test import into existing project (no conflict)
+- [ ] 4.4 Test import with new project creation (no conflict)
+- [ ] 4.5 Test repo name conflict → rename resolution
+- [ ] 4.6 Test repo name conflict → new branch resolution
+- [ ] 4.7 Test project name conflict resolution
+- [ ] 4.8 Test duplicate import warning
+- [ ] 4.9 Test destructive action confirmation UI
+- [ ] 4.10 Test navigate-away behavior
+- [ ] 4.11 UX polish (loading, focus, keyboard)
 
-**Total Estimated Time: 8.5 hours**
+**Total Estimated Time: 9.5 hours** (increased from 8.5 for conflict resolution)
 
 ---
 
@@ -617,6 +555,7 @@
 | Large repo import fails | Warn on repos >500MB; link to Azure DevOps for manual import |
 | PAT lacks permissions | Check permissions upfront; clear error with required scopes |
 | Network timeout | Fire-and-forget pattern; import continues server-side |
+| **Accidental data loss** | **Conflict detection, type-to-confirm, 3s delay, branch-first default** |
 
 ---
 
@@ -629,6 +568,9 @@
 ✅ Wizard launches with correct repo pre-selected after import  
 ✅ All errors from matrix have clear, actionable messages  
 ✅ Navigate-away doesn't break import  
+✅ **Name conflicts detected BEFORE import starts**  
+✅ **Destructive actions require explicit confirmation**  
+✅ **Alternative names auto-suggested on conflict**  
 
 ---
 
@@ -642,6 +584,7 @@
 | SignalR progress | High | Medium | Replace polling with push |
 | Bulk import | Medium | Medium | Import multiple repos at once |
 | Remember last project | Low | Low | localStorage preference |
+| Import history tracking | Medium | Medium | Track what was imported when |
 
 ---
 
@@ -666,9 +609,10 @@ This document was reviewed by focus group on 2024-12-20 (see docs 012, 013).
 - Documented auth pattern (headers)
 - Simplified non-GitHub validation
 - Added navigate-away behavior
+- **Added conflict resolution & safety safeguards (v1.2)**
 
 ---
 
 **Document Status:** ✅ Ready for Implementation  
-**Next Action:** Begin Phase 1 (Data Layer)  
-**Estimated Completion:** 8-10 hours (1-1.5 dev days)
+**Next Action:** Add API controller endpoints, then build UI  
+**Estimated Completion:** 9.5 hours (1-1.5 dev days)

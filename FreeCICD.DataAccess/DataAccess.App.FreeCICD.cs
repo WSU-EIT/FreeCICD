@@ -46,6 +46,9 @@ public partial interface IDataAccess
     /// <summary>Validate a public Git URL and retrieve repository metadata.</summary>
     Task<DataObjects.PublicGitRepoInfo> ValidatePublicGitRepoAsync(string url);
     
+    /// <summary>Check for conflicts before starting import (project/repo name conflicts, duplicate imports).</summary>
+    Task<DataObjects.ImportConflictInfo> CheckImportConflictsAsync(string pat, string orgName, string? targetProjectId, string? newProjectName, string repoName, string sourceUrl);
+    
     /// <summary>Create a new Azure DevOps project.</summary>
     Task<DataObjects.DevopsProjectInfo> CreateDevOpsProjectAsync(string pat, string orgName, string projectName, string? description = null, string? connectionId = null);
     
@@ -1772,7 +1775,7 @@ public partial class DataAccess
                 runInfo.TriggerType = DataObjects.TriggerType.PullRequest;
                 runInfo.TriggerDisplayText = "Pull request";
                 runInfo.IsAutomatedTrigger = true;
-                break;
+                break ;
             case BuildReason.BuildCompletion:
                 runInfo.TriggerType = DataObjects.TriggerType.PipelineCompletion;
                 runInfo.TriggerDisplayText = "Pipeline completion";
@@ -1995,6 +1998,141 @@ public partial class DataAccess
             DefaultBranch = "main",
             IsValid = true
         };
+    }
+
+    /// <summary>
+    /// Checks for conflicts before starting an import operation.
+    /// Detects: project name conflicts, repo name conflicts, duplicate imports.
+    /// </summary>
+    public async Task<DataObjects.ImportConflictInfo> CheckImportConflictsAsync(
+        string pat, string orgName, string? targetProjectId, string? newProjectName, string repoName, string sourceUrl)
+    {
+        var result = new DataObjects.ImportConflictInfo();
+
+        try {
+            using var connection = CreateConnection(pat, orgName);
+            var projectClient = connection.GetClient<ProjectHttpClient>();
+            var gitClient = connection.GetClient<GitHttpClient>();
+
+            // 1. Check project name conflict (only if creating new project)
+            if (!string.IsNullOrWhiteSpace(newProjectName) && string.IsNullOrWhiteSpace(targetProjectId)) {
+                try {
+                    var existingProjects = await projectClient.GetProjects();
+                    var existingProject = existingProjects.FirstOrDefault(p => 
+                        string.Equals(p.Name, newProjectName, StringComparison.OrdinalIgnoreCase));
+                    
+                    if (existingProject != null) {
+                        result.HasProjectConflict = true;
+                        result.ExistingProjectId = existingProject.Id.ToString();
+                        result.ExistingProjectName = existingProject.Name;
+                        
+                        // Generate suggested alternative names
+                        result.SuggestedProjectNames = GenerateSuggestedNames(newProjectName, 
+                            existingProjects.Select(p => p.Name).ToList());
+                    }
+                } catch {
+                    // Ignore errors checking projects
+                }
+            }
+
+            // 2. Check repo name conflict in target project
+            string? projectIdToCheck = targetProjectId;
+            if (string.IsNullOrWhiteSpace(projectIdToCheck) && result.HasProjectConflict) {
+                // If project exists and we're creating new, check in existing project
+                projectIdToCheck = result.ExistingProjectId;
+            }
+
+            if (!string.IsNullOrWhiteSpace(projectIdToCheck)) {
+                try {
+                    var existingRepos = await gitClient.GetRepositoriesAsync(projectIdToCheck);
+                    var existingRepo = existingRepos.FirstOrDefault(r => 
+                        string.Equals(r.Name, repoName, StringComparison.OrdinalIgnoreCase));
+                    
+                    if (existingRepo != null) {
+                        result.HasRepoConflict = true;
+                        result.ExistingRepoId = existingRepo.Id.ToString();
+                        result.ExistingRepoName = existingRepo.Name;
+                        
+                        try {
+                            dynamic webLink = existingRepo.Links.Links["web"];
+                            result.ExistingRepoUrl = webLink.Href;
+                        } catch {
+                            // Ignore URL extraction errors
+                        }
+                        
+                        // Generate suggested alternative names
+                        result.SuggestedRepoNames = GenerateSuggestedNames(repoName, 
+                            existingRepos.Select(r => r.Name).ToList());
+                    }
+                } catch {
+                    // Ignore errors checking repos
+                }
+            }
+
+            // 3. Check for duplicate import (same source URL already imported)
+            // This checks if any repo in the org has a remote URL matching the source
+            // Note: This is a best-effort check - imports don't always preserve source URL
+            if (!string.IsNullOrWhiteSpace(targetProjectId)) {
+                try {
+                    var existingRepos = await gitClient.GetRepositoriesAsync(targetProjectId);
+                    foreach (var repo in existingRepos) {
+                        // Check if repo name suggests it came from this source
+                        var normalizedSourceName = ExtractRepoNameFromUrl(sourceUrl);
+                        if (string.Equals(repo.Name, normalizedSourceName, StringComparison.OrdinalIgnoreCase)) {
+                            // Likely a duplicate - warn the user
+                            result.IsDuplicateImport = true;
+                            result.PreviousImportRepoUrl = result.ExistingRepoUrl;
+                            // We don't have exact date, but the repo exists
+                            break;
+                        }
+                    }
+                } catch {
+                    // Ignore errors checking for duplicates
+                }
+            }
+
+        } catch (Exception) {
+            // Return empty result on error - let the actual import handle auth errors etc.
+        }
+
+        return result;
+    }
+
+    private List<string> GenerateSuggestedNames(string baseName, List<string> existingNames)
+    {
+        var suggestions = new List<string>();
+        var existingSet = new HashSet<string>(existingNames, StringComparer.OrdinalIgnoreCase);
+        
+        // Suggest with source indicator
+        var withGithub = $"{baseName}-github";
+        if (!existingSet.Contains(withGithub)) suggestions.Add(withGithub);
+        
+        // Suggest with "imported" suffix
+        var withImported = $"{baseName}-imported";
+        if (!existingSet.Contains(withImported)) suggestions.Add(withImported);
+        
+        // Suggest with date
+        var withDate = $"{baseName}-{DateTime.Now:yyyy-MM-dd}";
+        if (!existingSet.Contains(withDate)) suggestions.Add(withDate);
+        
+        // Suggest with incrementing number
+        for (int i = 2; i <= 5 && suggestions.Count < 4; i++) {
+            var withNumber = $"{baseName}-{i}";
+            if (!existingSet.Contains(withNumber)) suggestions.Add(withNumber);
+        }
+        
+        return suggestions.Take(4).ToList();
+    }
+
+    private string ExtractRepoNameFromUrl(string url)
+    {
+        try {
+            var uri = new Uri(url);
+            var pathParts = uri.AbsolutePath.Trim('/').Split('/');
+            return pathParts.LastOrDefault()?.Replace(".git", "") ?? "";
+        } catch {
+            return "";
+        }
     }
 
     /// <summary>

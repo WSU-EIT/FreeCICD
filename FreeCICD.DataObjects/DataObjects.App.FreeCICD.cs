@@ -38,6 +38,9 @@ public partial class DataObjects
             /// <summary>Validate a public Git URL and retrieve repository metadata.</summary>
             public const string ValidateUrl = "api/Data/ValidatePublicRepoUrl";
             
+            /// <summary>Check for conflicts before starting import.</summary>
+            public const string CheckConflicts = "api/Data/CheckImportConflicts";
+            
             /// <summary>Start importing a public repository into Azure DevOps.</summary>
             public const string Start = "api/Data/StartPublicRepoImport";
             
@@ -670,6 +673,66 @@ public partial class DataObjects
     }
 
     /// <summary>
+    /// How to handle conflicts when importing a repository.
+    /// </summary>
+    public enum ImportConflictMode
+    {
+        /// <summary>Create new repository (default, always safe).</summary>
+        CreateNew,
+        /// <summary>Import to a new branch in existing repository.</summary>
+        ImportToBranch,
+        /// <summary>DANGER: Replace main branch content in existing repo.</summary>
+        ReplaceMain,
+        /// <summary>User chose to cancel the import.</summary>
+        Cancel
+    }
+
+    /// <summary>
+    /// Information about conflicts detected before import.
+    /// </summary>
+    public class ImportConflictInfo
+    {
+        /// <summary>Whether a project with the same name exists.</summary>
+        public bool HasProjectConflict { get; set; }
+        
+        /// <summary>ID of existing project (if conflict).</summary>
+        public string? ExistingProjectId { get; set; }
+        
+        /// <summary>Name of existing project (if conflict).</summary>
+        public string? ExistingProjectName { get; set; }
+        
+        /// <summary>Whether a repository with the same name exists in target project.</summary>
+        public bool HasRepoConflict { get; set; }
+        
+        /// <summary>ID of existing repository (if conflict).</summary>
+        public string? ExistingRepoId { get; set; }
+        
+        /// <summary>Name of existing repository (if conflict).</summary>
+        public string? ExistingRepoName { get; set; }
+        
+        /// <summary>URL to view existing repo in Azure DevOps.</summary>
+        public string? ExistingRepoUrl { get; set; }
+        
+        /// <summary>Whether this URL was already imported before.</summary>
+        public bool IsDuplicateImport { get; set; }
+        
+        /// <summary>When this URL was previously imported (if duplicate).</summary>
+        public DateTime? PreviousImportDate { get; set; }
+        
+        /// <summary>URL to the previously imported repo.</summary>
+        public string? PreviousImportRepoUrl { get; set; }
+        
+        /// <summary>Auto-generated alternative repository names.</summary>
+        public List<string> SuggestedRepoNames { get; set; } = [];
+        
+        /// <summary>Auto-generated alternative project names.</summary>
+        public List<string> SuggestedProjectNames { get; set; } = [];
+        
+        /// <summary>Whether any conflict exists.</summary>
+        public bool HasAnyConflict => HasProjectConflict || HasRepoConflict || IsDuplicateImport;
+    }
+
+    /// <summary>
     /// Information about a public Git repository, retrieved during URL validation.
     /// </summary>
     public class PublicGitRepoInfo
@@ -725,6 +788,17 @@ public partial class DataObjects
 
         /// <summary>Whether to navigate to the CI/CD wizard after import completes.</summary>
         public bool LaunchWizardAfter { get; set; } = true;
+
+        // === Conflict Resolution Fields ===
+        
+        /// <summary>How to handle conflicts (default: CreateNew = always safe).</summary>
+        public ImportConflictMode ConflictMode { get; set; } = ImportConflictMode.CreateNew;
+        
+        /// <summary>Branch name for ImportToBranch mode (e.g., "imported/github-2024-01-15").</summary>
+        public string? ImportBranchName { get; set; }
+        
+        /// <summary>Must be true to proceed with ReplaceMain mode. Safety check.</summary>
+        public bool ConfirmDestructiveAction { get; set; }
     }
 
     /// <summary>
@@ -761,5 +835,11 @@ public partial class DataObjects
 
         /// <summary>Detailed status message from Azure DevOps.</summary>
         public string? DetailedStatus { get; set; }
+        
+        /// <summary>The branch that was created (for ImportToBranch mode).</summary>
+        public string? ImportedBranchName { get; set; }
+        
+        /// <summary>Conflict information (populated by CheckImportConflicts).</summary>
+        public ImportConflictInfo? ConflictInfo { get; set; }
     }
 }
