@@ -41,6 +41,22 @@ public partial interface IDataAccess
     Task<DataObjects.PipelineRunsResponse> GetPipelineRunsForDashboardAsync(string pat, string orgName, string projectId, int pipelineId, int top = 5, string? connectionId = null);
     Task<DataObjects.PipelineYamlResponse> GetPipelineYamlContentAsync(string pat, string orgName, string projectId, int pipelineId, string? connectionId = null);
     DataObjects.ParsedPipelineSettings ParsePipelineYaml(string yamlContent, int? pipelineId = null, string? pipelineName = null, string? pipelinePath = null);
+
+    // Public Git Repository Import Methods
+    /// <summary>Validate a public Git URL and retrieve repository metadata.</summary>
+    Task<DataObjects.PublicGitRepoInfo> ValidatePublicGitRepoAsync(string url);
+    
+    /// <summary>Create a new Azure DevOps project.</summary>
+    Task<DataObjects.DevopsProjectInfo> CreateDevOpsProjectAsync(string pat, string orgName, string projectName, string? description = null, string? connectionId = null);
+    
+    /// <summary>Create a new Git repository in an Azure DevOps project.</summary>
+    Task<DataObjects.DevopsGitRepoInfo> CreateDevOpsRepoAsync(string pat, string orgName, string projectId, string repoName, string? connectionId = null);
+    
+    /// <summary>Import a public Git repository into Azure DevOps.</summary>
+    Task<DataObjects.ImportPublicRepoResponse> ImportPublicRepoAsync(string pat, string orgName, DataObjects.ImportPublicRepoRequest request, string? connectionId = null);
+    
+    /// <summary>Get the status of a repository import operation.</summary>
+    Task<DataObjects.ImportPublicRepoResponse> GetImportStatusAsync(string pat, string orgName, string projectId, string repoId, int importRequestId, string? connectionId = null);
 }
 
 public partial class DataAccess
@@ -1782,4 +1798,495 @@ public partial class DataAccess
     }
 
     #endregion Pipeline Dashboard Operations
+
+    #region Public Git Repository Import
+
+    /// <summary>
+    /// Validates a public Git repository URL and retrieves metadata.
+    /// For GitHub: Uses the GitHub API to get full repository details.
+    /// For other sources: Extracts information from URL pattern.
+    /// </summary>
+    public async Task<DataObjects.PublicGitRepoInfo> ValidatePublicGitRepoAsync(string url)
+    {
+        var result = new DataObjects.PublicGitRepoInfo { Url = url };
+
+        try {
+            // Basic URL validation
+            if (string.IsNullOrWhiteSpace(url)) {
+                result.IsValid = false;
+                result.ErrorMessage = "Please enter a Git repository URL.";
+                return result;
+            }
+
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) {
+                result.IsValid = false;
+                result.ErrorMessage = "Please enter a valid URL.";
+                return result;
+            }
+
+            // Detect source and parse URL
+            var host = uri.Host.ToLowerInvariant();
+            
+            if (host.Contains("github.com")) {
+                return await ValidateGitHubRepoAsync(url, uri);
+            } else if (host.Contains("gitlab.com")) {
+                return ParseGitLabUrl(url, uri);
+            } else if (host.Contains("bitbucket.org")) {
+                return ParseBitbucketUrl(url, uri);
+            } else {
+                // Generic Git URL - extract name from path
+                return ParseGenericGitUrl(url, uri);
+            }
+        } catch (Exception ex) {
+            result.IsValid = false;
+            result.ErrorMessage = $"Error validating repository: {ex.Message}";
+            return result;
+        }
+    }
+
+    private async Task<DataObjects.PublicGitRepoInfo> ValidateGitHubRepoAsync(string url, Uri uri)
+    {
+        var result = new DataObjects.PublicGitRepoInfo { Url = url, Source = "GitHub" };
+
+        try {
+            // Parse GitHub URL: https://github.com/{owner}/{repo}
+            var pathParts = uri.AbsolutePath.Trim('/').Split('/');
+            if (pathParts.Length < 2) {
+                result.IsValid = false;
+                result.ErrorMessage = "Invalid GitHub URL format. Expected: https://github.com/{owner}/{repo}";
+                return result;
+            }
+
+            var owner = pathParts[0];
+            var repo = pathParts[1].Replace(".git", "");
+
+            // Call GitHub API for full metadata
+            using var httpClient = new HttpClient();
+            httpClient.DefaultRequestHeaders.Add("User-Agent", "FreeCICD");
+            httpClient.Timeout = TimeSpan.FromSeconds(10);
+
+            var apiUrl = $"https://api.github.com/repos/{owner}/{repo}";
+            var response = await httpClient.GetAsync(apiUrl);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound) {
+                result.IsValid = false;
+                result.ErrorMessage = "Repository not found or is private.";
+                return result;
+            }
+
+            if (response.StatusCode == System.Net.HttpStatusCode.Forbidden) {
+                // Check for rate limiting
+                if (response.Headers.Contains("X-RateLimit-Remaining")) {
+                    var remaining = response.Headers.GetValues("X-RateLimit-Remaining").FirstOrDefault();
+                    if (remaining == "0") {
+                        var resetTime = response.Headers.GetValues("X-RateLimit-Reset").FirstOrDefault();
+                        if (long.TryParse(resetTime, out var resetUnix)) {
+                            var resetDateTime = DateTimeOffset.FromUnixTimeSeconds(resetUnix).LocalDateTime;
+                            var minutesRemaining = (int)Math.Ceiling((resetDateTime - DateTime.Now).TotalMinutes);
+                            result.IsValid = false;
+                            result.ErrorMessage = $"GitHub rate limit exceeded. Try again in {minutesRemaining} minutes.";
+                            return result;
+                        }
+                    }
+                }
+                result.IsValid = false;
+                result.ErrorMessage = "Access denied by GitHub API.";
+                return result;
+            }
+
+            if (!response.IsSuccessStatusCode) {
+                result.IsValid = false;
+                result.ErrorMessage = $"GitHub API error: {response.StatusCode}";
+                return result;
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            var repoData = System.Text.Json.JsonDocument.Parse(json);
+            var root = repoData.RootElement;
+
+            result.Name = root.GetProperty("name").GetString() ?? repo;
+            result.Owner = root.GetProperty("owner").GetProperty("login").GetString() ?? owner;
+            result.CloneUrl = root.GetProperty("clone_url").GetString() ?? $"https://github.com/{owner}/{repo}.git";
+            result.DefaultBranch = root.GetProperty("default_branch").GetString() ?? "main";
+            result.Description = root.TryGetProperty("description", out var desc) && desc.ValueKind != System.Text.Json.JsonValueKind.Null 
+                ? desc.GetString() 
+                : null;
+            result.SizeKB = root.TryGetProperty("size", out var size) ? size.GetInt64() : null;
+            result.IsValid = true;
+
+            return result;
+        } catch (TaskCanceledException) {
+            result.IsValid = false;
+            result.ErrorMessage = "Request timed out. Please check your connection and try again.";
+            return result;
+        } catch (HttpRequestException ex) {
+            result.IsValid = false;
+            result.ErrorMessage = $"Network error: {ex.Message}";
+            return result;
+        }
+    }
+
+    private DataObjects.PublicGitRepoInfo ParseGitLabUrl(string url, Uri uri)
+    {
+        // Parse GitLab URL: https://gitlab.com/{owner}/{repo}
+        var pathParts = uri.AbsolutePath.Trim('/').Split('/');
+        if (pathParts.Length < 2) {
+            return new DataObjects.PublicGitRepoInfo {
+                Url = url,
+                Source = "GitLab",
+                IsValid = false,
+                ErrorMessage = "Invalid GitLab URL format."
+            };
+        }
+
+        var owner = pathParts[0];
+        var repo = pathParts[1].Replace(".git", "");
+
+        return new DataObjects.PublicGitRepoInfo {
+            Url = url,
+            CloneUrl = url.EndsWith(".git") ? url : $"{url}.git",
+            Name = repo,
+            Owner = owner,
+            Source = "GitLab",
+            DefaultBranch = "main",
+            IsValid = true
+        };
+    }
+
+    private DataObjects.PublicGitRepoInfo ParseBitbucketUrl(string url, Uri uri)
+    {
+        // Parse Bitbucket URL: https://bitbucket.org/{owner}/{repo}
+        var pathParts = uri.AbsolutePath.Trim('/').Split('/');
+        if (pathParts.Length < 2) {
+            return new DataObjects.PublicGitRepoInfo {
+                Url = url,
+                Source = "Bitbucket",
+                IsValid = false,
+                ErrorMessage = "Invalid Bitbucket URL format."
+            };
+        }
+
+        var owner = pathParts[0];
+        var repo = pathParts[1].Replace(".git", "");
+
+        return new DataObjects.PublicGitRepoInfo {
+            Url = url,
+            CloneUrl = url.EndsWith(".git") ? url : $"{url}.git",
+            Name = repo,
+            Owner = owner,
+            Source = "Bitbucket",
+            DefaultBranch = "main",
+            IsValid = true
+        };
+    }
+
+    private DataObjects.PublicGitRepoInfo ParseGenericGitUrl(string url, Uri uri)
+    {
+        // Try to extract repo name from the URL path
+        var pathParts = uri.AbsolutePath.Trim('/').Split('/');
+        var lastPart = pathParts.LastOrDefault()?.Replace(".git", "") ?? "repository";
+
+        return new DataObjects.PublicGitRepoInfo {
+            Url = url,
+            CloneUrl = url.EndsWith(".git") ? url : $"{url}.git",
+            Name = lastPart,
+            Owner = pathParts.Length > 1 ? pathParts[^2] : "unknown",
+            Source = "Git",
+            DefaultBranch = "main",
+            IsValid = true
+        };
+    }
+
+    /// <summary>
+    /// Creates a new Azure DevOps project with Git source control.
+    /// Polls until the project is fully created (wellFormed state).
+    /// Returns ImportPublicRepoResponse with ProjectId/ProjectName on success, or ErrorMessage on failure.
+    /// </summary>
+    public async Task<DataObjects.DevopsProjectInfo> CreateDevOpsProjectAsync(string pat, string orgName, string projectName, string? description = null, string? connectionId = null)
+    {
+        try {
+            using var connection = CreateConnection(pat, orgName);
+            var projectClient = connection.GetClient<ProjectHttpClient>();
+
+            // Check if project already exists
+            try {
+                var existingProjects = await projectClient.GetProjects();
+                if (existingProjects.Any(p => string.Equals(p.Name, projectName, StringComparison.OrdinalIgnoreCase))) {
+                    // Return existing project info (caller should check if this is intended)
+                    var existing = existingProjects.First(p => string.Equals(p.Name, projectName, StringComparison.OrdinalIgnoreCase));
+                    throw new InvalidOperationException($"Project '{projectName}' already exists.");
+                }
+            } catch (InvalidOperationException) {
+                throw; // Re-throw our own exception
+            } catch {
+                // Ignore errors checking existing projects
+            }
+
+            // Create new project with Git source control
+            var projectToCreate = new TeamProject {
+                Name = projectName,
+                Description = description ?? $"Imported from public repository",
+                Capabilities = new Dictionary<string, Dictionary<string, string>> {
+                    ["versioncontrol"] = new Dictionary<string, string> { ["sourceControlType"] = "Git" },
+                    ["processTemplate"] = new Dictionary<string, string> { ["templateTypeId"] = "6b724908-ef14-45cf-84f8-768b5384da45" } // Agile
+                }
+            };
+
+            if (!string.IsNullOrWhiteSpace(connectionId)) {
+                await SignalRUpdate(new DataObjects.SignalRUpdate {
+                    UpdateType = DataObjects.SignalRUpdateType.LoadingDevOpsInfoStatusUpdate,
+                    ConnectionId = connectionId,
+                    ItemId = Guid.NewGuid(),
+                    Message = $"Creating project '{projectName}'..."
+                });
+            }
+
+            var operationRef = await projectClient.QueueCreateProject(projectToCreate);
+
+            // Poll for project creation completion (max 60 seconds)
+            var maxWait = TimeSpan.FromSeconds(60);
+            var pollInterval = TimeSpan.FromSeconds(2);
+            var elapsed = TimeSpan.Zero;
+
+            while (elapsed < maxWait) {
+                await Task.Delay(pollInterval);
+                elapsed += pollInterval;
+
+                try {
+                    var project = await projectClient.GetProject(projectName);
+                    if (project != null && project.State == ProjectState.WellFormed) {
+                        dynamic webLink = project.Links.Links["web"];
+                        return new DataObjects.DevopsProjectInfo {
+                            ProjectId = project.Id.ToString(),
+                            ProjectName = project.Name,
+                            CreationDate = project.LastUpdateTime,
+                            ResourceUrl = webLink.Href
+                        };
+                    }
+                } catch {
+                    // Project not ready yet, continue polling
+                }
+            }
+
+            throw new TimeoutException("Project creation timed out. The project may still be creating in Azure DevOps.");
+
+        } catch (Exception) {
+            throw; // Let caller handle the exception
+        }
+    }
+
+    /// <summary>
+    /// Creates a new Git repository in an Azure DevOps project.
+    /// Throws exception if repo already exists or on error.
+    /// </summary>
+    public async Task<DataObjects.DevopsGitRepoInfo> CreateDevOpsRepoAsync(string pat, string orgName, string projectId, string repoName, string? connectionId = null)
+    {
+        try {
+            using var connection = CreateConnection(pat, orgName);
+            var gitClient = connection.GetClient<GitHttpClient>();
+
+            // Check if repo already exists
+            var existingRepos = await gitClient.GetRepositoriesAsync(projectId);
+            if (existingRepos.Any(r => string.Equals(r.Name, repoName, StringComparison.OrdinalIgnoreCase))) {
+                throw new InvalidOperationException($"Repository '{repoName}' already exists in this project.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(connectionId)) {
+                await SignalRUpdate(new DataObjects.SignalRUpdate {
+                    UpdateType = DataObjects.SignalRUpdateType.LoadingDevOpsInfoStatusUpdate,
+                    ConnectionId = connectionId,
+                    ItemId = Guid.NewGuid(),
+                    Message = $"Creating repository '{repoName}'..."
+                });
+            }
+
+            var newRepo = new GitRepositoryCreateOptions {
+                Name = repoName,
+                ProjectReference = new TeamProjectReference { Id = new Guid(projectId) }
+            };
+
+            var createdRepo = await gitClient.CreateRepositoryAsync(newRepo);
+
+            dynamic webLink = createdRepo.Links.Links["web"];
+            return new DataObjects.DevopsGitRepoInfo {
+                RepoId = createdRepo.Id.ToString(),
+                RepoName = createdRepo.Name,
+                ResourceUrl = webLink.Href
+            };
+
+        } catch (Exception) {
+            throw; // Let caller handle the exception
+        }
+    }
+
+    /// <summary>
+    /// Imports a public Git repository into Azure DevOps.
+    /// Creates project (if needed) and repo, then starts the Azure DevOps import.
+    /// </summary>
+    public async Task<DataObjects.ImportPublicRepoResponse> ImportPublicRepoAsync(string pat, string orgName, DataObjects.ImportPublicRepoRequest request, string? connectionId = null)
+    {
+        var result = new DataObjects.ImportPublicRepoResponse();
+
+        try {
+            // Validate request
+            if (string.IsNullOrWhiteSpace(request.SourceUrl)) {
+                result.Success = false;
+                result.ErrorMessage = "Source URL is required.";
+                return result;
+            }
+
+            // Validate the source URL first
+            var repoInfo = await ValidatePublicGitRepoAsync(request.SourceUrl);
+            if (!repoInfo.IsValid) {
+                result.Success = false;
+                result.ErrorMessage = repoInfo.ErrorMessage;
+                return result;
+            }
+
+            using var connection = CreateConnection(pat, orgName);
+            var gitClient = connection.GetClient<GitHttpClient>();
+            var projectClient = connection.GetClient<ProjectHttpClient>();
+
+            string projectId;
+            string projectName;
+
+            // Step 1: Get or create project
+            if (!string.IsNullOrWhiteSpace(request.TargetProjectId)) {
+                // Use existing project
+                projectId = request.TargetProjectId;
+                var project = await projectClient.GetProject(projectId);
+                projectName = project.Name;
+            } else if (!string.IsNullOrWhiteSpace(request.NewProjectName)) {
+                // Create new project
+                try {
+                    var projectResult = await CreateDevOpsProjectAsync(pat, orgName, request.NewProjectName, repoInfo.Description, connectionId);
+                    projectId = projectResult.ProjectId!;
+                    projectName = projectResult.ProjectName!;
+                } catch (Exception ex) {
+                    result.Success = false;
+                    result.ErrorMessage = ex.Message;
+                    return result;
+                }
+            } else {
+                result.Success = false;
+                result.ErrorMessage = "Either TargetProjectId or NewProjectName is required.";
+                return result;
+            }
+
+            result.ProjectId = projectId;
+            result.ProjectName = projectName;
+
+            // Step 2: Create repository
+            var targetRepoName = request.TargetRepoName ?? repoInfo.Name;
+            try {
+                var repoResult = await CreateDevOpsRepoAsync(pat, orgName, projectId, targetRepoName, connectionId);
+                result.RepoId = repoResult.RepoId;
+                result.RepoName = repoResult.RepoName;
+                result.RepoUrl = repoResult.ResourceUrl;
+            } catch (Exception ex) {
+                result.Success = false;
+                result.ErrorMessage = ex.Message;
+                return result;
+            }
+
+            // Step 3: Start import
+            if (!string.IsNullOrWhiteSpace(connectionId)) {
+                await SignalRUpdate(new DataObjects.SignalRUpdate {
+                    UpdateType = DataObjects.SignalRUpdateType.LoadingDevOpsInfoStatusUpdate,
+                    ConnectionId = connectionId,
+                    ItemId = Guid.NewGuid(),
+                    Message = "Starting repository import..."
+                });
+            }
+
+            var importRequest = new GitImportRequest {
+                Parameters = new GitImportRequestParameters {
+                    GitSource = new GitImportGitSource {
+                        Url = repoInfo.CloneUrl
+                    }
+                }
+            };
+
+            var importResult = await gitClient.CreateImportRequestAsync(
+                importRequest,
+                projectId,
+                new Guid(result.RepoId!)
+            );
+
+            result.ImportRequestId = importResult.ImportRequestId;
+            result.Status = MapImportStatus(importResult.Status);
+            result.Success = true;
+
+            return result;
+
+        } catch (Exception ex) {
+            result.Success = false;
+            result.ErrorMessage = $"Error importing repository: {ex.Message}";
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// Gets the status of a repository import operation.
+    /// </summary>
+    public async Task<DataObjects.ImportPublicRepoResponse> GetImportStatusAsync(string pat, string orgName, string projectId, string repoId, int importRequestId, string? connectionId = null)
+    {
+        var result = new DataObjects.ImportPublicRepoResponse {
+            ProjectId = projectId,
+            RepoId = repoId,
+            ImportRequestId = importRequestId
+        };
+
+        try {
+            using var connection = CreateConnection(pat, orgName);
+            var gitClient = connection.GetClient<GitHttpClient>();
+
+            var importRequest = await gitClient.GetImportRequestAsync(
+                projectId,
+                new Guid(repoId),
+                importRequestId
+            );
+
+            result.Status = MapImportStatus(importRequest.Status);
+            result.Success = result.Status == DataObjects.ImportStatus.Completed;
+
+            if (importRequest.Status == GitAsyncOperationStatus.Failed) {
+                result.Success = false;
+                result.ErrorMessage = importRequest.DetailedStatus?.ErrorMessage ?? "Import failed.";
+                result.DetailedStatus = importRequest.DetailedStatus?.AllSteps?.LastOrDefault()?.ToString();
+            }
+
+            // Get the repo URL
+            if (result.Status == DataObjects.ImportStatus.Completed) {
+                try {
+                    var repo = await gitClient.GetRepositoryAsync(projectId, repoId);
+                    dynamic webLink = repo.Links.Links["web"];
+                    result.RepoUrl = webLink.Href;
+                } catch {
+                    // Ignore errors getting repo URL
+                }
+            }
+
+            return result;
+
+        } catch (Exception ex) {
+            result.Success = false;
+            result.ErrorMessage = $"Error checking import status: {ex.Message}";
+            return result;
+        }
+    }
+
+    private static DataObjects.ImportStatus MapImportStatus(GitAsyncOperationStatus status)
+    {
+        return status switch {
+            GitAsyncOperationStatus.Queued => DataObjects.ImportStatus.Queued,
+            GitAsyncOperationStatus.InProgress => DataObjects.ImportStatus.InProgress,
+            GitAsyncOperationStatus.Completed => DataObjects.ImportStatus.Completed,
+            GitAsyncOperationStatus.Failed => DataObjects.ImportStatus.Failed,
+            GitAsyncOperationStatus.Abandoned => DataObjects.ImportStatus.Failed,
+            _ => DataObjects.ImportStatus.NotStarted
+        };
+    }
+
+    #endregion Public Git Repository Import
 }

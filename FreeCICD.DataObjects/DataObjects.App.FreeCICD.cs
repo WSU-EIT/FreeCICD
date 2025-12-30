@@ -29,6 +29,21 @@ public partial class DataObjects
             public const string ParsePipelineYaml = "api/Pipelines/{id}/parse";
             public const string ParsePipelineSettings = "api/Pipelines/{id}/parse"; // Alias for wizard import
         }
+
+        /// <summary>
+        /// Endpoints for importing public Git repositories into Azure DevOps.
+        /// </summary>
+        public static class Import
+        {
+            /// <summary>Validate a public Git URL and retrieve repository metadata.</summary>
+            public const string ValidateUrl = "api/Data/ValidatePublicRepoUrl";
+            
+            /// <summary>Start importing a public repository into Azure DevOps.</summary>
+            public const string Start = "api/Data/StartPublicRepoImport";
+            
+            /// <summary>Get the status of an import operation. Append /{projectId}/{repoId}/{requestId}.</summary>
+            public const string GetStatus = "api/Data/GetPublicRepoImportStatus";
+        }
     }
 
     public static class StepNameList
@@ -636,5 +651,115 @@ public partial class DataObjects
         public List<PipelineRunInfo> Runs { get; set; } = [];
         public bool Success { get; set; }
         public string? ErrorMessage { get; set; }
+    }
+
+    // ========================================================
+    // Public Git Repository Import Feature
+    // ========================================================
+
+    /// <summary>
+    /// Status of a public repository import operation.
+    /// </summary>
+    public enum ImportStatus
+    {
+        NotStarted,
+        Queued,
+        InProgress,
+        Completed,
+        Failed
+    }
+
+    /// <summary>
+    /// Information about a public Git repository, retrieved during URL validation.
+    /// </summary>
+    public class PublicGitRepoInfo
+    {
+        /// <summary>Original URL provided by the user.</summary>
+        public string Url { get; set; } = string.Empty;
+
+        /// <summary>Normalized clone URL (with .git suffix) for Azure DevOps import.</summary>
+        public string CloneUrl { get; set; } = string.Empty;
+
+        /// <summary>Repository name (e.g., "aspnetcore").</summary>
+        public string Name { get; set; } = string.Empty;
+
+        /// <summary>Owner or organization name (e.g., "dotnet").</summary>
+        public string Owner { get; set; } = string.Empty;
+
+        /// <summary>Default branch name (e.g., "main" or "master").</summary>
+        public string DefaultBranch { get; set; } = "main";
+
+        /// <summary>Repository description, if available.</summary>
+        public string? Description { get; set; }
+
+        /// <summary>Source platform: "GitHub", "GitLab", "Bitbucket", or "Git".</summary>
+        public string Source { get; set; } = "Git";
+
+        /// <summary>Size in KB (GitHub only). Null if unavailable.</summary>
+        public long? SizeKB { get; set; }
+
+        /// <summary>Whether the URL validation succeeded.</summary>
+        public bool IsValid { get; set; }
+
+        /// <summary>Error message if validation failed.</summary>
+        public string? ErrorMessage { get; set; }
+    }
+
+    /// <summary>
+    /// Request to import a public Git repository into Azure DevOps.
+    /// Note: PAT and OrgName are passed via request headers (DevOpsPAT, DevOpsOrg).
+    /// </summary>
+    public class ImportPublicRepoRequest
+    {
+        /// <summary>Public repository URL to import from (e.g., "https://github.com/dotnet/aspnetcore").</summary>
+        public string SourceUrl { get; set; } = string.Empty;
+
+        /// <summary>Target Azure DevOps project ID. If null, a new project will be created.</summary>
+        public string? TargetProjectId { get; set; }
+
+        /// <summary>Name for new project (required if TargetProjectId is null).</summary>
+        public string? NewProjectName { get; set; }
+
+        /// <summary>Override repository name (defaults to source repo name if null).</summary>
+        public string? TargetRepoName { get; set; }
+
+        /// <summary>Whether to navigate to the CI/CD wizard after import completes.</summary>
+        public bool LaunchWizardAfter { get; set; } = true;
+    }
+
+    /// <summary>
+    /// Response from a public repository import operation.
+    /// </summary>
+    public class ImportPublicRepoResponse
+    {
+        /// <summary>Whether the operation was successful.</summary>
+        public bool Success { get; set; }
+
+        /// <summary>Error message if the operation failed.</summary>
+        public string? ErrorMessage { get; set; }
+
+        /// <summary>Azure DevOps project ID (created or existing).</summary>
+        public string? ProjectId { get; set; }
+
+        /// <summary>Azure DevOps project name.</summary>
+        public string? ProjectName { get; set; }
+
+        /// <summary>Created repository ID.</summary>
+        public string? RepoId { get; set; }
+
+        /// <summary>Created repository name.</summary>
+        public string? RepoName { get; set; }
+
+        /// <summary>Azure DevOps import request ID (for status polling).</summary>
+        public int? ImportRequestId { get; set; }
+
+        /// <summary>Current import status.</summary>
+        public ImportStatus Status { get; set; } = ImportStatus.NotStarted;
+
+        /// <summary>URL to view the repository in Azure DevOps.</summary>
+        public string? RepoUrl { get; set; }
+
+        /// <summary>Detailed status message from Azure DevOps.</summary>
+        public string? DetailedStatus { get; set; }
     }
 }

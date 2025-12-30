@@ -565,20 +565,20 @@
 
 ## Implementation Checklist (Revised)
 
-### Phase 1: Data Layer (1 hour) ⬜
-- [ ] 1.1 Add `ImportStatus` enum to DataObjects
-- [ ] 1.2 Add `PublicGitRepoInfo` class
-- [ ] 1.3 Add `ImportPublicRepoRequest` class
-- [ ] 1.4 Add `ImportPublicRepoResponse` class
-- [ ] 1.5 Add API endpoint constants to `Endpoints.Import`
-- [ ] 1.6 Add method signatures to DataAccess (including `CreateDevOpsRepoAsync`)
+### Phase 1: Data Layer (1 hour) ✅ COMPLETE
+- [x] 1.1 Add `ImportStatus` enum to DataObjects
+- [x] 1.2 Add `PublicGitRepoInfo` class
+- [x] 1.3 Add `ImportPublicRepoRequest` class
+- [x] 1.4 Add `ImportPublicRepoResponse` class
+- [x] 1.5 Add API endpoint constants to `Endpoints.Import`
+- [x] 1.6 Add method signatures to DataAccess (including `CreateDevOpsRepoAsync`)
 
-### Phase 2: Import Logic (2 hours) ⬜
-- [ ] 2.1 Implement `ValidatePublicGitRepoAsync()` — GitHub API + pattern matching
-- [ ] 2.2 Implement `CreateDevOpsProjectAsync()` — with polling
-- [ ] 2.3 Implement `CreateDevOpsRepoAsync()` — with conflict check
-- [ ] 2.4 Implement `ImportPublicRepoAsync()` — orchestrates all
-- [ ] 2.5 Implement `GetImportStatusAsync()` — status polling
+### Phase 2: Import Logic (2 hours) ✅ COMPLETE
+- [x] 2.1 Implement `ValidatePublicGitRepoAsync()` — GitHub API + pattern matching
+- [x] 2.2 Implement `CreateDevOpsProjectAsync()` — with polling
+- [x] 2.3 Implement `CreateDevOpsRepoAsync()` — with conflict check
+- [x] 2.4 Implement `ImportPublicRepoAsync()` — orchestrates all
+- [x] 2.5 Implement `GetImportStatusAsync()` — status polling
 - [ ] 2.6 Add endpoint `POST /api/Data/ValidatePublicRepoUrl`
 - [ ] 2.7 Add endpoint `POST /api/Data/StartPublicRepoImport`
 - [ ] 2.8 Add endpoint `GET /api/Data/GetPublicRepoImportStatus/{projectId}/{repoId}/{requestId}`
