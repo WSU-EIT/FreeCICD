@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FreeCICD.Server.Controllers;
@@ -306,4 +306,138 @@ public partial class DataController
     }
 
     #endregion Git & Pipeline Endpoints
+
+    #region Public Git Repository Import Endpoints
+
+    /// <summary>
+    /// Validates a public Git repository URL and retrieves metadata.
+    /// No authentication required - just validates the URL exists and extracts info.
+    /// </summary>
+    [HttpPost($"~/{DataObjects.Endpoints.Import.ValidateUrl}")]
+    [AllowAnonymous]
+    public async Task<ActionResult<DataObjects.PublicGitRepoInfo>> ValidatePublicRepoUrl([FromBody] ValidateUrlRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request?.Url)) {
+            return BadRequest("URL is required.");
+        }
+
+        var result = await da.ValidatePublicGitRepoAsync(request.Url);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Checks for conflicts before starting an import (project/repo name conflicts, duplicate imports).
+    /// Requires PAT via headers to check against Azure DevOps.
+    /// </summary>
+    [HttpPost($"~/{DataObjects.Endpoints.Import.CheckConflicts}")]
+    [AllowAnonymous]
+    public async Task<ActionResult<DataObjects.ImportConflictInfo>> CheckImportConflicts([FromBody] CheckConflictsRequest request)
+    {
+        // Get PAT and org from headers (following existing pattern)
+        var pat = Request.Headers["DevOpsPAT"].FirstOrDefault();
+        var orgName = Request.Headers["DevOpsOrg"].FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(pat) || string.IsNullOrWhiteSpace(orgName)) {
+            // Try from logged in user config
+            if (CurrentUser.Enabled) {
+                var config = GetReleasePipelinesDevOpsConfig();
+                pat = config.pat;
+                orgName = config.orgName;
+            } else {
+                return BadRequest("PAT and OrgName are required. Pass via DevOpsPAT and DevOpsOrg headers.");
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(request?.RepoName)) {
+            return BadRequest("RepoName is required.");
+        }
+
+        var result = await da.CheckImportConflictsAsync(
+            pat, orgName,
+            request.TargetProjectId,
+            request.NewProjectName,
+            request.RepoName,
+            request.SourceUrl ?? ""
+        );
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Starts importing a public Git repository into Azure DevOps.
+    /// Creates project (if needed), creates repo, and initiates the import.
+    /// </summary>
+    [HttpPost($"~/{DataObjects.Endpoints.Import.Start}")]
+    [AllowAnonymous]
+    public async Task<ActionResult<DataObjects.ImportPublicRepoResponse>> StartPublicRepoImport([FromBody] DataObjects.ImportPublicRepoRequest request, [FromQuery] string? connectionId = null)
+    {
+        // Get PAT and org from headers
+        var pat = Request.Headers["DevOpsPAT"].FirstOrDefault();
+        var orgName = Request.Headers["DevOpsOrg"].FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(pat) || string.IsNullOrWhiteSpace(orgName)) {
+            if (CurrentUser.Enabled) {
+                var config = GetReleasePipelinesDevOpsConfig();
+                pat = config.pat;
+                orgName = config.orgName;
+            } else {
+                return BadRequest("PAT and OrgName are required. Pass via DevOpsPAT and DevOpsOrg headers.");
+            }
+        }
+
+        if (request == null || string.IsNullOrWhiteSpace(request.SourceUrl)) {
+            return BadRequest("SourceUrl is required.");
+        }
+
+        // Safety check: ReplaceMain mode requires explicit confirmation
+        if (request.ConflictMode == DataObjects.ImportConflictMode.ReplaceMain && !request.ConfirmDestructiveAction) {
+            return BadRequest("ReplaceMain mode requires ConfirmDestructiveAction to be true. This action will overwrite existing repository content.");
+        }
+
+        var result = await da.ImportPublicRepoAsync(pat, orgName, request, connectionId);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Gets the status of an import operation.
+    /// Poll this endpoint to track import progress.
+    /// </summary>
+    [HttpGet($"~/{DataObjects.Endpoints.Import.GetStatus}/{{projectId}}/{{repoId}}/{{requestId}}")]
+    [AllowAnonymous]
+    public async Task<ActionResult<DataObjects.ImportPublicRepoResponse>> GetPublicRepoImportStatus(string projectId, string repoId, int requestId, [FromQuery] string? connectionId = null)
+    {
+        // Get PAT and org from headers
+        var pat = Request.Headers["DevOpsPAT"].FirstOrDefault();
+        var orgName = Request.Headers["DevOpsOrg"].FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(pat) || string.IsNullOrWhiteSpace(orgName)) {
+            if (CurrentUser.Enabled) {
+                var config = GetReleasePipelinesDevOpsConfig();
+                pat = config.pat;
+                orgName = config.orgName;
+            } else {
+                return BadRequest("PAT and OrgName are required. Pass via DevOpsPAT and DevOpsOrg headers.");
+            }
+        }
+
+        var result = await da.GetImportStatusAsync(pat, orgName, projectId, repoId, requestId, connectionId);
+        return Ok(result);
+    }
+
+    #endregion Public Git Repository Import Endpoints
+
+    #region Import Request DTOs
+
+    /// <summary>Request DTO for URL validation.</summary>
+    public record ValidateUrlRequest(string Url);
+
+    /// <summary>Request DTO for conflict checking.</summary>
+    public record CheckConflictsRequest(
+        string? TargetProjectId,
+        string? NewProjectName,
+        string RepoName,
+        string? SourceUrl
+    );
+
+    #endregion Import Request DTOs
 }

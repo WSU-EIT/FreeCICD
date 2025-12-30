@@ -501,32 +501,32 @@ When importing a repository, we may encounter:
 - [x] 1.7 Add API endpoint constants to `Endpoints.Import`
 - [x] 1.8 Add method signatures to DataAccess
 
-### Phase 2: Import Logic (2.5 hours) ✅ MOSTLY COMPLETE
+### Phase 2: Import Logic (2.5 hours) ✅ COMPLETE
 - [x] 2.1 Implement `ValidatePublicGitRepoAsync()` — GitHub API + pattern matching
 - [x] 2.2 Implement `CheckImportConflictsAsync()` — conflict detection + suggestions
 - [x] 2.3 Implement `CreateDevOpsProjectAsync()` — with polling
 - [x] 2.4 Implement `CreateDevOpsRepoAsync()` — with conflict check
 - [x] 2.5 Implement `ImportPublicRepoAsync()` — orchestrates all
 - [x] 2.6 Implement `GetImportStatusAsync()` — status polling
-- [ ] 2.7 Add endpoint `POST /api/Data/ValidatePublicRepoUrl`
-- [ ] 2.8 Add endpoint `POST /api/Data/CheckImportConflicts`
-- [ ] 2.9 Add endpoint `POST /api/Data/StartPublicRepoImport`
-- [ ] 2.10 Add endpoint `GET /api/Data/GetPublicRepoImportStatus/{projectId}/{repoId}/{requestId}`
+- [x] 2.7 Add endpoint `POST /api/Data/ValidatePublicRepoUrl`
+- [x] 2.8 Add endpoint `POST /api/Data/CheckImportConflicts`
+- [x] 2.9 Add endpoint `POST /api/Data/StartPublicRepoImport`
+- [x] 2.10 Add endpoint `GET /api/Data/GetPublicRepoImportStatus/{projectId}/{repoId}/{requestId}`
 
-### Phase 3: UI Components (3.5 hours) ⬜
-- [ ] 3.1 Create `ImportPublicRepo.App.FreeCICD.razor` modal component
-- [ ] 3.2 Implement Step 1: URL input + validation
-- [ ] 3.3 Implement Step 2: Repo info + project selection
-- [ ] 3.4 Implement Conflict Resolution UI:
-  - [ ] Show conflict warning with ⚠️ icon
-  - [ ] Radio options: New branch / Replace (danger) / Rename / Cancel
-  - [ ] Auto-suggest alternative names
-  - [ ] Type-to-confirm for destructive actions
-  - [ ] 3-second delay before enabling destructive button
-- [ ] 3.5 Implement Step 3: Progress indicator with polling
-- [ ] 3.6 Implement Step 4: Success/error display
-- [ ] 3.7 Add import card to home page (`Index.App.FreeCICD.razor`)
-- [ ] 3.8 Add client-side API helper methods
+### Phase 3: UI Components (3.5 hours) ✅ COMPLETE
+- [x] 3.1 Create `ImportPublicRepo.App.FreeCICD.razor` modal component
+- [x] 3.2 Implement Step 1: URL input + validation
+- [x] 3.3 Implement Step 2: Repo info + project selection
+- [x] 3.4 Implement Conflict Resolution UI:
+  - [x] Show conflict warning with ⚠️ icon
+  - [x] Radio options: New branch / Replace (danger) / Rename / Cancel
+  - [x] Auto-suggest alternative names
+  - [x] Type-to-confirm for destructive actions
+  - [x] 3-second delay before enabling destructive button
+- [x] 3.5 Implement Step 3: Progress indicator with polling
+- [x] 3.6 Implement Step 4: Success/error display
+- [x] 3.7 Add import button to home page (`Index.App.FreeCICD.razor`)
+- [x] 3.8 Add client-side API helper methods (using existing Helpers.GetOrPost)
 
 ### Phase 4: Testing & Polish (2.5 hours) ⬜
 - [ ] 4.1 Test GitHub URL validation (valid, 404, rate limit)

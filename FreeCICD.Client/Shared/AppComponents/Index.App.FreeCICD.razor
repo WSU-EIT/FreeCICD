@@ -1,4 +1,4 @@
-@* FreeCICD Pipeline Wizard Component *@
+ï»¿@* FreeCICD Pipeline Wizard Component *@
 @* This component contains all FreeCICD-specific UI logic *@
 @* It is referenced from Index.App.razor to keep base files clean for upgrades *@
 
@@ -22,6 +22,9 @@
     
     // Track which fields were populated by import (for visual highlighting)
     protected HashSet<string> _importedFields = new();
+
+    // Import from public repo modal
+    protected ImportPublicRepo_App_FreeCICD? _importPublicRepoModal;
 
     public void Dispose()
     {
@@ -121,6 +124,14 @@
                         </div>
                     </div>
                 }
+
+                @* Quick Actions - Import from Public Repo *@
+                <div class="d-flex justify-content-end mb-3">
+                    <button class="btn btn-outline-primary btn-sm" @onclick="ShowImportPublicRepoModal">
+                        <i class="fa fa-cloud-download-alt me-1"></i>
+                        Import from GitHub/GitLab
+                    </button>
+                </div>
 
                 @* Wizard Stepper - Horizontal step indicator *@
                 <WizardStepper_App_FreeCICD Steps="@GetWizardSteps()" 
@@ -393,6 +404,12 @@
                     </div>
                 </div>
             </div>
+
+            @* Import from Public Repo Modal *@
+            <ImportPublicRepo_App_FreeCICD @ref="_importPublicRepoModal" 
+                                           DevOpsPAT="@DevOpsPAT"
+                                           OrgName="@OrgName"
+                                           OnImportComplete="@OnPublicRepoImportComplete" />
         }
     }
 }
@@ -533,7 +550,7 @@
                     } else { SelectedPipelineId = 0; ExistingYamlContent = ""; }
                     NewYamlContent = string.Empty;
                     StateHasChanged();
-                    _loadingMessages.Insert(0, new LoadingMessage { Message = "Generating YAML preview…", Created = DateTime.UtcNow });
+                    _loadingMessages.Insert(0, new LoadingMessage { Message = "Generating YAML previewâ€¦", Created = DateTime.UtcNow });
                     StateHasChanged();
                     try {
                         var response = await Helpers.GetOrPost<string>($"{DataObjects.Endpoints.DevOps.PreviewDevOpsYmlFileContents}", DevOpsPipelineRequest);
@@ -553,7 +570,7 @@
                 StateHasChanged();
                 
                 try {
-                    _loadingMessages.Insert(0, new LoadingMessage { Message = "Saving pipeline… please don't navigate away.", Created = DateTime.UtcNow });
+                    _loadingMessages.Insert(0, new LoadingMessage { Message = "Saving pipelineâ€¦ please don't navigate away.", Created = DateTime.UtcNow });
                     StateHasChanged();
                     
                     var createOrUpdateResult = await Helpers.GetOrPost<DataObjects.BuildDefinition>($"{DataObjects.Endpoints.DevOps.CreateOrUpdateDevOpsPipeline}", DevOpsPipelineRequest);
@@ -1269,5 +1286,26 @@
             }
             return "alert alert-secondary";
         }
+    }
+
+    /// <summary>
+    /// Shows the Import from Public Repo modal.
+    /// </summary>
+    protected void ShowImportPublicRepoModal()
+    {
+        _importPublicRepoModal?.Show();
+    }
+
+    /// <summary>
+    /// Handles completion of public repo import - refreshes the project list.
+    /// </summary>
+    protected async Task OnPublicRepoImportComplete()
+    {
+        // Refresh the project list to include the newly imported repo
+        if (!string.IsNullOrWhiteSpace(DevOpsPAT) && !string.IsNullOrWhiteSpace(OrgName))
+        {
+            await PATandOrgNameChangedWizard();
+        }
+        StateHasChanged();
     }
 }
