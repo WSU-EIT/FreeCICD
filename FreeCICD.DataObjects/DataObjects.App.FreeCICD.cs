@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
 namespace FreeCICD;
 
@@ -19,6 +19,15 @@ public partial class DataObjects
             public const string GetDevOpsYmlFileContent = "api/Data/GetDevOpsYmlFileContent";
             public const string CreateOrUpdateDevOpsPipeline = "api/Data/CreateOrUpdateDevOpsPipeline";
             public const string PreviewDevOpsYmlFileContents = "api/Data/PreviewDevOpsYmlFileContents";
+        }
+
+        public static class PipelineDashboard
+        {
+            public const string GetPipelinesList = "api/Pipelines";
+            public const string GetPipelineRuns = "api/Pipelines/{id}/runs";
+            public const string GetPipelineYaml = "api/Pipelines/{id}/yaml";
+            public const string ParsePipelineYaml = "api/Pipelines/{id}/parse";
+            public const string ParsePipelineSettings = "api/Pipelines/{id}/parse"; // Alias for wizard import
         }
     }
 
@@ -309,4 +318,323 @@ public partial class DataObjects
 
     public record FilePathRequest(string Path);
     public record FileContentRequest(List<string> FilePaths);
+
+    // ========================================================
+    // Pipeline Dashboard Data Models
+    // ========================================================
+
+    /// <summary>
+    /// Simplified trigger type for UI display and filtering.
+    /// Maps from Azure DevOps BuildReason enum.
+    /// </summary>
+    public enum TriggerType
+    {
+        /// <summary>User manually triggered the pipeline</summary>
+        Manual,
+        /// <summary>Code push triggered CI (IndividualCI or BatchedCI)</summary>
+        CodePush,
+        /// <summary>Scheduled trigger (cron-style)</summary>
+        Scheduled,
+        /// <summary>Pull request trigger</summary>
+        PullRequest,
+        /// <summary>Another pipeline's completion triggered this one</summary>
+        PipelineCompletion,
+        /// <summary>Resource trigger (container, package, etc.)</summary>
+        ResourceTrigger,
+        /// <summary>Unknown or other trigger type</summary>
+        Other
+    }
+
+    /// <summary>
+    /// Reference to a variable group used by a pipeline, with link to Azure DevOps.
+    /// </summary>
+    public class PipelineVariableGroupRef
+    {
+        public string Name { get; set; } = "";
+        public string? Environment { get; set; }
+        public int? Id { get; set; }
+        public int VariableCount { get; set; }
+        public string? ResourceUrl { get; set; }
+    }
+
+    /// <summary>
+    /// Represents a pipeline in the dashboard list view with status information.
+    /// </summary>
+    public class PipelineListItem
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public string? Path { get; set; }
+        public string? RepositoryName { get; set; }
+        public string? DefaultBranch { get; set; }
+        /// <summary>
+        /// The branch from the most recent build run (more accurate than DefaultBranch for showing what actually triggers).
+        /// </summary>
+        public string? TriggerBranch { get; set; }
+        public string? LastRunStatus { get; set; }
+        public string? LastRunResult { get; set; }
+        public DateTime? LastRunTime { get; set; }
+        public string? ResourceUrl { get; set; }
+        public string? YamlFileName { get; set; }
+        /// <summary>
+        /// Variable groups referenced by this pipeline (for appsettings.json replacement).
+        /// </summary>
+        public List<PipelineVariableGroupRef> VariableGroups { get; set; } = [];
+
+        // === Phase 1 Dashboard Enhancement Fields ===
+        
+        /// <summary>
+        /// Duration of the last run (FinishTime - StartTime).
+        /// </summary>
+        public TimeSpan? Duration { get; set; }
+        
+        /// <summary>
+        /// Build number from the last run (e.g., "20241219.3").
+        /// </summary>
+        public string? LastRunBuildNumber { get; set; }
+        
+        /// <summary>
+        /// Commit message from the last run (truncated for display).
+        /// </summary>
+        public string? LastCommitMessage { get; set; }
+        
+        /// <summary>
+        /// Short commit hash from the last run (first 7 characters).
+        /// </summary>
+        public string? LastCommitId { get; set; }
+
+        // === Phase 2 Clickability Enhancement Fields ===
+
+        /// <summary>
+        /// Full commit hash for building URLs.
+        /// </summary>
+        public string? LastCommitIdFull { get; set; }
+
+        /// <summary>
+        /// Direct URL to the commit in Azure DevOps.
+        /// Format: https://dev.azure.com/{org}/{project}/_git/{repo}/commit/{hash}
+        /// </summary>
+        public string? CommitUrl { get; set; }
+
+        /// <summary>
+        /// Direct URL to the repository in Azure DevOps.
+        /// Format: https://dev.azure.com/{org}/{project}/_git/{repo}
+        /// </summary>
+        public string? RepositoryUrl { get; set; }
+
+        /// <summary>
+        /// Direct URL to the pipeline runs page in Azure DevOps.
+        /// Format: https://dev.azure.com/{org}/{project}/_build?definitionId={id}
+        /// </summary>
+        public string? PipelineRunsUrl { get; set; }
+
+        /// <summary>
+        /// URL to edit this pipeline in the Wizard (internal navigation).
+        /// </summary>
+        public string? EditWizardUrl { get; set; }
+
+        // === Trigger information for the last run ===
+        
+        /// <summary>
+        /// Simplified trigger type for filtering and display.
+        /// </summary>
+        public TriggerType TriggerType { get; set; } = TriggerType.Other;
+        /// <summary>
+        /// Raw trigger reason from Azure DevOps (e.g., "individualCI", "manual", "schedule").
+        /// </summary>
+        public string? TriggerReason { get; set; }
+        /// <summary>
+        /// Human-readable trigger description (e.g., "Code push", "Manual", "Scheduled").
+        /// </summary>
+        public string? TriggerDisplayText { get; set; }
+        /// <summary>
+        /// User who triggered the build (display name only, not email for privacy).
+        /// </summary>
+        public string? TriggeredByUser { get; set; }
+        /// <summary>
+        /// If triggered by another pipeline, the name of that pipeline.
+        /// </summary>
+        public string? TriggeredByPipeline { get; set; }
+        /// <summary>
+        /// True if the trigger was automated (not a human clicking "Run").
+        /// </summary>
+        public bool IsAutomatedTrigger { get; set; }
+
+        // === Code Repository Information (from YAML BuildRepo) ===
+        
+        /// <summary>
+        /// Azure DevOps project containing the code (from YAML: resources.repositories.BuildRepo.name split on '/').
+        /// This is the project where the actual code lives, not the DevOps/ReleasePipelines project.
+        /// </summary>
+        public string? CodeProjectName { get; set; }
+        
+        /// <summary>
+        /// Actual code repository name being built (from YAML: resources.repositories.BuildRepo.name).
+        /// This is what users care about - the repo being built, not the YAML storage repo.
+        /// </summary>
+        public string? CodeRepoName { get; set; }
+        
+        /// <summary>
+        /// Branch in the code repository (from YAML: resources.repositories.BuildRepo.ref).
+        /// </summary>
+        public string? CodeBranch { get; set; }
+        
+        /// <summary>
+        /// Direct URL to the code repository in Azure DevOps.
+        /// Format: https://dev.azure.com/{org}/{codeProject}/_git/{codeRepo}
+        /// </summary>
+        public string? CodeRepoUrl { get; set; }
+        
+        /// <summary>
+        /// Direct URL to the branch in the code repository.
+        /// Format: https://dev.azure.com/{org}/{codeProject}/_git/{codeRepo}?version=GB{branch}
+        /// </summary>
+        public string? CodeBranchUrl { get; set; }
+    }
+
+    /// <summary>
+    /// Represents a single pipeline run with status and timing information.
+    /// </summary>
+    public class PipelineRunInfo
+    {
+        public int RunId { get; set; }
+        public string Status { get; set; } = "";
+        public string Result { get; set; } = "";
+        public DateTime? StartTime { get; set; }
+        public DateTime? FinishTime { get; set; }
+        public string? ResourceUrl { get; set; }
+        public string? SourceBranch { get; set; }
+        public string? SourceVersion { get; set; }
+
+        // Trigger information
+        /// <summary>
+        /// Simplified trigger type for filtering and display.
+        /// </summary>
+        public TriggerType TriggerType { get; set; } = TriggerType.Other;
+        /// <summary>
+        /// Raw trigger reason from Azure DevOps.
+        /// </summary>
+        public string? TriggerReason { get; set; }
+        /// <summary>
+        /// Human-readable trigger description.
+        /// </summary>
+        public string? TriggerDisplayText { get; set; }
+        /// <summary>
+        /// User who triggered the build (display name only).
+        /// </summary>
+        public string? TriggeredByUser { get; set; }
+        /// <summary>
+        /// True if the trigger was automated.
+        /// </summary>
+        public bool IsAutomatedTrigger { get; set; }
+    }
+
+    /// <summary>
+    /// Confidence level for parsed YAML field values.
+    /// </summary>
+    public enum ParseConfidence
+    {
+        /// <summary>Field was found in expected location with expected format.</summary>
+        High,
+        /// <summary>Field was found but in non-standard location or format.</summary>
+        Medium,
+        /// <summary>Field was inferred or partially matched.</summary>
+        Low
+    }
+
+    /// <summary>
+    /// Environment settings parsed from pipeline YAML.
+    /// </summary>
+    public class ParsedEnvironmentSettings
+    {
+        public string? EnvironmentName { get; set; }
+        public string? VariableGroupName { get; set; }
+        public string? WebsiteName { get; set; }
+        public string? VirtualPath { get; set; }
+        public string? AppPoolName { get; set; }
+        public string? IISDeploymentType { get; set; }
+        public string? BindingInfo { get; set; }
+        public ParseConfidence Confidence { get; set; } = ParseConfidence.Medium;
+    }
+
+    /// <summary>
+    /// Result of parsing a pipeline YAML file, containing extracted settings.
+    /// </summary>
+    public class ParsedPipelineSettings
+    {
+        public int? PipelineId { get; set; }
+        public string? PipelineName { get; set; }
+        public string? SelectedBranch { get; set; }
+        public string? SelectedCsprojPath { get; set; }
+        public string? ProjectName { get; set; }
+        public string? RepoName { get; set; }
+        public List<ParsedEnvironmentSettings> Environments { get; set; } = [];
+        public List<string> ParseWarnings { get; set; } = [];
+        public bool IsFreeCICDGenerated { get; set; }
+        public string? RawYaml { get; set; }
+        
+        // === Code Repository Information (from YAML BuildRepo) ===
+        
+        /// <summary>
+        /// Azure DevOps project containing the code (from YAML: resources.repositories.BuildRepo.name).
+        /// </summary>
+        public string? CodeProjectName { get; set; }
+        
+        /// <summary>
+        /// Actual code repository name being built (from YAML: resources.repositories.BuildRepo.name).
+        /// </summary>
+        public string? CodeRepoName { get; set; }
+        
+        /// <summary>
+        /// Branch in the code repository (from YAML: resources.repositories.BuildRepo.ref).
+        /// </summary>
+        public string? CodeBranch { get; set; }
+    }
+
+    /// <summary>
+    /// Request model for fetching pipeline YAML content.
+    /// </summary>
+    public class PipelineYamlRequest
+    {
+        public string Pat { get; set; } = "";
+        public string OrgName { get; set; } = "";
+        public string ProjectId { get; set; } = "";
+        public int PipelineId { get; set; }
+    }
+
+    /// <summary>
+    /// Response model containing pipeline YAML content.
+    /// </summary>
+    public class PipelineYamlResponse
+    {
+        public string Yaml { get; set; } = "";
+        public string? YamlFileName { get; set; }
+        public bool Success { get; set; }
+        public string? ErrorMessage { get; set; }
+    }
+
+    /// <summary>
+    /// Response model for the pipeline dashboard list.
+    /// </summary>
+    public class PipelineDashboardResponse
+    {
+        public List<PipelineListItem> Pipelines { get; set; } = [];
+        public int TotalCount { get; set; }
+        public bool Success { get; set; }
+        public string? ErrorMessage { get; set; }
+        /// <summary>
+        /// All variable groups available in the project, for linking and lookup.
+        /// </summary>
+        public List<DevopsVariableGroup> AvailableVariableGroups { get; set; } = [];
+    }
+
+    /// <summary>
+    /// Response model for pipeline runs.
+    /// </summary>
+    public class PipelineRunsResponse
+    {
+        public List<PipelineRunInfo> Runs { get; set; } = [];
+        public bool Success { get; set; }
+        public string? ErrorMessage { get; set; }
+    }
 }

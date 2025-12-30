@@ -28,4 +28,8 @@
     <ProjectReference Include="..\FreeCICD.DataObjects\FreeCICD.DataObjects.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Docs\" />
+  </ItemGroup>
+
 </Project>

@@ -20,6 +20,117 @@ public partial class DataController
         return (orgName, pat, projectId, repoId, branch);
     }
 
+    #region Pipeline Dashboard Endpoints
+
+    /// <summary>
+    /// Gets all pipelines for the dashboard view with status information.
+    /// </summary>
+    [HttpGet($"~/{DataObjects.Endpoints.PipelineDashboard.GetPipelinesList}")]
+    [AllowAnonymous]
+    public async Task<ActionResult<DataObjects.PipelineDashboardResponse>> GetPipelinesDashboard([FromQuery] string? projectId = null, [FromQuery] string? pat = null, [FromQuery] string? orgName = null, [FromQuery] string? connectionId = null)
+    {
+        DataObjects.PipelineDashboardResponse output;
+
+        if (CurrentUser.Enabled) {
+            var config = GetReleasePipelinesDevOpsConfig();
+            output = await da.GetPipelineDashboardAsync(config.pat, config.orgName, projectId ?? config.projectId, connectionId);
+        } else if (!string.IsNullOrWhiteSpace(pat) && !string.IsNullOrWhiteSpace(orgName) && !string.IsNullOrWhiteSpace(projectId)) {
+            output = await da.GetPipelineDashboardAsync(pat, orgName, projectId, connectionId);
+        } else {
+            return BadRequest("No PAT or OrgName provided and user is not logged in.");
+        }
+
+        return Ok(output);
+    }
+
+    /// <summary>
+    /// Gets recent runs for a specific pipeline.
+    /// </summary>
+    [HttpGet("~/api/Pipelines/{pipelineId}/runs")]
+    [AllowAnonymous]
+    public async Task<ActionResult<DataObjects.PipelineRunsResponse>> GetPipelineRuns(int pipelineId, [FromQuery] int top = 5, [FromQuery] string? projectId = null, [FromQuery] string? pat = null, [FromQuery] string? orgName = null, [FromQuery] string? connectionId = null)
+    {
+        DataObjects.PipelineRunsResponse output;
+
+        if (CurrentUser.Enabled) {
+            var config = GetReleasePipelinesDevOpsConfig();
+            output = await da.GetPipelineRunsForDashboardAsync(config.pat, config.orgName, projectId ?? config.projectId, pipelineId, top, connectionId);
+        } else if (!string.IsNullOrWhiteSpace(pat) && !string.IsNullOrWhiteSpace(orgName) && !string.IsNullOrWhiteSpace(projectId)) {
+            output = await da.GetPipelineRunsForDashboardAsync(pat, orgName, projectId, pipelineId, top, connectionId);
+        } else {
+            return BadRequest("No PAT or OrgName provided and user is not logged in.");
+        }
+
+        return Ok(output);
+    }
+
+    /// <summary>
+    /// Gets the raw YAML content for a specific pipeline.
+    /// </summary>
+    [HttpGet("~/api/Pipelines/{pipelineId}/yaml")]
+    [AllowAnonymous]
+    public async Task<ActionResult<DataObjects.PipelineYamlResponse>> GetPipelineYaml(int pipelineId, [FromQuery] string? projectId = null, [FromQuery] string? pat = null, [FromQuery] string? orgName = null, [FromQuery] string? connectionId = null)
+    {
+        DataObjects.PipelineYamlResponse output;
+
+        if (CurrentUser.Enabled) {
+            var config = GetReleasePipelinesDevOpsConfig();
+            output = await da.GetPipelineYamlContentAsync(config.pat, config.orgName, projectId ?? config.projectId, pipelineId, connectionId);
+        } else if (!string.IsNullOrWhiteSpace(pat) && !string.IsNullOrWhiteSpace(orgName) && !string.IsNullOrWhiteSpace(projectId)) {
+            output = await da.GetPipelineYamlContentAsync(pat, orgName, projectId, pipelineId, connectionId);
+        } else {
+            return BadRequest("No PAT or OrgName provided and user is not logged in.");
+        }
+
+        return Ok(output);
+    }
+
+    /// <summary>
+    /// Parses a pipeline's YAML and returns extracted settings for import.
+    /// </summary>
+    [HttpPost("~/api/Pipelines/{pipelineId}/parse")]
+    [AllowAnonymous]
+    public async Task<ActionResult<DataObjects.ParsedPipelineSettings>> ParsePipelineYaml(int pipelineId, [FromQuery] string? projectId = null, [FromQuery] string? pat = null, [FromQuery] string? orgName = null, [FromQuery] string? connectionId = null)
+    {
+        // First get the YAML content
+        DataObjects.PipelineYamlResponse yamlResponse;
+        string pipelineName = string.Empty;
+        string pipelinePath = string.Empty;
+
+        if (CurrentUser.Enabled) {
+            var config = GetReleasePipelinesDevOpsConfig();
+            yamlResponse = await da.GetPipelineYamlContentAsync(config.pat, config.orgName, projectId ?? config.projectId, pipelineId, connectionId);
+            
+            // Get pipeline name and path
+            try {
+                var pipeline = await da.GetDevOpsPipeline(projectId ?? config.projectId, pipelineId, config.pat, config.orgName, connectionId);
+                pipelineName = pipeline.Name;
+                pipelinePath = pipeline.Path;
+            } catch { }
+        } else if (!string.IsNullOrWhiteSpace(pat) && !string.IsNullOrWhiteSpace(orgName) && !string.IsNullOrWhiteSpace(projectId)) {
+            yamlResponse = await da.GetPipelineYamlContentAsync(pat, orgName, projectId, pipelineId, connectionId);
+            
+            // Get pipeline name and path
+            try {
+                var pipeline = await da.GetDevOpsPipeline(projectId, pipelineId, pat, orgName, connectionId);
+                pipelineName = pipeline.Name;
+                pipelinePath = pipeline.Path;
+            } catch { }
+        } else {
+            return BadRequest("No PAT or OrgName provided and user is not logged in.");
+        }
+
+        if (!yamlResponse.Success) {
+            return BadRequest(yamlResponse.ErrorMessage ?? "Failed to fetch pipeline YAML.");
+        }
+
+        // Parse the YAML
+        var parsedSettings = da.ParsePipelineYaml(yamlResponse.Yaml, pipelineId, pipelineName, pipelinePath);
+        return Ok(parsedSettings);
+    }
+
+    #endregion Pipeline Dashboard Endpoints
+
     #region Git & Pipeline Endpoints
 
     [HttpGet($"~/{DataObjects.Endpoints.DevOps.GetDevOpsBranches}")]

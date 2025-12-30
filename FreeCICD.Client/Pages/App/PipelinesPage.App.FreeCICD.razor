@@ -1,17 +1,19 @@
-﻿@page "/Wizard"
-@page "/{TenantCode}/Wizard"
+@page "/"
+@page "/{TenantCode}"
+@page "/Pipelines"
+@page "/{TenantCode}/Pipelines"
 @inject BlazorDataModel Model
 @implements IDisposable
 
 @if (Model.Loaded && Model.LoggedIn && Model.View == _pageName) {
-    <Index_App_FreeCICD />
+    <Pipelines_App_FreeCICD />
 }
 
 @code {
     [Parameter] public string? TenantCode { get; set; }
 
     protected bool _loadedData = false;
-    protected string _pageName = "home";
+    protected string _pageName = "pipelines";
 
     public void Dispose()
     {
@@ -36,7 +38,8 @@
         }
     }
 
-    protected void OnDataModelUpdated() {
+    protected void OnDataModelUpdated()
+    {
         if (Model.View == _pageName) {
             StateHasChanged();
         }
@@ -45,6 +48,6 @@
     protected override void OnInitialized()
     {
         Model.View = _pageName;
-        Model.OnChange += StateHasChanged;
+        Model.OnChange += OnDataModelUpdated;
     }
 }

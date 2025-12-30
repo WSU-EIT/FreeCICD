@@ -10,42 +10,43 @@ The `FreeCICD.DataAccess` project is the **business logic layer** containing all
 
 ```
 FreeCICD.DataAccess/
-+-- DataAccess.cs                  # Core initialization and configuration
-+-- DataAccess.ActiveDirectory.cs  # LDAP/AD integration
-+-- DataAccess.Ajax.cs             # AJAX endpoint helpers
-+-- DataAccess.App.cs              # App-specific extension point
-+-- DataAccess.ApplicationSettings.cs # Application settings management
-+-- DataAccess.Authenticate.cs     # Authentication logic
-+-- DataAccess.CSharpCode.cs       # Dynamic C# compilation
-+-- DataAccess.Departments.cs      # Department CRUD
-+-- DataAccess.Disposable.cs       # IDisposable implementation
-+-- DataAccess.Encryption.cs       # Encryption utilities
-+-- DataAccess.FileStorage.cs      # File management
-+-- DataAccess.JWT.cs              # JWT token generation/validation
-+-- DataAccess.Language.cs         # Internationalization
-+-- DataAccess.Migrations.cs       # Database migration runner
-+-- DataAccess.Plugins.cs          # Plugin system integration
-+-- DataAccess.SeedTestData.cs     # Initial data seeding
-+-- DataAccess.Settings.cs         # Settings key-value store
-+-- DataAccess.SignalR.cs          # Real-time communication
-+-- DataAccess.Tags.cs             # Tag system operations
-+-- DataAccess.Tenants.cs          # Multi-tenant operations
-+-- DataAccess.UDFLabels.cs        # User-defined fields
-+-- DataAccess.UserGroups.cs       # User group management
-+-- DataAccess.Users.cs            # User CRUD operations
-+-- DataAccess.Utilities.cs        # Utility methods
-+-- DataMigrations.MySQL.cs        # MySQL-specific migrations
-+-- DataMigrations.PostgreSQL.cs   # PostgreSQL-specific migrations
-+-- DataMigrations.SQLite.cs       # SQLite-specific migrations
-+-- DataMigrations.SQLServer.cs    # SQL Server-specific migrations
-+-- GlobalUsings.cs                # Global using statements
-+-- GraphAPI.cs                    # Microsoft Graph integration
-+-- GraphAPI.App.cs                # App-specific Graph extensions
-+-- RandomPasswordGenerator.cs     # Password generation
-+-- RandomPasswordGenerator.App.cs # App-specific password rules
-+-- Utilities.cs                   # Static utility methods
-+-- Utilities.App.cs               # App-specific utilities
-+-- FreeCICD.DataAccess.csproj     # Project file
+??? DataAccess.cs                  # Core initialization and configuration
+??? DataAccess.ActiveDirectory.cs  # LDAP/AD integration
+??? DataAccess.Ajax.cs             # AJAX endpoint helpers
+??? DataAccess.App.cs              # App-specific extension point
+??? DataAccess.App.FreeCICD.cs     # Azure DevOps & Pipeline Dashboard operations
+??? DataAccess.ApplicationSettings.cs # Application settings management
+??? DataAccess.Authenticate.cs     # Authentication logic
+??? DataAccess.CSharpCode.cs       # Dynamic C# compilation
+??? DataAccess.Departments.cs      # Department CRUD
+??? DataAccess.Disposable.cs       # IDisposable implementation
+??? DataAccess.Encryption.cs       # Encryption utilities
+??? DataAccess.FileStorage.cs      # File management
+??? DataAccess.JWT.cs              # JWT token generation/validation
+??? DataAccess.Language.cs         # Internationalization
+??? DataAccess.Migrations.cs       # Database migration runner
+??? DataAccess.Plugins.cs          # Plugin system integration
+??? DataAccess.SeedTestData.cs     # Initial data seeding
+??? DataAccess.Settings.cs         # Settings key-value store
+??? DataAccess.SignalR.cs          # Real-time communication
+??? DataAccess.Tags.cs             # Tag system operations
+??? DataAccess.Tenants.cs          # Multi-tenant operations
+??? DataAccess.UDFLabels.cs        # User-defined fields
+??? DataAccess.UserGroups.cs       # User group management
+??? DataAccess.Users.cs            # User CRUD operations
+??? DataAccess.Utilities.cs        # Utility methods
+??? DataMigrations.MySQL.cs        # MySQL-specific migrations
+??? DataMigrations.PostgreSQL.cs   # PostgreSQL-specific migrations
+??? DataMigrations.SQLite.cs       # SQLite-specific migrations
+??? DataMigrations.SQLServer.cs    # SQL Server-specific migrations
+??? GlobalUsings.cs                # Global using statements
+??? GraphAPI.cs                    # Microsoft Graph integration
+??? GraphAPI.App.cs                # App-specific Graph extensions
+??? RandomPasswordGenerator.cs     # Password generation
+??? RandomPasswordGenerator.App.cs # App-specific password rules
+??? Utilities.cs                   # Static utility methods
+??? Utilities.App.cs               # App-specific utilities
+??? FreeCICD.DataAccess.csproj     # Project file
 ```
 
 ---
@@ -53,51 +54,135 @@ FreeCICD.DataAccess/
 ## Architecture Diagram
 
 ```
-+-----------------------------------------------------------------------------+
-|                         DATA ACCESS LAYER                                   |
-+-----------------------------------------------------------------------------+
-|                                                                             |
-|  +-----------------------------------------------------------------------+  |
-|  |                        IDataAccess Interface                          |  |
-|  |  +-----------+  +-----------+  +-----------+  +-----------+          |  |
-|  |  | Authenticate|  |    Users    |  |   Tenants   |  |  Departments|   |  |
-|  |  | GetUser     |  | SaveUser    |  | GetTenant   |  | SaveDept    |   |  |
-|  |  | GetToken    |  | DeleteUser  |  | SaveTenant  |  | GetDepts    |   |  |
-|  |  +-----------+  +-----------+  +-----------+  +-----------+          |  |
-|  |                                                                       |  |
-|  |  +-----------+  +-----------+  +-----------+  +-----------+          |  |
-|  |  | FileStorage |  |   Settings  |  |   SignalR   |  |   Plugins   |   |  |
-|  |  | SaveFile    |  | GetSetting  |  |SignalRUpdate|  | GetPlugins  |   |  |
-|  |  | GetFile     |  | SaveSetting |  |             |  | RunPlugin   |   |  |
-|  |  +-----------+  +-----------+  +-----------+  +-----------+          |  |
-|  +-----------------------------------------------------------------------+  |
-|                                    |                                        |
-|                                    |                                        |
-|  +-----------------------------------------------------------------------+  |
-|  |                      DataAccess Implementation                        |  |
-|  |                                                                       |  |
-|  |  +---------------------------------------------------------------+   |  |
-|  |  |                    Cross-Cutting Concerns                     |   |  |
-|  |  |  +-----------+  +-----------+  +-----------+  +-----------+   |   |  |
-|  |  |  |Encryption |  |    JWT    |  |  Hashing  |  |  Caching  |   |   |  |
-|  |  |  +-----------+  +-----------+  +-----------+  +-----------+   |   |  |
-|  |  +---------------------------------------------------------------+   |  |
-|  |                                                                       |  |
-|  |  +---------------------------------------------------------------+   |  |
-|  |  |                      External Integrations                    |   |  |
-|  |  |  +-----------+  +-----------+  +-----------+  +-----------+   |   |  |
-|  |  |  |   LDAP    |  |Graph API  |  |  SignalR  |  |  Plugins  |   |   |  |
-|  |  |  +-----------+  +-----------+  +-----------+  +-----------+   |   |  |
-|  |  +---------------------------------------------------------------+   |  |
-|  +-----------------------------------------------------------------------+  |
-|                                    |                                        |
-|                                    |                                        |
-|  +-----------------------------------------------------------------------+  |
-|  |                        EFDataModel (DbContext)                        |  |
-|  |              FreeCICD.EFModels - Entity Framework Core                |  |
-|  +-----------------------------------------------------------------------+  |
-|                                                                             |
-+-----------------------------------------------------------------------------+
+???????????????????????????????????????????????????????????????????????????????
+?                         DATA ACCESS LAYER                                   ?
+???????????????????????????????????????????????????????????????????????????????
+?                                                                             ?
+?  ?????????????????????????????????????????????????????????????????????????  ?
+?  ?                        IDataAccess Interface                          ?  ?
+?  ?  ?????????????  ?????????????  ?????????????  ?????????????          ?  ?
+?  ?  ?Authenticate?  ?   Users   ?  ?  Tenants  ?  ?Departments?          ?  ?
+?  ?  ? GetUser   ?  ? SaveUser  ?  ? GetTenant ?  ? SaveDept  ?          ?  ?
+?  ?  ? GetToken  ?  ? DeleteUser?  ? SaveTenant?  ? GetDepts  ?          ?  ?
+?  ?  ?????????????  ?????????????  ?????????????  ?????????????          ?  ?
+?  ?                                                                       ?  ?
+?  ?  ?????????????  ?????????????  ?????????????  ?????????????          ?  ?
+?  ?  ?FileStorage?  ? Settings  ?  ?  SignalR  ?  ?  Plugins  ?          ?  ?
+?  ?  ? SaveFile  ?  ? GetSetting?  ?SignalRUpdate? ? GetPlugins?          ?  ?
+?  ?  ? GetFile   ?  ? SaveSetting? ?           ?  ? RunPlugin ?          ?  ?
+?  ?  ?????????????  ?????????????  ?????????????  ?????????????          ?  ?
+?  ?                                                                       ?  ?
+?  ?  ??????????????????????????????????????????????????????????????????? ?  ?
+?  ?  ?              Azure DevOps / Pipeline Dashboard                  ? ?  ?
+?  ?  ?  GetPipelineDashboardAsync    ?  ParsePipelineYaml              ? ?  ?
+?  ?  ?  GetPipelineRunsForDashboard  ?  GetDevOpsProjects/Repos/Branch ? ?  ?
+?  ?  ?  GetPipelineYamlContent       ?  CreateOrUpdateDevopsPipeline   ? ?  ?
+?  ?  ??????????????????????????????????????????????????????????????????? ?  ?
+?  ?????????????????????????????????????????????????????????????????????????  ?
+?                                    ?                                        ?
+?  ?????????????????????????????????????????????????????????????????????????  ?
+?  ?                      DataAccess Implementation                        ?  ?
+?  ?                                                                       ?  ?
+?  ?  ?????????????????????????????????????????????????????????????????   ?  ?
+?  ?  ?                    Cross-Cutting Concerns                     ?   ?  ?
+?  ?  ?  ?????????????  ?????????????  ?????????????  ?????????????   ?   ?  ?
+?  ?  ?  ?Encryption ?  ?    JWT    ?  ?  Hashing  ?  ?  Caching  ?   ?   ?  ?
+?  ?  ?  ?????????????  ?????????????  ?????????????  ?????????????   ?   ?  ?
+?  ?  ?????????????????????????????????????????????????????????????????   ?  ?
+?  ?                                                                       ?  ?
+?  ?  ?????????????????????????????????????????????????????????????????   ?  ?
+?  ?  ?                      External Integrations                    ?   ?  ?
+?  ?  ?  ?????????????  ?????????????  ?????????????  ?????????????   ?   ?  ?
+?  ?  ?  ?   LDAP    ?  ?Graph API  ?  ?Azure DevOps? ?  Plugins  ?   ?   ?  ?
+?  ?  ?  ?????????????  ?????????????  ?????????????  ?????????????   ?   ?  ?
+?  ?  ?????????????????????????????????????????????????????????????????   ?  ?
+?  ?????????????????????????????????????????????????????????????????????????  ?
+?                                    ?                                        ?
+?  ?????????????????????????????????????????????????????????????????????????  ?
+?  ?                        EFDataModel (DbContext)                        ?  ?
+?  ?              FreeCICD.EFModels - Entity Framework Core                ?  ?
+?  ?????????????????????????????????????????????????????????????????????????  ?
+?                                                                             ?
+???????????????????????????????????????????????????????????????????????????????
+```
+
+---
+
+## Pipeline Dashboard Operations
+
+The `DataAccess.App.FreeCICD.cs` file contains Azure DevOps integration methods:
+
+### Pipeline Dashboard Methods
+
+```csharp
+// Get all pipelines with status, runs, and variable groups
+Task<DataObjects.PipelineDashboardResponse> GetPipelineDashboardAsync(
+    string pat, string orgName, string projectId, string? connectionId = null);
+
+// Get recent runs for a specific pipeline
+Task<DataObjects.PipelineRunsResponse> GetPipelineRunsForDashboardAsync(
+    string pat, string orgName, string projectId, int pipelineId, int top = 5, string? connectionId = null);
+
+// Get YAML content for a pipeline
+Task<DataObjects.PipelineYamlResponse> GetPipelineYamlContentAsync(
+    string pat, string orgName, string projectId, int pipelineId, string? connectionId = null);
+
+// Parse YAML to extract settings for wizard import
+DataObjects.ParsedPipelineSettings ParsePipelineYaml(
+    string yamlContent, int? pipelineId = null, string? pipelineName = null, string? pipelinePath = null);
+```
+
+### Pipeline Dashboard Data Flow
+
+```
+???????????????????????????????????????????????????????????????????????????????
+?                    PIPELINE DASHBOARD DATA FLOW                             ?
+???????????????????????????????????????????????????????????????????????????????
+?                                                                             ?
+?  Azure DevOps API                                                           ?
+?       ?                                                                     ?
+?       ?                                                                     ?
+?  BuildHttpClient.GetDefinitionsAsync()                                      ?
+?       ?                                                                     ?
+?       ???> For each pipeline:                                               ?
+?       ?    ?                                                                ?
+?       ?    ??> GetDefinitionAsync() ??> Name, Path, Repo, DefaultBranch    ?
+?       ?    ?                                                                ?
+?       ?    ??> GetBuildsAsync(top: 1) ??> LastRunStatus, LastRunResult     ?
+?       ?    ?                          ???> TriggerBranch (SourceBranch)     ?
+?       ?    ?                                                                ?
+?       ?    ??> GitClient.GetItemAsync(yaml) ??> ParsePipelineYaml()        ?
+?       ?                                    ???> VariableGroups             ?
+?       ?                                                                     ?
+?       ?                                                                     ?
+?  PipelineDashboardResponse                                                  ?
+?       ?                                                                     ?
+?       ???> Pipelines[]                                                      ?
+?            ?? Id, Name, Path                                                ?
+?            ?? RepositoryName                                                ?
+?            ?? DefaultBranch (repo default)                                  ?
+?            ?? TriggerBranch (from last build) ? PREFERRED FOR DISPLAY       ?
+?            ?? LastRunStatus, LastRunResult, LastRunTime                     ?
+?            ?? YamlFileName                                                  ?
+?            ?? VariableGroups[]                                              ?
+?                ?? Name, Environment                                         ?
+?                ?? Id, VariableCount                                         ?
+?                ?? ResourceUrl (link to Azure DevOps)                        ?
+?                                                                             ?
+???????????????????????????????????????????????????????????????????????????????
+```
+
+### YAML Parsing
+
+The `ParsePipelineYaml` method extracts settings from Azure DevOps pipeline YAML:
+
+```csharp
+// Parses:
+// - Trigger branch from 'trigger:' section
+// - CI_ProjectName and CI_BUILD_CsProjectPath variables
+// - Environment-specific variables (CI_{ENV}_VariableGroup, etc.)
+// - Deploy stages (Deploy{ENV}Stage)
+// - Repository resources
 ```
 
 ---
@@ -105,49 +190,51 @@ FreeCICD.DataAccess/
 ## Authentication Flow
 
 ```
-+-----------------------------------------------------------------------------+
-|                         AUTHENTICATION FLOW                                 |
-+-----------------------------------------------------------------------------+
+???????????????????????????????????????????????????????????????????????????????
+?                         AUTHENTICATION FLOW                                 ?
+???????????????????????????????????????????????????????????????????????????????
 
     Client                    DataAccess                    Database
-      |                           |                            |
-      |  Authenticate(creds)      |                            |
-      | ------------------------> |                            |
-      |                           |                            |
-      |                           |  Find User by Email/Username
-      |                           | -------------------------> |
-      |                           | <------------------------- |
-      |                           |                            |
-      |                           |  Check Lockout Status      |
-      |                           |  (FailedLoginAttempts,     |
-      |                           |   LastLockoutDate)         |
-      |                           |                            |
-      |                     +-------------+                    |
-      |                     |  Locked?  |                      |
-      |                     +-------------+                    |
-      |                           |                            |
-      |          +------------------------------------+        |
-      |         YES                               NO           |
-      |          |                                 |           |
-      |          |                                 |           |
-      |   Return Error              Validate Password          |
-      |   "Account Locked"          (HashPasswordValidate)     |
-      |                                            |           |
-      |                     +-------------------------------------->
-      |                     |                              |   |
-      |                   VALID                        INVALID |
-      |                     |                              |   |
-      |                     |                              |   |
-      |              Clear Lockout               Increment Failed
-      |              Generate JWT                Update Lockout |
-      |              Update LastLogin                      |   |
-      |                     |                              |   |
-      | <------------------ |                              |   |
-      |   User + AuthToken                                 |   |
-      |                                                    |   |
-      | <------------------------------------------------- |   |
-      |   Error: Invalid credentials                           |
-      |                                                        |
+      ?                           ?                            ?
+      ?  Authenticate(creds)      ?                            ?
+      ? ????????????????????????> ?                            ?
+      ?                           ?                            ?
+      ?                           ?  Find User by Email/Username
+      ?                           ? ??????????????????????????> ?
+      ?                           ? <?????????????????????????? ?
+      ?                           ?                            ?
+      ?                           ?  Check Lockout Status      ?
+      ?                           ?  (FailedLoginAttempts,     ?
+      ?                           ?   LastLockoutDate)         ?
+      ?                           ?                            ?
+      ?                     ?????????????                      ?
+      ?                     ?  Locked?  ?                      ?
+      ?                     ?????????????                      ?
+      ?                           ?                            ?
+      ?          ???????????????????????????????????           ?
+      ?         YES                               NO           ?
+      ?          ?                                 ?           ?
+      ?          ?                                 ?           ?
+      ?   Return Error              Validate Password          ?
+      ?   "Account Locked"          (HashPasswordValidate)     ?
+      ?                                            ?           ?
+      ?                     ????????????????????????????????????
+      ?                     ?                              ?   ?
+      ?                   VALID                        INVALID ?
+      ?                     ?                              ?   ?
+      ?                     ?                              ?   ?
+      ?              Clear Lockout               Increment Failed
+      ?              Generate JWT                Update Lockout ?
+      ?              Update LastLogin                      ?   ?
+      ?                     ?                              ?   ?
+      ? <?????????????????? ?                              ?   ?
+      ?   User + AuthToken                                 ?   ?
+      ?                                                    ?   ?
+      ? <?????????????????????????????????????????????????? ?   ?
+      ?   Error: Invalid credentials                           ?
+      ?                                                        ?
+
+???????????????????????????????????????????????????????????????????????????????
 ```
 
 ---
@@ -165,20 +252,20 @@ bool isValid = HashPasswordValidate(plainTextPassword, hashedPassword);
 ### Account Lockout
 
 ```
-+-----------------------------------------------------------------------+
-|                    ACCOUNT LOCKOUT POLICY                             |
-+-----------------------------------------------------------------------+
-|  Max Failed Attempts:  5                                             |
-|  Lockout Duration:     10 minutes                                    |
-|                                                                       |
-|  After 5 failed attempts:                                            |
-|  -> LastLockoutDate = DateTime.UtcNow                                |
-|  -> Account locked for 10 minutes                                    |
-|                                                                       |
-|  On successful login:                                                |
-|  -> FailedLoginAttempts = null                                       |
-|  -> LastLockoutDate = null                                           |
-+-----------------------------------------------------------------------+
+?????????????????????????????????????????????????????????????????????????
+?                    ACCOUNT LOCKOUT POLICY                             ?
+?????????????????????????????????????????????????????????????????????????
+?  Max Failed Attempts:  5                                              ?
+?  Lockout Duration:     10 minutes                                     ?
+?                                                                       ?
+?  After 5 failed attempts:                                             ?
+?  ? LastLockoutDate = DateTime.UtcNow                                  ?
+?  ? Account locked for 10 minutes                                      ?
+?                                                                       ?
+?  On successful login:                                                 ?
+?  ? FailedLoginAttempts = null                                         ?
+?  ? LastLockoutDate = null                                             ?
+?????????????????????????????????????????????????????????????????????????
 ```
 
 ### JWT Token Generation
@@ -192,14 +279,39 @@ bool isValid = HashPasswordValidate(plainTextPassword, hashedPassword);
 string token = GetUserToken(tenantId, userId, fingerprint, isSudo);
 ```
 
-### Sudo Login (Admin Impersonation)
+---
 
-```
-Username format: "sudo username@domain.com"
-Password: Admin user's password
+## Azure DevOps Integration
 
-Allows tenant admins to log in as any user in their tenant.
+### Connection Management
+
+```csharp
+private VssConnection CreateConnection(string pat, string orgName)
+{
+    var collectionUri = new Uri($"https://dev.azure.com/{orgName}");
+    var credentials = new VssBasicCredential(string.Empty, pat);
+    return new VssConnection(collectionUri, credentials);
+}
 ```
+
+### Available Azure DevOps Methods
+
+| Method | Purpose |
+|--------|---------|
+| `GetDevOpsProjectsAsync` | List all projects in organization |
+| `GetDevOpsReposAsync` | List repositories in a project |
+| `GetDevOpsBranchesAsync` | List branches in a repository |
+| `GetDevOpsFilesAsync` | List files in a branch |
+| `GetDevOpsPipelinesAsync` | List pipeline definitions |
+| `GetDevOpsPipeline` | Get single pipeline details |
+| `GetPipelineRuns` | Get pipeline run history |
+| `GetProjectVariableGroupsAsync` | List variable groups |
+| `CreateVariableGroup` | Create new variable group |
+| `UpdateVariableGroup` | Update existing variable group |
+| `GetGitFile` | Get file content from repo |
+| `CreateOrUpdateGitFile` | Push file to repository |
+| `GenerateYmlFileContents` | Generate pipeline YAML from template |
+| `CreateOrUpdateDevopsPipeline` | Create or update pipeline definition |
 
 ---
 
@@ -236,106 +348,13 @@ public partial interface IDataAccess
     
     // Plugins
     Task<List<Plugins.Plugin>> GetPlugins(Guid tenantId);
+    
+    // Pipeline Dashboard (FreeCICD-specific)
+    Task<DataObjects.PipelineDashboardResponse> GetPipelineDashboardAsync(...);
+    Task<DataObjects.PipelineRunsResponse> GetPipelineRunsForDashboardAsync(...);
+    Task<DataObjects.PipelineYamlResponse> GetPipelineYamlContentAsync(...);
+    DataObjects.ParsedPipelineSettings ParsePipelineYaml(...);
 }
-```
-
----
-
-## Database Provider Support
-
-```
-+-----------------------------------------------------------------------------+
-|                         DATABASE INITIALIZATION                             |
-+-----------------------------------------------------------------------------+
-
-    Constructor(ConnectionString, DatabaseType)
-           |
-           |
-    +---------------+
-    |  DatabaseType?   |
-    +---------------+
-             |
-    +-------------------------------+
-    |        |        |        |        |
-    |        |        |        |        |
- InMemory SQLServer PostgreSQL MySQL  SQLite
-    |        |        |        |        |
-    |        |        |        |        |
-    +-------------------------------+
-                     |
-                     |
-           +-----------------+
-           |  CanConnect()?  |
-           +-----------------+
-                    |
-           +--------------+
-          YES              NO
-           |                |
-           |                |
-    Apply Migrations   EnsureCreated()
-           |                |
-           +--------------+
-                   |
-                   |
-            SeedTestData()
-```
-
----
-
-## External Integrations
-
-### Microsoft Graph API
-
-```csharp
-// Email sending via Microsoft Graph
-GraphAPI.SendEmail(mailServerConfig, emailMessage);
-```
-
-### LDAP/Active Directory
-
-```csharp
-// User lookup from Active Directory
-var adUser = LookupUserInActiveDirectory(username, tenantSettings);
-```
-
-### SignalR Real-Time Updates
-
-```csharp
-// Broadcast updates to connected clients
-await SignalRUpdate(new DataObjects.SignalRUpdate {
-    TenantId = tenantId,
-    UpdateType = DataObjects.SignalRUpdateType.User,
-    ItemId = userId,
-    Message = "User profile updated"
-});
-```
-
----
-
-## Extension Points
-
-### App-Specific Extensions (DataAccess.App.cs)
-
-```csharp
-public partial class DataAccess
-{
-    // Override these methods for app-specific logic
-    private void DataAccessAppInit() { }
-    
-    private async Task<DataObjects.BooleanResponse> DeleteRecordsApp(object Rec, DataObjects.User? CurrentUser) { }
-    
-    private void GetDataApp(object Rec, object DataObject, DataObjects.User? CurrentUser) { }
-    
-    private void SaveDataApp(object Rec, object DataObject, DataObjects.User? CurrentUser) { }
-}
-```
-
-### FreeCICD Extensions (DataAccess.App.FreeCICD.cs)
-
-```csharp
-// Azure DevOps integration methods
-Task<List<DataObjects.DevopsProjectInfo>> GetDevOpsProjectsAsync(string pat, string orgName);
-Task<DataObjects.BuildDefinition> CreateOrUpdateDevopsPipeline(...);
 ```
 
 ---
@@ -346,6 +365,12 @@ Task<DataObjects.BuildDefinition> CreateOrUpdateDevopsPipeline(...);
 <ItemGroup>
   <!-- Azure -->
   <PackageReference Include="Azure.Identity" Version="1.17.1" />
+  
+  <!-- Azure DevOps SDK -->
+  <PackageReference Include="Microsoft.TeamFoundationServer.Client" Version="19.240.0" />
+  
+  <!-- YAML Parsing -->
+  <PackageReference Include="YamlDotNet" Version="16.3.0" />
   
   <!-- Data Processing -->
   <PackageReference Include="Brad.Wickett_Sql2LINQ" Version="3.0.1" />
@@ -370,25 +395,19 @@ Task<DataObjects.BuildDefinition> CreateOrUpdateDevopsPipeline(...);
 
 ---
 
-## Initialization Sequence
+## Recent Changes
 
+### December 2025 - TriggerBranch for Pipeline Dashboard
+
+Updated `GetPipelineDashboardAsync` to populate `TriggerBranch` from the latest build's `SourceBranch`. This shows the actual branch that triggered the most recent build, which is more accurate than `DefaultBranch` (the repository's default).
+
+```csharp
+// Inside GetPipelineDashboardAsync()
+var latestBuild = builds[0];
+item.TriggerBranch = latestBuild.SourceBranch;  // NEW
 ```
-1. DataAccess Constructor
-   |
-   +-> Configure DbContext with provider
-   |
-   +-> Check database connectivity
-   |   |
-   |   +-> If connected: Apply migrations
-   |   |
-   |   +-> If not connected: EnsureCreated()
-   |
-   +-> SeedTestData() - Create default tenant/admin
-   |
-   +-> Load plugins from cache
-   |
-   +-> Set GlobalSettings.StartupRun = true
-```
+
+See: [022-Branch-Display-Fix-Sanity-Check.md](../docs/022-Branch-Display-Fix-Sanity-Check.md)
 
 ---
 
@@ -401,6 +420,7 @@ Task<DataObjects.BuildDefinition> CreateOrUpdateDevopsPipeline(...);
 5. **Handle exceptions**: Catch and log all database errors
 6. **Use SignalR updates**: Broadcast changes for real-time UI
 7. **Extend via App files**: Don't modify core DataAccess files
+8. **Cache connections**: Reuse VssConnection for Azure DevOps calls
 
 ---
 
@@ -413,3 +433,4 @@ Task<DataObjects.BuildDefinition> CreateOrUpdateDevopsPipeline(...);
 - [ ] Tenant isolation is enforced on all queries
 - [ ] Admin operations require Admin flag
 - [ ] Sudo login is audited
+- [ ] Azure DevOps PAT is not logged or exposed

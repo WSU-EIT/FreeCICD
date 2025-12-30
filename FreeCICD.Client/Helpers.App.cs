@@ -8,6 +8,8 @@ public static partial class Helpers
         get {
             Dictionary<string, List<string>> icons = new Dictionary<string, List<string>> {
                 { "fa:fa-solid fa-home", new List<string> { "IconName1", "IconName2" }},
+                { "fa:fa-rocket", new List<string> { "Pipelines", "PipelineDashboard" }},
+                { "fa:fa-magic", new List<string> { "PipelineWizard", "Wizard" }},
             };
 
             return icons;
@@ -89,17 +91,25 @@ public static partial class Helpers
             // Add any app-specific top-level menu items here.
             var output = new List<DataObjects.MenuItem>();
 
-            // Sample
-            //if (Model.User.Admin) {
-            //    output.Add(new DataObjects.MenuItem {
-            //        Title = "My Custom Menu Item",
-            //        Icon = "Home",
-            //        PageNames = new List<string> { "myitems", "editmyitem" },
-            //        SortOrder = 1000,
-            //        url = Helpers.BuildUrl("MyItems"),
-            //        AppAdminOnly = false,
-            //    });
-            //}
+            // Pipeline Dashboard - Now the home page (SortOrder: 100 = leftmost)
+            output.Add(new DataObjects.MenuItem {
+                Title = "Pipelines",
+                Icon = "Pipelines",
+                PageNames = new List<string> { "pipelines" },
+                SortOrder = 100,
+                url = Helpers.BuildUrl(""),
+                AppAdminOnly = false,
+            });
+
+            // Pipeline Wizard - Create/Edit pipeline (SortOrder: 200)
+            output.Add(new DataObjects.MenuItem {
+                Title = "Pipeline Wizard",
+                Icon = "PipelineWizard",
+                PageNames = new List<string> { "home" },
+                SortOrder = 200,
+                url = Helpers.BuildUrl("Wizard"),
+                AppAdminOnly = false,
+            });
 
             return output;
         }

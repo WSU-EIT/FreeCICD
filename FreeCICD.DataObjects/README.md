@@ -10,20 +10,22 @@ The `FreeCICD.DataObjects` project is a shared library containing all Data Trans
 
 ```
 FreeCICD.DataObjects/
-+-- Caching.cs                    # Memory caching utilities
-+-- DataObjects.cs                # Core DTOs and data classes
-+-- DataObjects.ActiveDirectory.cs # LDAP/AD integration models
-+-- DataObjects.Ajax.cs           # AJAX request/response models
-+-- DataObjects.App.cs            # App-specific extension point
-+-- DataObjects.Departments.cs    # Department-related DTOs
-+-- DataObjects.Services.cs       # Service layer models
-+-- DataObjects.SignalR.cs        # Real-time communication models
-+-- DataObjects.Tags.cs           # Tag system models
-+-- DataObjects.UDFLabels.cs      # User Defined Fields models
-+-- DataObjects.UserGroups.cs     # User group models
-+-- GlobalSettings.cs             # Runtime global settings
-+-- GlobalSettings.App.cs         # App-specific settings extension
-+-- FreeCICD.DataObjects.csproj   # Project file
+??? Caching.cs                    # Memory caching utilities
+??? DataObjects.cs                # Core DTOs and data classes
+??? DataObjects.ActiveDirectory.cs # LDAP/AD integration models
+??? DataObjects.Ajax.cs           # AJAX request/response models
+??? DataObjects.App.cs            # App-specific extension point
+??? DataObjects.App.FreeCICD.cs   # FreeCICD-specific DTOs (DevOps, Pipelines)
+??? DataObjects.Departments.cs    # Department-related DTOs
+??? DataObjects.Services.cs       # Service layer models
+??? DataObjects.SignalR.cs        # Real-time communication models
+??? DataObjects.Tags.cs           # Tag system models
+??? DataObjects.UDFLabels.cs      # User Defined Fields models
+??? DataObjects.UserGroups.cs     # User group models
+??? GlobalSettings.cs             # Runtime global settings
+??? GlobalSettings.App.cs         # App-specific settings extension
+??? GlobalSettings.App.FreeCICD.cs # FreeCICD-specific settings
+??? FreeCICD.DataObjects.csproj   # Project file
 ```
 
 ---
@@ -31,42 +33,95 @@ FreeCICD.DataObjects/
 ## Architecture Diagram
 
 ```
-+-----------------------------------------------------------------------------+
-|                         APPLICATION LAYERS                                  |
-+-----------------------------------------------------------------------------+
-|                                                                             |
-|  +-----------------+    +-----------------+    +-----------------+         |
-|  |  FreeCICD       |    |  FreeCICD       |    |  FreeCICD       |         |
-|  |  (Server)       |    |  .Client        |    |  .DataAccess    |         |
-|  |                 |    |  (Blazor WASM)  |    |                 |         |
-|  +-----------------+    +-----------------+    +-----------------+         |
-|           |                      |                      |                   |
-|           |                      |                      |                   |
-|           +-----------------------------------------------+                  |
-|                                  |                                          |
-|                                  |                                          |
-|  +-----------------------------------------------------------------------+  |
-|  |                     FreeCICD.DataObjects                              |  |
-|  |  +-----------+  +-----------+  +-----------+  +-----------+          |  |
-|  |  |    DTOs     |  |   Enums     |  |  Settings   |  |   SignalR   |   |  |
-|  |  |             |  |             |  |             |  |   Models    |   |  |
-|  |  +-----------+  +-----------+  +-----------+  +-----------+          |  |
-|  +-----------------------------------------------------------------------+  |
-|                                  |                                          |
-|                                  |                                          |
-|  +-----------------------------------------------------------------------+  |
-|  |                     FreeCICD.Plugins                                  |  |
-|  |              (Plugin definitions - minimal dependency)                |  |
-|  +-----------------------------------------------------------------------+  |
-|                                                                             |
-+-----------------------------------------------------------------------------+
+???????????????????????????????????????????????????????????????????????????????
+?                         APPLICATION LAYERS                                  ?
+???????????????????????????????????????????????????????????????????????????????
+?                                                                             ?
+?  ???????????????????    ???????????????????    ???????????????????         ?
+?  ?  FreeCICD       ?    ?  FreeCICD       ?    ?  FreeCICD       ?         ?
+?  ?  (Server)       ?    ?  .Client        ?    ?  .DataAccess    ?         ?
+?  ?                 ?    ?  (Blazor WASM)  ?    ?                 ?         ?
+?  ???????????????????    ???????????????????    ???????????????????         ?
+?           ?                      ?                      ?                   ?
+?           ?                      ?                      ?                   ?
+?           ???????????????????????????????????????????????                   ?
+?                                  ?                                          ?
+?                                  ?                                          ?
+?  ?????????????????????????????????????????????????????????????????????????  ?
+?  ?                     FreeCICD.DataObjects                              ?  ?
+?  ?  ?????????????  ?????????????  ?????????????  ?????????????          ?  ?
+?  ?  ?   DTOs    ?  ?   Enums   ?  ?  Settings ?  ?  SignalR  ?          ?  ?
+?  ?  ?           ?  ?           ?  ?           ?  ?  Models   ?          ?  ?
+?  ?  ?????????????  ?????????????  ?????????????  ?????????????          ?  ?
+?  ?????????????????????????????????????????????????????????????????????????  ?
+?                                  ?                                          ?
+?                                  ?                                          ?
+?  ?????????????????????????????????????????????????????????????????????????  ?
+?  ?                     FreeCICD.Plugins                                  ?  ?
+?  ?              (Plugin definitions - minimal dependency)                ?  ?
+?  ?????????????????????????????????????????????????????????????????????????  ?
+?                                                                             ?
+???????????????????????????????????????????????????????????????????????????????
 ```
 
 ---
 
-## Key Classes
+## FreeCICD-Specific DTOs (Pipeline Dashboard)
 
-### Core DTOs
+### Pipeline Dashboard Models
+
+These models support the Pipeline Dashboard feature for managing Azure DevOps CI/CD pipelines:
+
+| Class | Purpose | Used By |
+|-------|---------|---------|
+| `PipelineListItem` | Pipeline in dashboard list with status | Dashboard UI |
+| `PipelineRunInfo` | Individual pipeline run with timing | Runs dropdown |
+| `PipelineVariableGroupRef` | Variable group reference with link | Library badges |
+| `ParsedPipelineSettings` | Parsed YAML settings for import | Wizard import |
+| `ParsedEnvironmentSettings` | Per-environment settings from YAML | Import wizard |
+| `PipelineDashboardResponse` | API response for dashboard data | Dashboard API |
+| `PipelineRunsResponse` | API response for pipeline runs | Runs API |
+| `PipelineYamlResponse` | API response for YAML content | YAML viewer |
+
+### Key Pipeline Properties
+
+```csharp
+public class PipelineListItem
+{
+    public int Id { get; set; }
+    public string Name { get; set; }
+    public string? Path { get; set; }
+    public string? RepositoryName { get; set; }
+    public string? DefaultBranch { get; set; }      // Repository's default branch
+    public string? TriggerBranch { get; set; }      // Actual branch from last build (NEW)
+    public string? LastRunStatus { get; set; }
+    public string? LastRunResult { get; set; }
+    public DateTime? LastRunTime { get; set; }
+    public string? ResourceUrl { get; set; }
+    public string? YamlFileName { get; set; }
+    public List<PipelineVariableGroupRef> VariableGroups { get; set; }
+}
+```
+
+> **Note:** `TriggerBranch` was added in December 2025 to show the actual branch that triggered the most recent build, which is more accurate than `DefaultBranch` (the repository's default). The UI displays `TriggerBranch` with fallback to `DefaultBranch`.
+
+### Azure DevOps Integration Models
+
+| Class | Purpose |
+|-------|---------|
+| `DevopsProjectInfo` | Azure DevOps project details |
+| `DevopsGitRepoInfo` | Git repository information |
+| `DevopsGitRepoBranchInfo` | Branch details with commit info |
+| `DevopsPipelineDefinition` | Pipeline definition metadata |
+| `DevopsVariableGroup` | Variable group with variables |
+| `DevopsVariable` | Individual variable name/value |
+| `DevOpsBuild` | Build run information |
+| `DevopsFileItem` | File in repository |
+| `BuildDefinition` | Full pipeline definition |
+
+---
+
+## Core DTOs
 
 | Class | Purpose | Used By |
 |-------|---------|---------|
@@ -127,6 +182,18 @@ public enum SettingType {
 public enum UserLookupType {
     Email, EmployeeId, Guid, Username
 }
+
+// Environment types (FreeCICD-specific)
+public enum EnvironmentType {
+    DEV, PROD, CMS, QA, UAT, STAGING
+}
+
+// Parse confidence level (FreeCICD-specific)
+public enum ParseConfidence {
+    High,    // Found in expected location
+    Medium,  // Found in non-standard location
+    Low      // Inferred or partially matched
+}
 ```
 
 ---
@@ -144,6 +211,17 @@ public static partial class GlobalSettings {
     public static List<string> StartupErrorMessages { get; set; }
     public static bool StartupRun { get; set; }
 }
+
+// FreeCICD-specific settings (GlobalSettings.App.FreeCICD.cs)
+public static partial class GlobalSettings {
+    public static partial class App {
+        public static string BuildPipelineTemplate { get; set; }
+        public static string BuildPiplelinePool { get; set; }
+        public static Dictionary<EnvironmentType, EnvironmentOption> EnvironmentOptions { get; set; }
+        public static List<EnvironmentType> EnviormentTypeOrder { get; set; }
+        public static List<string> AzureDevOpsProjectNameStartsWithIgnoreValues { get; set; }
+    }
+}
 ```
 
 ---
@@ -153,14 +231,15 @@ public static partial class GlobalSettings {
 Real-time communication event types:
 
 ```
-+-----------------------------------------------------------------------+
-|                    SignalRUpdateType Constants                        |
-+-----------------------------------------------------------------------+
-|  Department      |  DepartmentGroup  |  File          |  User        |
-|  Language        |  LastAccessTime   |  Setting       |  Tag         |
-|  Tenant          |  UDF              |  Undelete      |  Unknown     |
-|  UserAttendance  |  UserGroup        |  UserPreferences             |
-+-----------------------------------------------------------------------+
+?????????????????????????????????????????????????????????????????????????
+?                    SignalRUpdateType Constants                        ?
+?????????????????????????????????????????????????????????????????????????
+?  Department      ?  DepartmentGroup  ?  File          ?  User        ?
+?  Language        ?  LastAccessTime   ?  Setting       ?  Tag         ?
+?  Tenant          ?  UDF              ?  Undelete      ?  Unknown     ?
+?  UserAttendance  ?  UserGroup        ?  UserPreferences               ?
+?  LoadingDevOpsInfoStatusUpdate (FreeCICD-specific)                    ?
+?????????????????????????????????????????????????????????????????????????
 
 SignalRUpdate {
     TenantId       -> Target tenant (optional, null = all)
@@ -216,13 +295,15 @@ public partial class DataObjects {
 
 ### FreeCICD Extensions
 
-For CI/CD-specific models, create `DataObjects.App.FreeCICD.cs`:
+For CI/CD-specific models, use `DataObjects.App.FreeCICD.cs`:
 
 ```csharp
 // DataObjects.App.FreeCICD.cs
 public partial class DataObjects {
     public class DevopsProjectInfo { ... }
     public class DevopsPipelineDefinition { ... }
+    public class PipelineListItem { ... }
+    public class PipelineDashboardResponse { ... }
 }
 ```
 
@@ -256,6 +337,17 @@ var response = new DataObjects.BooleanResponse {
 };
 ```
 
+### Pipeline Dashboard Response
+
+```csharp
+var response = new DataObjects.PipelineDashboardResponse {
+    Pipelines = pipelineItems,
+    TotalCount = pipelineItems.Count,
+    Success = true,
+    AvailableVariableGroups = variableGroups
+};
+```
+
 ### User Filtering
 
 ```csharp
@@ -284,19 +376,31 @@ var update = new DataObjects.SignalRUpdate {
 
 ## File Descriptions
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `DataObjects.cs` | ~500 | Core DTOs, enums, and common types |
-| `DataObjects.SignalR.cs` | ~40 | Real-time update types and models |
-| `DataObjects.Departments.cs` | ~50 | Department and DepartmentGroup DTOs |
-| `DataObjects.Tags.cs` | ~60 | Tag system DTOs |
-| `DataObjects.UserGroups.cs` | ~40 | User group DTOs |
-| `DataObjects.UDFLabels.cs` | ~30 | User-defined field label DTOs |
-| `DataObjects.ActiveDirectory.cs` | ~40 | LDAP lookup result models |
-| `DataObjects.Ajax.cs` | ~30 | AJAX-specific request/response |
-| `DataObjects.Services.cs` | ~20 | Service configuration models |
-| `GlobalSettings.cs` | ~15 | Runtime state container |
-| `Caching.cs` | ~50 | Memory cache utilities |
+| File | Description |
+|------|-------------|
+| `DataObjects.cs` | Core DTOs, enums, and common types |
+| `DataObjects.App.FreeCICD.cs` | Azure DevOps and Pipeline Dashboard DTOs |
+| `DataObjects.SignalR.cs` | Real-time update types and models |
+| `DataObjects.Departments.cs` | Department and DepartmentGroup DTOs |
+| `DataObjects.Tags.cs` | Tag system DTOs |
+| `DataObjects.UserGroups.cs` | User group DTOs |
+| `DataObjects.UDFLabels.cs` | User-defined field label DTOs |
+| `DataObjects.ActiveDirectory.cs` | LDAP lookup result models |
+| `DataObjects.Ajax.cs` | AJAX-specific request/response |
+| `DataObjects.Services.cs` | Service configuration models |
+| `GlobalSettings.cs` | Runtime state container |
+| `GlobalSettings.App.FreeCICD.cs` | FreeCICD pipeline settings |
+| `Caching.cs` | Memory cache utilities |
+
+---
+
+## Recent Changes
+
+### December 2025 - TriggerBranch Property
+
+Added `TriggerBranch` property to `PipelineListItem` to show the actual branch from the most recent build. This is more accurate than `DefaultBranch` which shows the repository's default branch.
+
+See: [022-Branch-Display-Fix-Sanity-Check.md](../docs/022-Branch-Display-Fix-Sanity-Check.md)
 
 ---
 
@@ -307,3 +411,4 @@ var update = new DataObjects.SignalRUpdate {
 3. **Mark Sensitive Data**: Always use `[Sensitive]` attribute
 4. **Initialize Collections**: Always initialize lists to avoid null refs
 5. **Use ActionResponseObject**: Inherit for consistent response patterns
+6. **Document New Properties**: Add XML comments for new fields

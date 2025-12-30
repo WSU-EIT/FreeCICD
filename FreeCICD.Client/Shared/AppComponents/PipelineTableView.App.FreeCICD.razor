@@ -1,0 +1,537 @@
+﻿@* Pipeline Table View Component *@
+@* Displays pipelines in a dense table format with clickable sortable columns *@
+@* Phase 1 Dashboard Enhancement: Added Duration column, Build Number, Relative Timestamps *@
+
+@using Humanizer
+
+<div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+            <tr>
+                <th scope="col" style="width: 22%;" class="sortable-header user-select-none" @onclick="@(() => OnColumnClick(ColName))">
+                    <div class="d-flex align-items-center gap-1">
+                        Name
+                        @GetSortIcon(ColName)
+                    </div>
+                </th>
+                <th scope="col" style="width: 10%;" class="sortable-header user-select-none" @onclick="@(() => OnColumnClick(ColBranch))">
+                    <div class="d-flex align-items-center gap-1">
+                        Branch
+                        @GetSortIcon(ColBranch)
+                    </div>
+                </th>
+                <th scope="col" style="width: 10%;" class="sortable-header user-select-none" @onclick="@(() => OnColumnClick(ColRepository))">
+                    <div class="d-flex align-items-center gap-1">
+                        Repository
+                        @GetSortIcon(ColRepository)
+                    </div>
+                </th>
+                <th scope="col" style="width: 9%;" class="sortable-header user-select-none" @onclick="@(() => OnColumnClick(ColStatus))">
+                    <div class="d-flex align-items-center gap-1">
+                        Status
+                        @GetSortIcon(ColStatus)
+                    </div>
+                </th>
+                <th scope="col" style="width: 11%;" class="sortable-header user-select-none" @onclick="@(() => OnColumnClick(ColTrigger))">
+                    <div class="d-flex align-items-center gap-1">
+                        Trigger
+                        @GetSortIcon(ColTrigger)
+                    </div>
+                </th>
+                <th scope="col" style="width: 9%;" class="sortable-header user-select-none" @onclick="@(() => OnColumnClick(ColLastRun))">
+                    <div class="d-flex align-items-center gap-1">
+                        Last Run
+                        @GetSortIcon(ColLastRun)
+                    </div>
+                </th>
+                <th scope="col" style="width: 7%;" class="sortable-header user-select-none" @onclick="@(() => OnColumnClick(ColDuration))" title="Build duration">
+                    <div class="d-flex align-items-center gap-1">
+                        <i class="fa fa-clock-o text-muted me-1"></i>
+                        Duration
+                        @GetSortIcon(ColDuration)
+                    </div>
+                </th>
+                <th scope="col" style="width: 10%;" title="Variable Groups (Library Sets) for appsettings.json replacement">
+                    <div class="d-flex align-items-center gap-1">
+                        <i class="fa fa-database text-muted"></i>
+                        Library
+                    </div>
+                </th>
+                <th scope="col" style="width: 12%;" class="text-end">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (Pipelines?.Any() == true) {
+                @foreach (var pipeline in Pipelines) {
+                    <tr>
+                        @* Name + Build Number (both clickable) *@
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="fa fa-rocket text-muted"></i>
+                                <div>
+                                    <a href="@pipeline.ResourceUrl" target="_blank" 
+                                       class="fw-medium text-decoration-none link-body-emphasis link-underline-opacity-0 link-underline-opacity-100-hover" 
+                                       title="@pipeline.Name - Open in Azure DevOps">
+                                        @TruncateName(pipeline.Name, 22)
+                                    </a>
+                                    @if (!string.IsNullOrWhiteSpace(pipeline.LastRunBuildNumber)) {
+                                        @* Build number links to pipeline runs page *@
+                                        <a href="@pipeline.PipelineRunsUrl" target="_blank"
+                                           class="text-muted small ms-1 text-decoration-none link-underline-opacity-0 link-underline-opacity-75-hover" 
+                                           title="View all runs for #@pipeline.LastRunBuildNumber">
+                                            #@TruncateName(pipeline.LastRunBuildNumber, 12)
+                                        </a>
+                                    }
+                                </div>
+                            </div>
+                            @* Commit hash link *@
+                            @if (!string.IsNullOrWhiteSpace(pipeline.LastCommitId)) {
+                                <div class="small">
+                                    <a href="@pipeline.CommitUrl" target="_blank"
+                                       class="text-muted font-monospace text-decoration-none link-underline-opacity-0 link-underline-opacity-75-hover"
+                                       title="View commit @pipeline.LastCommitId in Azure DevOps">
+                                        <i class="fa fa-code-fork me-1"></i>@pipeline.LastCommitId
+                                    </a>
+                                    @if (!string.IsNullOrWhiteSpace(pipeline.YamlFileName)) {
+                                        <span class="text-muted mx-1">•</span>
+                                        <span class="text-muted">
+                                            <i class="fa fa-file-code-o me-1"></i>@System.IO.Path.GetFileName(pipeline.YamlFileName)
+                                        </span>
+                                    }
+                                </div>
+                            } else if (!string.IsNullOrWhiteSpace(pipeline.YamlFileName)) {
+                                <div class="small text-muted">
+                                    <i class="fa fa-file-code-o me-1"></i>
+                                    @System.IO.Path.GetFileName(pipeline.YamlFileName)
+                                </div>
+                            }
+                        </td>
+
+                        @* Branch - Using BranchBadge component *@
+                        <td>
+                            @{
+                                // Prefer CodeBranch (from YAML BuildRepo) → TriggerBranch (from actual build) → DefaultBranch (from repo)
+                                var branchToShow = !string.IsNullOrWhiteSpace(pipeline.CodeBranch) 
+                                    ? pipeline.CodeBranch 
+                                    : !string.IsNullOrWhiteSpace(pipeline.TriggerBranch) 
+                                        ? pipeline.TriggerBranch 
+                                        : pipeline.DefaultBranch;
+                                // Use CodeBranchUrl if available
+                                var branchUrl = pipeline.CodeBranchUrl;
+                            }
+                            @if (!string.IsNullOrWhiteSpace(branchToShow)) {
+                                <BranchBadge Branch="@branchToShow" BranchUrl="@branchUrl" MaxLength="15" />
+                            } else {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+
+                        @* Repository (clickable) - Prefer CodeRepo (actual code) over RepositoryName (YAML storage) *@
+                        <td>
+                            @{
+                                var repoName = !string.IsNullOrWhiteSpace(pipeline.CodeRepoName) 
+                                    ? pipeline.CodeRepoName 
+                                    : pipeline.RepositoryName;
+                                var repoUrl = !string.IsNullOrWhiteSpace(pipeline.CodeRepoUrl) 
+                                    ? pipeline.CodeRepoUrl 
+                                    : pipeline.RepositoryUrl;
+                            }
+                            @if (!string.IsNullOrWhiteSpace(repoName)) {
+                                <a href="@repoUrl" target="_blank"
+                                   class="text-decoration-none link-body-emphasis link-underline-opacity-0 link-underline-opacity-75-hover"
+                                   title="Open @repoName repository in Azure DevOps">
+                                    @TruncateName(repoName, 14)
+                                </a>
+                            } else {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+
+                        @* Status *@
+                        <td>
+                            @GetStatusBadge(pipeline)
+                        </td>
+
+                        @* Trigger *@
+                        <td>
+                            @GetTriggerDisplay(pipeline)
+                        </td>
+
+                        @* Last Run - Relative Timestamp with Tooltip *@
+                        <td>
+                            @if (pipeline.LastRunTime.HasValue) {
+                                <span title="@pipeline.LastRunTime.Value.ToString("g")" class="cursor-help">
+                                    @pipeline.LastRunTime.Value.Humanize()
+                                </span>
+                            } else {
+                                <span class="text-muted">Never run</span>
+                            }
+                        </td>
+
+                        @* Duration *@
+                        <td>
+                            @if (pipeline.Duration.HasValue) {
+                                <span class="text-muted small" title="@FormatDurationFull(pipeline.Duration)">
+                                    <i class="fa fa-clock-o me-1"></i>@FormatDuration(pipeline.Duration)
+                                </span>
+                            } else {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+
+                        @* Variable Groups (Library Sets) *@
+                        <td>
+                            @if (pipeline.VariableGroups?.Any() == true) {
+                                @RenderVariableGroupCell(pipeline)
+                            } else {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+
+                        @* Actions - ALL proper anchor tags for right-click/middle-click support *@
+                        <td class="text-end">
+                            <div class="btn-group btn-group-sm">
+                                <a href="@pipeline.EditWizardUrl" 
+                                   class="btn btn-outline-primary" 
+                                   title="Edit in Wizard">
+                                    <i class="fa fa-pencil"></i>
+                                </a>
+                                <a href="@pipeline.PipelineRunsUrl" target="_blank" 
+                                   class="btn btn-outline-info" 
+                                   title="View pipeline runs">
+                                    <i class="fa fa-list"></i>
+                                </a>
+                                <a href="@pipeline.ResourceUrl" target="_blank" 
+                                   class="btn btn-outline-secondary" 
+                                   title="View in Azure DevOps">
+                                    <i class="fa fa-external-link"></i>
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            } else {
+                <tr>
+                    <td colspan="9" class="text-center text-muted py-4">
+                        <i class="fa fa-inbox fa-2x mb-2 d-block"></i>
+                        No pipelines found
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    // Column name constants to avoid escaping issues in Razor
+    private const string ColName = "name";
+    private const string ColBranch = "branch";
+    private const string ColRepository = "repository";
+    private const string ColStatus = "status";
+    private const string ColTrigger = "trigger";
+    private const string ColLastRun = "lastrun";
+    private const string ColDuration = "duration";
+
+    [Parameter] public List<DataObjects.PipelineListItem>? Pipelines { get; set; }
+    [Parameter] public EventCallback<DataObjects.PipelineListItem> OnEdit { get; set; }
+    [Parameter] public EventCallback<DataObjects.PipelineListItem> OnView { get; set; }
+
+    // Sort state from parent (unified sort)
+    [Parameter] public string SortColumn { get; set; } = ColLastRun;
+    [Parameter] public bool SortAscending { get; set; } = false;
+    [Parameter] public EventCallback<(string Column, bool Ascending)> OnSortChanged { get; set; }
+
+    private async Task OnColumnClick(string column)
+    {
+        bool newAscending;
+        if (SortColumn == column) {
+            // Toggle direction if clicking same column
+            newAscending = !SortAscending;
+        } else {
+            // New column - set appropriate default direction
+            newAscending = column switch {
+                ColName => true,       // A-Z by default
+                ColBranch => true,     // A-Z by default
+                ColRepository => true, // A-Z by default
+                ColStatus => false,    // Failed first by default
+                ColTrigger => true,    // Manual first by default
+                ColLastRun => false,   // Newest first by default
+                ColDuration => false,  // Longest first by default
+                _ => true
+            };
+        }
+
+        // Notify parent of sort change
+        if (OnSortChanged.HasDelegate) {
+            await OnSortChanged.InvokeAsync((column, newAscending));
+        }
+    }
+
+    private RenderFragment GetSortIcon(string column)
+    {
+        if (SortColumn != column) {
+            // Show subtle sort hint on hover-able columns
+            return @<i class="fa fa-sort text-muted opacity-50"></i>;
+        }
+
+        // Show active sort direction
+        var iconClass = SortAscending ? "fa-sort-up" : "fa-sort-down";
+        return @<i class="fa @iconClass text-primary"></i>;
+    }
+
+    private async Task OnEditPipeline(DataObjects.PipelineListItem pipeline)
+    {
+        await OnEdit.InvokeAsync(pipeline);
+    }
+
+    private async Task OnViewPipeline(DataObjects.PipelineListItem pipeline)
+    {
+        await OnView.InvokeAsync(pipeline);
+    }
+
+    private string TruncateName(string? name, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "";
+        return name.Length > maxLength ? name[..(maxLength - 3)] + "..." : name;
+    }
+
+    private RenderFragment GetStatusBadge(DataObjects.PipelineListItem pipeline)
+    {
+        var status = pipeline.LastRunStatus?.ToLower() ?? "";
+        var result = pipeline.LastRunResult?.ToLower() ?? "";
+
+        string badgeClass;
+        string badgeIcon;
+        string badgeText;
+
+        if (string.IsNullOrWhiteSpace(status)) {
+            badgeClass = "bg-secondary";
+            badgeIcon = "fa-question";
+            badgeText = "Unknown";
+        } else if (status == "completed" || status == "finished") {
+            switch (result) {
+                case "succeeded":
+                    badgeClass = "bg-success";
+                    badgeIcon = "fa-check";
+                    badgeText = "Succeeded";
+                    break;
+                case "failed":
+                    badgeClass = "bg-danger";
+                    badgeIcon = "fa-times";
+                    badgeText = "Failed";
+                    break;
+                case "partiallysucceeded":
+                    badgeClass = "bg-warning text-dark";
+                    badgeIcon = "fa-exclamation-triangle";
+                    badgeText = "Partial";
+                    break;
+                case "canceled":
+                    badgeClass = "bg-secondary";
+                    badgeIcon = "fa-ban";
+                    badgeText = "Canceled";
+                    break;
+                default:
+                    badgeClass = "bg-secondary";
+                    badgeIcon = "fa-question";
+                    badgeText = result.Humanize(LetterCasing.Title);
+                    break;
+            }
+        } else if (status == "inprogress" || status == "running") {
+            badgeClass = "bg-info";
+            badgeIcon = "fa-spinner fa-spin";
+            badgeText = "Running";
+        } else if (status == "notstarted" || status == "queued") {
+            badgeClass = "bg-secondary";
+            badgeIcon = "fa-pause";
+            badgeText = "Queued";
+        } else if (status == "cancelling") {
+            badgeClass = "bg-warning text-dark";
+            badgeIcon = "fa-ban";
+            badgeText = "Cancelling";
+        } else {
+            badgeClass = "bg-secondary";
+            badgeIcon = "fa-question";
+            badgeText = status.Humanize(LetterCasing.Title);
+        }
+
+        return @<span class="badge @badgeClass">
+            <i class="fa @badgeIcon me-1"></i>
+            @badgeText
+        </span>;
+    }
+
+    private RenderFragment GetTriggerDisplay(DataObjects.PipelineListItem pipeline)
+    {
+        // Get icon and color based on trigger type
+        var (icon, badgeClass, tooltipText) = pipeline.TriggerType switch {
+            DataObjects.TriggerType.Manual => ("fa-user", "bg-primary-subtle text-primary-emphasis border border-primary-subtle", 
+                $"Manually triggered{(!string.IsNullOrWhiteSpace(pipeline.TriggeredByUser) ? $" by {pipeline.TriggeredByUser}" : "")}"),
+            DataObjects.TriggerType.CodePush => ("fa-bolt", "bg-warning-subtle text-warning-emphasis border border-warning-subtle", 
+                "Triggered by code push (CI)"),
+            DataObjects.TriggerType.Scheduled => ("fa-clock-o", "bg-info-subtle text-info-emphasis border border-info-subtle", 
+                "Scheduled trigger"),
+            DataObjects.TriggerType.PullRequest => ("fa-code-fork", "bg-purple-subtle text-purple-emphasis border border-purple-subtle", 
+                "Pull request trigger"),
+            DataObjects.TriggerType.PipelineCompletion => ("fa-link", "bg-success-subtle text-success-emphasis border border-success-subtle", 
+                $"Triggered by pipeline completion{(!string.IsNullOrWhiteSpace(pipeline.TriggeredByPipeline) ? $": {pipeline.TriggeredByPipeline}" : "")}"),
+            DataObjects.TriggerType.ResourceTrigger => ("fa-cube", "bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle", 
+                "Resource trigger (container/package)"),
+            _ => ("fa-cog", "bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle", 
+                pipeline.TriggerDisplayText ?? "Unknown trigger")
+        };
+
+        // Determine display text
+        var displayText = pipeline.TriggerType switch {
+            DataObjects.TriggerType.Manual => TruncateName(pipeline.TriggeredByUser, 12) ?? "Manual",
+            DataObjects.TriggerType.CodePush => "Code push",
+            DataObjects.TriggerType.Scheduled => "Scheduled",
+            DataObjects.TriggerType.PullRequest => "PR",
+            DataObjects.TriggerType.PipelineCompletion => "Pipeline",
+            DataObjects.TriggerType.ResourceTrigger => "Resource",
+            _ => TruncateName(pipeline.TriggerDisplayText, 10) ?? "Other"
+        };
+
+        // Use secondary colors if no trigger info available
+        if (string.IsNullOrWhiteSpace(pipeline.TriggerReason)) {
+            return @<span class="text-muted">—</span>;
+        }
+
+        // For PR, use a custom purple since Bootstrap doesn't have it - fall back to secondary
+        if (pipeline.TriggerType == DataObjects.TriggerType.PullRequest) {
+            badgeClass = "bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle";
+        }
+
+        return @<span class="badge @badgeClass" title="@tooltipText">
+            <i class="fa @icon me-1"></i>
+            @displayText
+        </span>;
+    }
+
+    private string GetTimeAgo(DateTime dateTime)
+    {
+        try {
+            var timeSpan = DateTime.UtcNow - dateTime.ToUniversalTime();
+            if (timeSpan.TotalMinutes < 1) return "just now";
+            if (timeSpan.TotalMinutes < 60) return $"{(int)timeSpan.TotalMinutes}m ago";
+            if (timeSpan.TotalHours < 24) return $"{(int)timeSpan.TotalHours}h ago";
+            if (timeSpan.TotalDays < 7) return $"{(int)timeSpan.TotalDays}d ago";
+            return dateTime.ToString("MMM d");
+        } catch {
+            return dateTime.ToString("g");
+        }
+    }
+
+    private RenderFragment RenderVariableGroupCell(DataObjects.PipelineListItem pipeline) => __builder =>
+    {
+        var groups = pipeline.VariableGroups ?? [];
+        
+        <div class="d-flex flex-wrap gap-1">
+            @foreach (var group in groups) {
+                var envLabel = GetEnvironmentLabel(group.Environment);
+                var hasLink = !string.IsNullOrWhiteSpace(group.ResourceUrl);
+                var tooltip = $"{group.Name}" + (group.VariableCount > 0 ? $" ({group.VariableCount} vars)" : "");
+                
+                @if (hasLink) {
+                    <a href="@group.ResourceUrl" target="_blank" 
+                       class="badge @GetEnvironmentBadgeClass(group.Environment) text-decoration-none library-link"
+                       title="@tooltip">
+                        @envLabel
+                        <i class="fa fa-external-link-square ms-1 small"></i>
+                    </a>
+                } else {
+                    <span class="badge bg-secondary-subtle text-secondary-emphasis border" 
+                          title="@tooltip (not found)">
+                        @envLabel
+                    </span>
+                }
+            }
+        </div>
+    };
+
+    private string GetEnvironmentLabel(string? environment)
+    {
+        if (string.IsNullOrWhiteSpace(environment)) return "Vars";
+        
+        // Return short label for common environments
+        return environment.ToUpperInvariant() switch {
+            "DEV" => "DEV",
+            "PROD" => "PROD",
+            "CMS" => "CMS",
+            "STAGING" => "STG",
+            "QA" => "QA",
+            "UAT" => "UAT",
+            "TEST" => "TEST",
+            _ => environment.Length > 4 ? environment[..4].ToUpperInvariant() : environment.ToUpperInvariant()
+        };
+    }
+
+    private string GetEnvironmentBadgeClass(string? environment)
+    {
+        if (string.IsNullOrWhiteSpace(environment)) 
+            return "bg-secondary-subtle text-secondary-emphasis border";
+        
+        return environment.ToUpperInvariant() switch {
+            "DEV" => "bg-info-subtle text-info-emphasis border border-info-subtle",
+            "PROD" => "bg-success-subtle text-success-emphasis border border-success-subtle",
+            "CMS" => "bg-warning-subtle text-warning-emphasis border border-warning-subtle",
+            "STAGING" or "STG" => "bg-primary-subtle text-primary-emphasis border border-primary-subtle",
+            "QA" or "UAT" or "TEST" => "bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle",
+            _ => "bg-light text-dark border"
+        };
+    }
+
+    /// <summary>
+    /// Formats duration as full text for tooltip (e.g., "2 minutes 15 seconds").
+    /// </summary>
+    private string FormatDurationFull(TimeSpan? duration)
+    {
+        if (duration == null) return "";
+        return duration.Value.Humanize(2);
+    }
+
+    private string FormatDuration(TimeSpan? duration)
+    {
+        if (duration == null) return "";
+    
+        // Format as abbreviated duration (e.g., "5m 30s")
+        var totalSeconds = (int)duration.Value.TotalSeconds;
+        var minutes = totalSeconds / 60;
+        var seconds = totalSeconds % 60;
+    
+        // Handle special cases for round minutes or seconds
+        if (seconds == 0) {
+            return $"{minutes}m";
+        } else if (minutes == 0) {
+            return $"{seconds}s";
+        } else {
+            return $"{minutes}m {seconds}s";
+        }
+    }
+}
+
+@* Custom CSS: Only styles that Bootstrap cannot provide *@
+@* - Sortable header: cursor pointer + hover background + icon reveal *@
+@* - Library link hover lift effect (micro-interaction) *@
+<style>
+    .sortable-header {
+        cursor: pointer;
+        transition: background-color 0.15s ease;
+    }
+
+    .sortable-header:hover {
+        background-color: #e9ecef !important;
+    }
+
+    .sortable-header:hover .fa-sort {
+        opacity: 1 !important;
+    }
+
+    .library-link {
+        transition: transform 0.1s ease, box-shadow 0.1s ease;
+    }
+
+    .library-link:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+</style>

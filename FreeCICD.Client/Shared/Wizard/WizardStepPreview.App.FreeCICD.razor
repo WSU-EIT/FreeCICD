@@ -1,0 +1,48 @@
+@* WizardStepPreview.razor - YAML preview and diff step *@
+
+@if (IsPreviewLoading)
+{
+    <div class="alert alert-info d-flex align-items-center" role="alert">
+        <div class="spinner-border spinner-border-sm me-2" role="status" aria-label="Generating YAML preview">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <div>
+            Generating YAML preview… this can take a little while. Please be patient.
+        </div>
+    </div>
+}
+
+<div class="mt-3">
+    <h5>YAML Diff</h5>
+    @if (IsPreviewLoading)
+    {
+        <div class="d-flex flex-column justify-content-center align-items-center my-4">
+            <div class="spinner-border text-primary" role="status" aria-label="Loading YAML Diff">
+                <span class="visually-hidden">Loading YAML Diff…</span>
+            </div>
+            <div class="mt-3">Preparing YAML preview…</div>
+        </div>
+    }
+    else
+    {
+        @if (string.IsNullOrWhiteSpace(ExistingYamlContent))
+        {
+            <p class="text-muted">Nothing to diff.</p>
+        }
+        else
+        {
+            <MonacoEditor Id="yaml-diff-editor"
+                          Language="@MonacoEditor.MonacoLanguage.yaml"
+                          ReadOnly="true"
+                          ValueToDiff="@ExistingYamlContent"
+                          @bind-Value="NewYamlContent" />
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public bool IsPreviewLoading { get; set; }
+    [Parameter] public string ExistingYamlContent { get; set; } = "";
+    [Parameter] public string NewYamlContent { get; set; } = "";
+    [Parameter] public EventCallback<string> NewYamlContentChanged { get; set; }
+}
