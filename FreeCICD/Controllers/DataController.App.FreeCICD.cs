@@ -424,6 +424,91 @@ public partial class DataController
         return Ok(result);
     }
 
+    /// <summary>
+    /// Uploads a ZIP file for import. The file is stored temporarily and can be
+    /// referenced by FileId when calling StartPublicRepoImport with Method=ZipUpload.
+    /// Max size: 100MB. Files are automatically cleaned up after 1 hour.
+    /// </summary>
+    [HttpPost($"~/{DataObjects.Endpoints.Import.UploadZip}")]
+    [AllowAnonymous]
+    [RequestSizeLimit(100 * 1024 * 1024)] // 100MB limit
+    public async Task<ActionResult<DataObjects.UploadZipResponse>> UploadImportZip(IFormFile file)
+    {
+        var result = new DataObjects.UploadZipResponse();
+
+        try {
+            if (file == null || file.Length == 0) {
+                result.Success = false;
+                result.ErrorMessage = "No file uploaded.";
+                return BadRequest(result);
+            }
+
+            // Validate file extension
+            var extension = Path.GetExtension(file.FileName)?.ToLowerInvariant();
+            if (extension != ".zip") {
+                result.Success = false;
+                result.ErrorMessage = "Only .zip files are allowed.";
+                return BadRequest(result);
+            }
+
+            // Validate file size (100MB max)
+            if (file.Length > 100 * 1024 * 1024) {
+                result.Success = false;
+                result.ErrorMessage = "File size exceeds 100MB limit.";
+                return BadRequest(result);
+            }
+
+            // Generate unique file ID
+            var fileId = Guid.NewGuid();
+            
+            // Create temp directory for uploads if it doesn't exist
+            var uploadDir = Path.Combine(Path.GetTempPath(), "FreeCICD_Imports");
+            Directory.CreateDirectory(uploadDir);
+            
+            // Save file with unique ID
+            var filePath = Path.Combine(uploadDir, $"{fileId}.zip");
+            using (var stream = new FileStream(filePath, FileMode.Create)) {
+                await file.CopyToAsync(stream);
+            }
+
+            // Try to detect repo name and file count from ZIP
+            int fileCount = 0;
+            string? detectedName = null;
+            try {
+                using var zipArchive = System.IO.Compression.ZipFile.OpenRead(filePath);
+                fileCount = zipArchive.Entries.Count(e => !string.IsNullOrEmpty(e.Name));
+                
+                // GitHub ZIPs have format: reponame-branchname/...
+                // Try to detect repo name from first directory
+                var firstEntry = zipArchive.Entries.FirstOrDefault(e => e.FullName.Contains('/'));
+                if (firstEntry != null) {
+                    var topDir = firstEntry.FullName.Split('/')[0];
+                    // Remove branch suffix (e.g., "aspnetcore-main" -> "aspnetcore")
+                    if (topDir.Contains('-')) {
+                        detectedName = topDir.Substring(0, topDir.LastIndexOf('-'));
+                    } else {
+                        detectedName = topDir;
+                    }
+                }
+            } catch {
+                // Ignore ZIP inspection errors
+            }
+
+            result.Success = true;
+            result.FileId = fileId;
+            result.FileName = file.FileName;
+            result.FileSizeBytes = file.Length;
+            result.FileCount = fileCount;
+            result.DetectedRepoName = detectedName;
+
+            return Ok(result);
+        } catch (Exception ex) {
+            result.Success = false;
+            result.ErrorMessage = $"Upload failed: {ex.Message}";
+            return StatusCode(500, result);
+        }
+    }
+
     #endregion Public Git Repository Import Endpoints
 
     #region Import Request DTOs

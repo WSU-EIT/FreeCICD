@@ -68,11 +68,23 @@
     private bool _isValidating = false;
     private bool _isCheckingConflicts = false;
     private bool _isImporting = false;
+    private bool _isUploading = false;
     private string _errorMessage = string.Empty;
 
+    // Import Source Selection
+    private string _importSourceType = "url"; // "url" or "zip"
+    
     // URL Input
     private string _repoUrl = string.Empty;
     private DataObjects.PublicGitRepoInfo? _repoInfo = null;
+    private DataObjects.ImportMethod _importMethod = DataObjects.ImportMethod.GitSnapshot; // Default to snapshot
+    
+    // ZIP Upload
+    private Guid? _uploadedFileId = null;
+    private string? _uploadedFileName = null;
+    private long? _uploadedFileSize = null;
+    private string? _detectedRepoName = null;
+    private int? _uploadedFileCount = null;
 
     // Project Selection
     private bool _createNewProject = true;
@@ -111,9 +123,9 @@
 
     public void Close()
     {
-        if (_isImporting)
+        if (_isImporting || _isUploading)
         {
-            // Show warning about leaving during import
+            // Show warning about leaving during import/upload
             return;
         }
         _isVisible = false;
@@ -126,13 +138,31 @@
         _isValidating = false;
         _isCheckingConflicts = false;
         _isImporting = false;
+        _isUploading = false;
         _errorMessage = string.Empty;
+        
+        // Import source
+        _importSourceType = "url";
+        _importMethod = DataObjects.ImportMethod.GitSnapshot;
+        
+        // URL input
         _repoUrl = string.Empty;
         _repoInfo = null;
+        
+        // ZIP upload
+        _uploadedFileId = null;
+        _uploadedFileName = null;
+        _uploadedFileSize = null;
+        _detectedRepoName = null;
+        _uploadedFileCount = null;
+        
+        // Project selection
         _createNewProject = true;
         _newProjectName = string.Empty;
         _selectedProjectId = string.Empty;
         _targetRepoName = string.Empty;
+        
+        // Conflict resolution
         _conflictInfo = null;
         _conflictMode = DataObjects.ImportConflictMode.CreateNew;
         _importBranchName = string.Empty;
@@ -148,38 +178,175 @@
     // === Step Renderers ===
     private RenderFragment RenderUrlInputStep() => __builder =>
     {
-        <div class="mb-3">
-            <label class="form-label fw-bold">
-                <i class="fab fa-github me-1"></i>
-                Public Repository URL
-            </label>
-            <div class="input-group">
-                <input type="text" 
-                       class="form-control form-control-lg" 
-                       placeholder="https://github.com/owner/repo"
-                       @bind="_repoUrl"
-                       @bind:event="oninput"
-                       disabled="@_isValidating" />
-                <button class="btn btn-primary" 
-                        type="button" 
-                        @onclick="ValidateUrl"
-                        disabled="@(_isValidating || string.IsNullOrWhiteSpace(_repoUrl))">
-                    @if (_isValidating)
-                    {
-                        <span class="spinner-border spinner-border-sm me-1"></span>
-                        <span>Validating...</span>
-                    }
-                    else
-                    {
-                        <i class="fa fa-search me-1"></i>
-                        <span>Validate</span>
-                    }
+        <h6 class="mb-3">Choose Import Source</h6>
+        
+        @* Tab-style selector for URL vs ZIP *@
+        <ul class="nav nav-tabs mb-3">
+            <li class="nav-item">
+                <button class="nav-link @(_importSourceType == "url" ? "active" : "")" 
+                        type="button"
+                        @onclick="@(() => _importSourceType = "url")"
+                        disabled="@(_isValidating || _isUploading)">
+                    <i class="fa fa-link me-1"></i> Git URL
                 </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link @(_importSourceType == "zip" ? "active" : "")" 
+                        type="button"
+                        @onclick="@(() => _importSourceType = "zip")"
+                        disabled="@(_isValidating || _isUploading)">
+                    <i class="fa fa-file-archive me-1"></i> Upload ZIP
+                </button>
+            </li>
+        </ul>
+
+        @if (_importSourceType == "url")
+        {
+            @* Git URL Input *@
+            <div class="mb-3">
+                <label class="form-label fw-bold">
+                    <i class="fab fa-github me-1"></i>
+                    Public Repository URL
+                </label>
+                <div class="input-group">
+                    <input type="text" 
+                           class="form-control form-control-lg" 
+                           placeholder="https://github.com/owner/repo"
+                           @bind="_repoUrl"
+                           @bind:event="oninput"
+                           disabled="@_isValidating" />
+                    <button class="btn btn-primary" 
+                            type="button" 
+                            @onclick="ValidateUrl"
+                            disabled="@(_isValidating || string.IsNullOrWhiteSpace(_repoUrl))">
+                        @if (_isValidating)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                            <span>Validating...</span>
+                        }
+                        else
+                        {
+                            <i class="fa fa-search me-1"></i>
+                            <span>Validate</span>
+                        }
+                    </button>
+                </div>
+                <div class="form-text">
+                    Supports GitHub, GitLab, Bitbucket, and other public Git repositories.
+                </div>
             </div>
-            <div class="form-text">
-                Supports GitHub, GitLab, Bitbucket, and other public Git repositories.
+
+            @* Import Method Selector *@
+            <div class="mb-3">
+                <label class="form-label fw-bold">Import Mode</label>
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <div class="card h-100 @(_importMethod == DataObjects.ImportMethod.GitSnapshot ? "border-primary bg-primary bg-opacity-10" : "")" 
+                             style="cursor: pointer;"
+                             @onclick="@(() => _importMethod = DataObjects.ImportMethod.GitSnapshot)">
+                            <div class="card-body p-2">
+                                <div class="form-check mb-0">
+                                    <input class="form-check-input" type="radio" 
+                                           checked="@(_importMethod == DataObjects.ImportMethod.GitSnapshot)"
+                                           @onchange="@(() => _importMethod = DataObjects.ImportMethod.GitSnapshot)" />
+                                    <label class="form-check-label">
+                                        <strong><i class="fa fa-camera text-primary me-1"></i> Snapshot</strong>
+                                        <span class="badge bg-success ms-1">Recommended</span>
+                                        <br/>
+                                        <small class="text-muted">Fresh repo, single commit. No history baggage.</small>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100 @(_importMethod == DataObjects.ImportMethod.GitClone ? "border-primary bg-primary bg-opacity-10" : "")" 
+                             style="cursor: pointer;"
+                             @onclick="@(() => _importMethod = DataObjects.ImportMethod.GitClone)">
+                            <div class="card-body p-2">
+                                <div class="form-check mb-0">
+                                    <input class="form-check-input" type="radio" 
+                                           checked="@(_importMethod == DataObjects.ImportMethod.GitClone)"
+                                           @onchange="@(() => _importMethod = DataObjects.ImportMethod.GitClone)" />
+                                    <label class="form-check-label">
+                                        <strong><i class="fa fa-code-branch text-secondary me-1"></i> Full Clone</strong>
+                                        <br/>
+                                        <small class="text-muted">Preserves all Git history, branches, tags.</small>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>
+        }
+        else
+        {
+            @* ZIP Upload *@
+            <div class="mb-3">
+                <label class="form-label fw-bold">
+                    <i class="fa fa-file-archive me-1"></i>
+                    Upload ZIP File
+                </label>
+                
+                @if (_uploadedFileId == null)
+                {
+                    <div class="border border-2 border-dashed rounded p-4 text-center bg-light">
+                        <InputFile OnChange="HandleFileUpload" accept=".zip" disabled="@_isUploading" class="d-none" id="zipFileInput" />
+                        <label for="zipFileInput" class="d-block" style="cursor: pointer;">
+                            @if (_isUploading)
+                            {
+                                <div class="spinner-border text-primary mb-2"></div>
+                                <p class="mb-0">Uploading...</p>
+                            }
+                            else
+                            {
+                                <i class="fa fa-cloud-upload-alt fa-3x text-muted mb-2"></i>
+                                <p class="mb-1">Click to select ZIP file</p>
+                                <small class="text-muted">or drag and drop</small>
+                                <p class="text-muted mb-0"><small>Max size: 100 MB</small></p>
+                            }
+                        </label>
+                    </div>
+                }
+                else
+                {
+                    <div class="card border-success">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center">
+                                <i class="fa fa-file-archive fa-2x text-success me-3"></i>
+                                <div class="flex-grow-1">
+                                    <strong>@_uploadedFileName</strong>
+                                    <br/>
+                                    <small class="text-muted">
+                                        @FormatSize(_uploadedFileSize ?? 0)
+                                        @if (_uploadedFileCount > 0)
+                                        {
+                                            <span> • @_uploadedFileCount files</span>
+                                        }
+                                    </small>
+                                </div>
+                                <button class="btn btn-outline-danger btn-sm" @onclick="ClearUploadedFile">
+                                    <i class="fa fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                }
+                
+                <div class="form-text mt-2">
+                    Download a repository as ZIP from GitHub/GitLab and upload it here.
+                </div>
+            </div>
+
+            @* Optional source URL for commit message *@
+            <div class="mb-3">
+                <label class="form-label">Source URL <span class="text-muted">(optional)</span></label>
+                <input type="text" class="form-control" 
+                       placeholder="https://github.com/owner/repo (for reference in commit message)"
+                       @bind="_repoUrl" />
+            </div>
+        }
 
         @if (!string.IsNullOrWhiteSpace(_errorMessage))
         {
@@ -189,41 +356,84 @@
             </div>
         }
 
-        <div class="d-flex justify-content-end mt-4">
+        <div class="d-flex justify-content-between mt-4">
             <button class="btn btn-secondary" @onclick="Close">Cancel</button>
+            @if (_importSourceType == "zip" && _uploadedFileId != null)
+            {
+                <button class="btn btn-primary" @onclick="ProceedWithZipUpload">
+                    Continue <i class="fa fa-arrow-right ms-1"></i>
+                </button>
+            }
         </div>
     };
 
     private RenderFragment RenderRepoInfoStep() => __builder =>
     {
-        @if (_repoInfo != null)
+        @if (_repoInfo != null || _uploadedFileId != null)
         {
-            <div class="card mb-3 border-success">
-                <div class="card-header bg-success text-white">
-                    <i class="fa fa-check-circle me-2"></i>
-                    Repository Found
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <p><strong>Name:</strong> @_repoInfo.Name</p>
-                            <p><strong>Owner:</strong> @_repoInfo.Owner</p>
-                            <p><strong>Source:</strong> <span class="badge bg-secondary">@_repoInfo.Source</span></p>
-                        </div>
-                        <div class="col-md-6">
-                            <p><strong>Default Branch:</strong> @_repoInfo.DefaultBranch</p>
-                            @if (_repoInfo.SizeKB.HasValue)
-                            {
-                                <p><strong>Size:</strong> @FormatSize(_repoInfo.SizeKB.Value)</p>
-                            }
-                        </div>
+            @* Show source info card *@
+            @if (_repoInfo != null)
+            {
+                <div class="card mb-3 border-success">
+                    <div class="card-header bg-success text-white">
+                        <i class="fa fa-check-circle me-2"></i>
+                        Repository Found
                     </div>
-                    @if (!string.IsNullOrWhiteSpace(_repoInfo.Description))
-                    {
-                        <p class="text-muted mb-0"><em>@_repoInfo.Description</em></p>
-                    }
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p><strong>Name:</strong> @_repoInfo.Name</p>
+                                <p><strong>Owner:</strong> @_repoInfo.Owner</p>
+                                <p><strong>Source:</strong> <span class="badge bg-secondary">@_repoInfo.Source</span></p>
+                            </div>
+                            <div class="col-md-6">
+                                <p><strong>Default Branch:</strong> @_repoInfo.DefaultBranch</p>
+                                @if (_repoInfo.SizeKB.HasValue)
+                                {
+                                    <p><strong>Size:</strong> @FormatSize(_repoInfo.SizeKB.Value * 1024)</p>
+                                }
+                                <p><strong>Import Mode:</strong> 
+                                    <span class="badge @(_importMethod == DataObjects.ImportMethod.GitSnapshot ? "bg-primary" : "bg-secondary")">
+                                        @(_importMethod == DataObjects.ImportMethod.GitSnapshot ? "Snapshot (fresh)" : "Full Clone (with history)")
+                                    </span>
+                                </p>
+                            </div>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(_repoInfo.Description))
+                        {
+                            <p class="text-muted mb-0"><em>@_repoInfo.Description</em></p>
+                        }
+                    </div>
                 </div>
-            </div>
+            }
+            else if (_uploadedFileId != null)
+            {
+                <div class="card mb-3 border-success">
+                    <div class="card-header bg-success text-white">
+                        <i class="fa fa-file-archive me-2"></i>
+                        ZIP File Ready
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p><strong>File:</strong> @_uploadedFileName</p>
+                                <p><strong>Size:</strong> @FormatSize(_uploadedFileSize ?? 0)</p>
+                            </div>
+                            <div class="col-md-6">
+                                @if (_uploadedFileCount > 0)
+                                {
+                                    <p><strong>Files:</strong> @_uploadedFileCount</p>
+                                }
+                                <p><strong>Import Mode:</strong> <span class="badge bg-primary">Snapshot (fresh)</span></p>
+                            </div>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(_repoUrl))
+                        {
+                            <p class="text-muted mb-0"><em>Source: @_repoUrl</em></p>
+                        }
+                    </div>
+                </div>
+            }
 
             <hr />
 
@@ -233,7 +443,7 @@
                 <div class="form-check">
                     <input class="form-check-input" type="radio" id="newProject" 
                            checked="@_createNewProject" 
-                           @onchange="@(() => { _createNewProject = true; _newProjectName = _repoInfo?.Name ?? ""; })" />
+                           @onchange="@(() => { _createNewProject = true; _newProjectName = GetDefaultProjectName(); })" />
                     <label class="form-check-label" for="newProject">
                         Create new project
                     </label>
@@ -274,7 +484,7 @@
             <div class="mb-3">
                 <label class="form-label">Repository Name (optional override)</label>
                 <input type="text" class="form-control" 
-                       placeholder="@(_repoInfo?.Name ?? "repo-name")"
+                       placeholder="@GetDefaultRepoName()"
                        @bind="_targetRepoName" />
                 <div class="form-text">Leave blank to use "@(_repoInfo?.Name)"</div>
             </div>
@@ -612,11 +822,108 @@
         }
     }
 
+    private async Task HandleFileUpload(InputFileChangeEventArgs e)
+    {
+        _isUploading = true;
+        _errorMessage = string.Empty;
+        StateHasChanged();
+
+        try
+        {
+            var file = e.File;
+            if (file.Size > 100 * 1024 * 1024) // 100MB limit
+            {
+                _errorMessage = "File size exceeds 100MB limit.";
+                return;
+            }
+
+            // Upload via multipart form using the injected Model's ApplicationUrl
+            using var content = new MultipartFormDataContent();
+            using var stream = file.OpenReadStream(maxAllowedSize: 100 * 1024 * 1024);
+            using var memoryStream = new MemoryStream();
+            await stream.CopyToAsync(memoryStream);
+            memoryStream.Position = 0;
+            
+            content.Add(new StreamContent(memoryStream), "file", file.Name);
+
+            using var httpClient = new HttpClient();
+            var baseUrl = Model?.ApplicationUrl ?? "";
+            if (!baseUrl.EndsWith("/")) baseUrl += "/";
+            
+            var response = await httpClient.PostAsync(
+                $"{baseUrl}{DataObjects.Endpoints.Import.UploadZip}", 
+                content
+            );
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<DataObjects.UploadZipResponse>();
+                if (result != null && result.Success)
+                {
+                    _uploadedFileId = result.FileId;
+                    _uploadedFileName = result.FileName;
+                    _uploadedFileSize = result.FileSizeBytes;
+                    _uploadedFileCount = result.FileCount;
+                    _detectedRepoName = result.DetectedRepoName;
+                    
+                    // Pre-fill project name if detected
+                    if (!string.IsNullOrWhiteSpace(_detectedRepoName))
+                    {
+                        _newProjectName = _detectedRepoName;
+                    }
+                }
+                else
+                {
+                    _errorMessage = result?.ErrorMessage ?? "Upload failed.";
+                }
+            }
+            else
+            {
+                _errorMessage = $"Upload failed: {response.StatusCode}";
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Upload error: {ex.Message}";
+        }
+        finally
+        {
+            _isUploading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ClearUploadedFile()
+    {
+        _uploadedFileId = null;
+        _uploadedFileName = null;
+        _uploadedFileSize = null;
+        _uploadedFileCount = null;
+        _detectedRepoName = null;
+        StateHasChanged();
+    }
+
+    private async Task ProceedWithZipUpload()
+    {
+        if (_uploadedFileId == null) return;
+        
+        // Use detected name or filename for project name
+        if (string.IsNullOrWhiteSpace(_newProjectName))
+        {
+            _newProjectName = _detectedRepoName ?? Path.GetFileNameWithoutExtension(_uploadedFileName) ?? "imported-repo";
+        }
+        
+        // Load existing projects
+        await LoadExistingProjects();
+        
+        _currentStep = ImportStep.RepoInfo;
+        StateHasChanged();
+    }
+
     private async Task LoadExistingProjects()
     {
         try
         {
-            // Use existing endpoint to get projects
             var url = DataObjects.Endpoints.DevOps.GetDevOpsProjects;
             if (!string.IsNullOrWhiteSpace(DevOpsPAT) && !string.IsNullOrWhiteSpace(OrgName))
             {
@@ -639,7 +946,7 @@
 
         try
         {
-            var repoName = string.IsNullOrWhiteSpace(_targetRepoName) ? _repoInfo?.Name : _targetRepoName;
+            var repoName = string.IsNullOrWhiteSpace(_targetRepoName) ? GetDefaultRepoName() : _targetRepoName;
             
             var request = new
             {
@@ -649,7 +956,6 @@
                 SourceUrl = _repoUrl
             };
 
-            // Add headers for PAT/Org
             var result = await PostWithDevOpsHeaders<DataObjects.ImportConflictInfo>(
                 DataObjects.Endpoints.Import.CheckConflicts,
                 request
@@ -660,7 +966,7 @@
                 _conflictInfo = result;
                 _conflictMode = DataObjects.ImportConflictMode.CreateNew;
                 _renamedRepoName = result.SuggestedRepoNames.FirstOrDefault() ?? $"{repoName}-imported";
-                _importBranchName = $"imported/{_repoInfo?.Source?.ToLower() ?? "git"}-{DateTime.Now:yyyy-MM-dd}";
+                _importBranchName = $"imported/{(_repoInfo?.Source?.ToLower() ?? "zip")}-{DateTime.Now:yyyy-MM-dd}";
                 _currentStep = ImportStep.ConflictResolution;
             }
             else
@@ -691,7 +997,6 @@
 
         if (mode == DataObjects.ImportConflictMode.ReplaceMain)
         {
-            // Start countdown timer for destructive action
             _countdownTimer = new System.Threading.Timer(async _ =>
             {
                 _destructiveCountdown--;
@@ -738,7 +1043,7 @@
         {
             var repoName = _conflictMode == DataObjects.ImportConflictMode.CreateNew && !string.IsNullOrWhiteSpace(_renamedRepoName)
                 ? _renamedRepoName
-                : (string.IsNullOrWhiteSpace(_targetRepoName) ? _repoInfo?.Name : _targetRepoName);
+                : (string.IsNullOrWhiteSpace(_targetRepoName) ? GetDefaultRepoName() : _targetRepoName);
 
             var request = new DataObjects.ImportPublicRepoRequest
             {
@@ -747,6 +1052,8 @@
                 NewProjectName = _createNewProject ? _newProjectName : null,
                 TargetRepoName = repoName,
                 LaunchWizardAfter = true,
+                Method = _importSourceType == "zip" ? DataObjects.ImportMethod.ZipUpload : _importMethod,
+                UploadedFileId = _uploadedFileId,
                 ConflictMode = _conflictMode,
                 ImportBranchName = _conflictMode == DataObjects.ImportConflictMode.ImportToBranch ? _importBranchName : null,
                 ConfirmDestructiveAction = _conflictMode == DataObjects.ImportConflictMode.ReplaceMain
@@ -766,8 +1073,25 @@
             {
                 _importResult = result;
                 
-                // Poll for completion
-                await PollImportStatus();
+                // For GitClone, poll for completion
+                // For Snapshot/ZipUpload, it completes synchronously
+                if (request.Method == DataObjects.ImportMethod.GitClone)
+                {
+                    await PollImportStatus();
+                }
+                else
+                {
+                    // Snapshot imports complete immediately
+                    if (result.Status == DataObjects.ImportStatus.Completed)
+                    {
+                        _currentStep = ImportStep.Complete;
+                    }
+                    else if (result.Status == DataObjects.ImportStatus.Failed)
+                    {
+                        _errorMessage = result.ErrorMessage ?? "Import failed.";
+                        _currentStep = ImportStep.Error;
+                    }
+                }
             }
         }
         catch (Exception ex)
@@ -830,26 +1154,32 @@
     {
         if (_importResult != null)
         {
-            // Navigate to wizard with project/repo pre-selected
-            // The wizard will pick up the project and repo from query params
             Close();
-            // Trigger refresh of the main page
             OnImportComplete.InvokeAsync();
         }
     }
 
     // === Helpers ===
-    private string FormatSize(long sizeKB)
+    private string FormatSize(long sizeBytes)
     {
-        if (sizeKB < 1024) return $"{sizeKB} KB";
-        if (sizeKB < 1024 * 1024) return $"{sizeKB / 1024.0:F1} MB";
-        return $"{sizeKB / (1024.0 * 1024.0):F1} GB";
+        if (sizeBytes < 1024) return $"{sizeBytes} B";
+        if (sizeBytes < 1024 * 1024) return $"{sizeBytes / 1024.0:F1} KB";
+        if (sizeBytes < 1024 * 1024 * 1024) return $"{sizeBytes / (1024.0 * 1024.0):F1} MB";
+        return $"{sizeBytes / (1024.0 * 1024.0 * 1024.0):F1} GB";
+    }
+
+    private string GetDefaultProjectName()
+    {
+        return _repoInfo?.Name ?? _detectedRepoName ?? "imported-repo";
+    }
+
+    private string GetDefaultRepoName()
+    {
+        return _repoInfo?.Name ?? _detectedRepoName ?? "imported-repo";
     }
 
     private async Task<T?> PostWithDevOpsHeaders<T>(string url, object data)
     {
-        // For now, use the standard helper which handles auth
-        // In a real implementation, you'd add DevOpsPAT and DevOpsOrg headers
         return await Helpers.GetOrPost<T>(url, data);
     }
 

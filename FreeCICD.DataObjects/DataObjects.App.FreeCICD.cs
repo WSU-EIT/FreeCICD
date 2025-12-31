@@ -46,6 +46,9 @@ public partial class DataObjects
             
             /// <summary>Get the status of an import operation. Append /{projectId}/{repoId}/{requestId}.</summary>
             public const string GetStatus = "api/Data/GetPublicRepoImportStatus";
+            
+            /// <summary>Upload a ZIP file for import. Returns file ID.</summary>
+            public const string UploadZip = "api/Data/UploadImportZip";
         }
     }
 
@@ -688,6 +691,21 @@ public partial class DataObjects
     }
 
     /// <summary>
+    /// Method for importing code into Azure DevOps.
+    /// </summary>
+    public enum ImportMethod
+    {
+        /// <summary>Full Git clone preserving history (Azure DevOps native import).</summary>
+        GitClone,
+        
+        /// <summary>Download as ZIP and commit as fresh snapshot (no history).</summary>
+        GitSnapshot,
+        
+        /// <summary>Upload ZIP file and commit as fresh snapshot.</summary>
+        ZipUpload
+    }
+
+    /// <summary>
     /// Information about conflicts detected before import.
     /// </summary>
     public class ImportConflictInfo
@@ -789,6 +807,17 @@ public partial class DataObjects
         /// <summary>Whether to navigate to the CI/CD wizard after import completes.</summary>
         public bool LaunchWizardAfter { get; set; } = true;
 
+        // === Import Method Fields ===
+        
+        /// <summary>Import method: GitClone (full history), GitSnapshot (fresh commit), or ZipUpload.</summary>
+        public ImportMethod Method { get; set; } = ImportMethod.GitSnapshot;
+        
+        /// <summary>For ZipUpload: the uploaded file ID returned from the upload endpoint.</summary>
+        public Guid? UploadedFileId { get; set; }
+        
+        /// <summary>Optional commit message for snapshot imports. Defaults to "Initial import from {source}".</summary>
+        public string? CommitMessage { get; set; }
+
         // === Conflict Resolution Fields ===
         
         /// <summary>How to handle conflicts (default: CreateNew = always safe).</summary>
@@ -841,5 +870,32 @@ public partial class DataObjects
         
         /// <summary>Conflict information (populated by CheckImportConflicts).</summary>
         public ImportConflictInfo? ConflictInfo { get; set; }
+    }
+
+    /// <summary>
+    /// Response from uploading a ZIP file for import.
+    /// </summary>
+    public class UploadZipResponse
+    {
+        /// <summary>Whether the upload was successful.</summary>
+        public bool Success { get; set; }
+        
+        /// <summary>Error message if the upload failed.</summary>
+        public string? ErrorMessage { get; set; }
+        
+        /// <summary>Unique file ID to use in ImportPublicRepoRequest.UploadedFileId.</summary>
+        public Guid? FileId { get; set; }
+        
+        /// <summary>Original filename of the uploaded ZIP.</summary>
+        public string? FileName { get; set; }
+        
+        /// <summary>Size of the uploaded file in bytes.</summary>
+        public long? FileSizeBytes { get; set; }
+        
+        /// <summary>Detected repository name from ZIP contents (if available).</summary>
+        public string? DetectedRepoName { get; set; }
+        
+        /// <summary>Number of files detected in the ZIP.</summary>
+        public int? FileCount { get; set; }
     }
 }
