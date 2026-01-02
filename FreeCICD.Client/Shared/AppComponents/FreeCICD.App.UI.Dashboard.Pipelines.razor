@@ -1,4 +1,4 @@
-@* Pipeline Dashboard Component *@
+﻿@* Pipeline Dashboard Component *@
 @* Displays a list of Azure DevOps pipelines with filtering, sorting, grouping, and Card/Table views *@
 
 @implements IDisposable
@@ -589,7 +589,7 @@
         @* Content *@
         else {
             @* Filter Bar *@
-            <PipelineFilterBar_App_FreeCICD
+            <FreeCICD_App_UI_Dashboard_FilterBar
                 SearchTerm="@_searchTerm"
                 SearchTermChanged="@(val => { _searchTerm = val; StateHasChanged(); })"
                 SelectedStatus="@_selectedStatus"
@@ -606,7 +606,7 @@
                 OnFiltersUpdated="@OnFiltersUpdated" />
 
             @* View Controls *@
-            <PipelineViewControls_App_FreeCICD
+            <FreeCICD_App_UI_Dashboard_ViewControls
                 ViewMode="@_viewMode"
                 ViewModeChanged="@OnViewModeChanged"
                 GroupByFolder="@_groupByFolder"
@@ -648,7 +648,7 @@
                     <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 row-cols-xl-4 g-4">
                         @foreach (var pipeline in FilteredPipelines) {
                             <div class="col">
-                                <PipelineCard_App_FreeCICD Pipeline="@pipeline"
+                                <FreeCICD_App_UI_Dashboard_PipelineCard Pipeline="@pipeline"
                                     OnEdit="@(() => OnEditPipeline(pipeline))"
                                     OnView="@(() => OnViewPipeline(pipeline))" />
                             </div>
@@ -657,7 +657,7 @@
                 } else {
                     <div class="card shadow-sm border-0">
                         <div class="card-body p-0">
-                            <PipelineTableView_App_FreeCICD
+                            <FreeCICD_App_UI_Dashboard_TableView
                                 Pipelines="@FilteredPipelines"
                                 SortColumn="@GetCurrentSortColumn()"
                                 SortAscending="@GetCurrentSortAscending()"
@@ -711,7 +711,7 @@
         var isExpanded = _expandedGroups.Contains(folder.FullPath);
         var totalCount = folder.GetTotalPipelineCount();
 
-        <PipelineGroup_App_FreeCICD
+        <FreeCICD_App_UI_Dashboard_PipelineGroup
             GroupId="@folder.FullPath.Replace(" ", "-").Replace("/", "-").ToLower()"
             GroupName="@folder.Name"
             PipelineCount="@totalCount"
@@ -735,7 +735,7 @@
                     <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 row-cols-xl-4 g-3 @(folder.SubFolders.Any() ? "mt-2" : "")">
                         @foreach (var pipeline in folder.Pipelines) {
                             <div class="col">
-                                <PipelineCard_App_FreeCICD Pipeline="@pipeline"
+                                <FreeCICD_App_UI_Dashboard_PipelineCard Pipeline="@pipeline"
                                     OnEdit="@(() => OnEditPipeline(pipeline))"
                                     OnView="@(() => OnViewPipeline(pipeline))" />
                             </div>
@@ -743,7 +743,7 @@
                     </div>
                 } else {
                     <div class="@(folder.SubFolders.Any() ? "mt-2" : "")">
-                        <PipelineTableView_App_FreeCICD
+                        <FreeCICD_App_UI_Dashboard_TableView
                             Pipelines="@folder.Pipelines"
                             SortColumn="@GetCurrentSortColumn()"
                             SortAscending="@GetCurrentSortAscending()"
@@ -753,6 +753,6 @@
                     </div>
                 }
             }
-        </PipelineGroup_App_FreeCICD>
+        </FreeCICD_App_UI_Dashboard_PipelineGroup>
     };
 }

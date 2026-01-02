@@ -1,4 +1,4 @@
-@page "/"
+﻿@page "/"
 @page "/{TenantCode}"
 @page "/Pipelines"
 @page "/{TenantCode}/Pipelines"
@@ -6,7 +6,7 @@
 @implements IDisposable
 
 @if (Model.Loaded && Model.LoggedIn && Model.View == _pageName) {
-    <Pipelines_App_FreeCICD />
+    <FreeCICD_App_UI_Dashboard_Pipelines />
 }
 
 @code {

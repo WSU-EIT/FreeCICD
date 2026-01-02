@@ -1,4 +1,4 @@
-ï»¿@* FreeCICD Pipeline Wizard Component *@
+@* FreeCICD Pipeline Wizard Component *@
 @* This component contains all FreeCICD-specific UI logic *@
 @* It is referenced from Index.App.razor to keep base files clean for upgrades *@
 
@@ -24,7 +24,7 @@
     protected HashSet<string> _importedFields = new();
 
     // Import from public repo modal
-    protected ImportPublicRepo_App_FreeCICD? _importPublicRepoModal;
+    protected FreeCICD_App_UI_Import? _importPublicRepoModal;
 
     public void Dispose()
     {
@@ -134,7 +134,7 @@
                 </div>
 
                 @* Wizard Stepper - Horizontal step indicator *@
-                <WizardStepper_App_FreeCICD Steps="@GetWizardSteps()" 
+                <FreeCICD_App_UI_Wizard_Stepper Steps="@GetWizardSteps()" 
                                CurrentStep="@GetAdjustedCurrentStep()" 
                                OnStepClick="@(async (step) => await GoToStep(step + (_hidePAT ? 1 : 0)))" />
 
@@ -142,7 +142,7 @@
                 @* Show when there are selections OR when past first step (to handle both import and manual flow) *@
                 @if (HasAnySelections || currentStep > (_hidePAT ? 1 : 0))
                 {
-                    <SelectionSummary_App_FreeCICD Selections="@GetSelectionSummary()" />
+                    <FreeCICD_App_UI_Wizard_Summary Selections="@GetSelectionSummary()" />
                 }
 
                 @* Main Wizard Card *@
@@ -151,7 +151,7 @@
                     @{
                         switch (StepNames[currentStep]) {
                             case DataObjects.StepNameList.SelectPAT:
-                                <WizardStepHeader_App_FreeCICD StepNumber="@(currentStep + 1)"
+                                <FreeCICD_App_UI_Wizard_StepHeader StepNumber="@(currentStep + 1)"
                                                   Title="Azure DevOps Credentials"
                                                   ShowNext="true"
                                                   NextDisabled="@(string.IsNullOrWhiteSpace(DevOpsPAT) || string.IsNullOrWhiteSpace(OrgName))"
@@ -160,7 +160,7 @@
                                 break;
 
                             case DataObjects.StepNameList.SelectProject:
-                                <WizardStepHeader_App_FreeCICD StepNumber="@(currentStep + 1 - (_hidePAT ? 1 : 0))"
+                                <FreeCICD_App_UI_Wizard_StepHeader StepNumber="@(currentStep + 1 - (_hidePAT ? 1 : 0))"
                                                   Title="Select Project"
                                                   ShowStartOver="@(currentStep > (_hidePAT ? 1 : 0))"
                                                   ShowNext="true"
@@ -171,7 +171,7 @@
                                 break;
 
                             case DataObjects.StepNameList.SelectRepository:
-                                <WizardStepHeader_App_FreeCICD StepNumber="@(currentStep + 1 - (_hidePAT ? 1 : 0))"
+                                <FreeCICD_App_UI_Wizard_StepHeader StepNumber="@(currentStep + 1 - (_hidePAT ? 1 : 0))"
                                                   Title="Select Repository"
                                                   ShowStartOver="true"
                                                   ShowBack="true"
@@ -184,7 +184,7 @@
                                 break;
 
                             case DataObjects.StepNameList.SelectBranch:
-                                <WizardStepHeader_App_FreeCICD StepNumber="@(currentStep + 1 - (_hidePAT ? 1 : 0))"
+                                <FreeCICD_App_UI_Wizard_StepHeader StepNumber="@(currentStep + 1 - (_hidePAT ? 1 : 0))"
                                                   Title="Select Branch"
                                                   ShowStartOver="true"
                                                   ShowBack="true"
@@ -197,7 +197,7 @@
                                 break;
 
                             case DataObjects.StepNameList.SelectCsprojFile:
-                                <WizardStepHeader_App_FreeCICD StepNumber="@(currentStep + 1 - (_hidePAT ? 1 : 0))"
+                                <FreeCICD_App_UI_Wizard_StepHeader StepNumber="@(currentStep + 1 - (_hidePAT ? 1 : 0))"
                                                   Title="Select .csproj File"
                                                   ShowStartOver="true"
                                                   ShowBack="true"
@@ -209,7 +209,7 @@
                                 break;
 
                             case DataObjects.StepNameList.EnvironmentSettings:
-                                <WizardStepHeader_App_FreeCICD StepNumber="@(currentStep + 1 - (_hidePAT ? 1 : 0))"
+                                <FreeCICD_App_UI_Wizard_StepHeader StepNumber="@(currentStep + 1 - (_hidePAT ? 1 : 0))"
                                                   Title="Environment Settings"
                                                   ShowStartOver="true"
                                                   ShowBack="true"
@@ -221,7 +221,7 @@
                                 break;
 
                             case DataObjects.StepNameList.SelectPipelineSelection:
-                                <WizardStepHeader_App_FreeCICD StepNumber="@(currentStep + 1 - (_hidePAT ? 1 : 0))"
+                                <FreeCICD_App_UI_Wizard_StepHeader StepNumber="@(currentStep + 1 - (_hidePAT ? 1 : 0))"
                                                   Title="Pipeline Selection"
                                                   ShowStartOver="true"
                                                   ShowBack="true"
@@ -234,7 +234,7 @@
                                 break;
 
                             case DataObjects.StepNameList.YAMLPreviewAndSave:
-                                <WizardStepHeader_App_FreeCICD StepNumber="@(currentStep + 1 - (_hidePAT ? 1 : 0))"
+                                <FreeCICD_App_UI_Wizard_StepHeader StepNumber="@(currentStep + 1 - (_hidePAT ? 1 : 0))"
                                                   Title="YAML Preview & Save"
                                                   ShowStartOver="true"
                                                   ShowBack="true"
@@ -248,7 +248,7 @@
                             case DataObjects.StepNameList.Completed:
                                 @if (_isSaving)
                                 {
-                                    <WizardStepHeader_App_FreeCICD HeaderClass="bg-warning text-dark"
+                                    <FreeCICD_App_UI_Wizard_StepHeader HeaderClass="bg-warning text-dark"
                                                       ShowSpinner="true"
                                                       SpinnerText="Saving..."
                                                       Title="Saving Pipeline..."
@@ -256,7 +256,7 @@
                                 }
                                 else if (!string.IsNullOrWhiteSpace(_saveErrorMessage))
                                 {
-                                    <WizardStepHeader_App_FreeCICD HeaderClass="bg-danger text-white"
+                                    <FreeCICD_App_UI_Wizard_StepHeader HeaderClass="bg-danger text-white"
                                                       BadgeIcon="fa-times"
                                                       BadgeClass="bg-light text-danger"
                                                       Title="Save Failed"
@@ -267,7 +267,7 @@
                                 }
                                 else if (_saveCompleted)
                                 {
-                                    <WizardStepHeader_App_FreeCICD HeaderClass="bg-success text-white"
+                                    <FreeCICD_App_UI_Wizard_StepHeader HeaderClass="bg-success text-white"
                                                       BadgeIcon="fa-check"
                                                       BadgeClass="bg-light text-success"
                                                       Title="Completed"
@@ -276,7 +276,7 @@
                                 }
                                 else
                                 {
-                                    <WizardStepHeader_App_FreeCICD HeaderClass="bg-secondary text-white"
+                                    <FreeCICD_App_UI_Wizard_StepHeader HeaderClass="bg-secondary text-white"
                                                       Title="Processing..." />
                                 }
                                 break;
@@ -288,7 +288,7 @@
                         @{
                             switch (StepNames[currentStep]) {
                                 case DataObjects.StepNameList.SelectPAT:
-                                    <WizardStepPAT_App_FreeCICD DevOpsPAT="@DevOpsPAT"
+                                    <FreeCICD_App_UI_Wizard_StepPAT DevOpsPAT="@DevOpsPAT"
                                                    OnDevOpsPATChanged="@(val => DevOpsPAT = val)"
                                                    OrgName="@OrgName"
                                                    OnOrgNameChanged="@(val => OrgName = val)"
@@ -297,35 +297,35 @@
                                     break;
 
                                 case DataObjects.StepNameList.SelectProject:
-                                    <WizardStepProject_App_FreeCICD Projects="@DevopsProjectInfos"
+                                    <FreeCICD_App_UI_Wizard_StepProject Projects="@DevopsProjectInfos"
                                                        SelectedProjectId="@SelectedProjectId"
                                                        IsDisabled="@_loading"
                                                        OnProjectChanged="@ProjectChangedWizard" />
                                     break;
 
                                 case DataObjects.StepNameList.SelectRepository:
-                                    <WizardStepRepository_App_FreeCICD SelectedProjectInfo="@SelectedProjectInfo"
+                                    <FreeCICD_App_UI_Wizard_StepRepository SelectedProjectInfo="@SelectedProjectInfo"
                                                           SelectedRepoId="@SelectedRepoId"
                                                           IsDisabled="@_loading"
                                                           OnRepoChanged="@RepoChangedWizard" />
                                     break;
 
                                 case DataObjects.StepNameList.SelectBranch:
-                                    <WizardStepBranch_App_FreeCICD SelectedRepoInfo="@SelectedRepoInfo"
+                                    <FreeCICD_App_UI_Wizard_StepBranch SelectedRepoInfo="@SelectedRepoInfo"
                                                       SelectedBranch="@SelectedBranch"
                                                       IsDisabled="@_loading"
                                                       OnBranchChanged="@BranchChangedWizard" />
                                     break;
 
                                 case DataObjects.StepNameList.SelectCsprojFile:
-                                    <WizardStepCsproj_App_FreeCICD SelectedBranchInfo="@SelectedBranchInfo"
+                                    <FreeCICD_App_UI_Wizard_StepCsproj SelectedBranchInfo="@SelectedBranchInfo"
                                                       SelectedCsprojPath="@SelectedCsprojPath"
                                                       IsDisabled="@_loading"
                                                       OnCsprojChanged="@CsProjectFileChangedWizard" />
                                     break;
 
                                 case DataObjects.StepNameList.EnvironmentSettings:
-                                    <WizardStepEnvironments_App_FreeCICD EnvironmentOptions="@GlobalSettings.App.EnvironmentOptions"
+                                    <FreeCICD_App_UI_Wizard_StepEnvironments EnvironmentOptions="@GlobalSettings.App.EnvironmentOptions"
                                                             EnvSettings="@EnvSettings"
                                                             IsDisabled="@_loading"
                                                             ImportedFields="@_importedFields"
@@ -340,7 +340,7 @@
                                     break;
 
                                 case DataObjects.StepNameList.SelectPipelineSelection:
-                                    <WizardStepPipeline_App_FreeCICD PipelineDefinitions="@DevopsPipelineDefinitions"
+                                    <FreeCICD_App_UI_Wizard_StepPipeline PipelineDefinitions="@DevopsPipelineDefinitions"
                                                         SelectedPipelineId="@SelectedPipelineId"
                                                         NewPipelineName="@NewPipelineName"
                                                         OnNewPipelineNameChanged="@(val => NewPipelineName = val)"
@@ -349,13 +349,13 @@
                                     break;
 
                                 case DataObjects.StepNameList.YAMLPreviewAndSave:
-                                    <WizardStepPreview_App_FreeCICD IsPreviewLoading="@_isPreviewLoading"
+                                    <FreeCICD_App_UI_Wizard_StepPreview IsPreviewLoading="@_isPreviewLoading"
                                                        ExistingYamlContent="@ExistingYamlContent"
                                                        NewYamlContent="@NewYamlContent" />
                                     break;
 
                                 case DataObjects.StepNameList.Completed:
-                                    <WizardStepCompleted_App_FreeCICD IsSaving="@_isSaving"
+                                    <FreeCICD_App_UI_Wizard_StepCompleted IsSaving="@_isSaving"
                                                          SaveCompleted="@_saveCompleted"
                                                          SaveErrorMessage="@_saveErrorMessage"
                                                          LastSavedPipelineDefinition="@LastSavedPipelineDefinition"
@@ -406,7 +406,7 @@
             </div>
 
             @* Import from Public Repo Modal *@
-            <ImportPublicRepo_App_FreeCICD @ref="_importPublicRepoModal" 
+            <FreeCICD_App_UI_Import @ref="_importPublicRepoModal" 
                                            DevOpsPAT="@DevOpsPAT"
                                            OrgName="@OrgName"
                                            OnImportComplete="@OnPublicRepoImportComplete" />
@@ -550,7 +550,7 @@
                     } else { SelectedPipelineId = 0; ExistingYamlContent = ""; }
                     NewYamlContent = string.Empty;
                     StateHasChanged();
-                    _loadingMessages.Insert(0, new LoadingMessage { Message = "Generating YAML previewâ€¦", Created = DateTime.UtcNow });
+                    _loadingMessages.Insert(0, new LoadingMessage { Message = "Generating YAML preview…", Created = DateTime.UtcNow });
                     StateHasChanged();
                     try {
                         var response = await Helpers.GetOrPost<string>($"{DataObjects.Endpoints.DevOps.PreviewDevOpsYmlFileContents}", DevOpsPipelineRequest);
@@ -570,7 +570,7 @@
                 StateHasChanged();
                 
                 try {
-                    _loadingMessages.Insert(0, new LoadingMessage { Message = "Saving pipelineâ€¦ please don't navigate away.", Created = DateTime.UtcNow });
+                    _loadingMessages.Insert(0, new LoadingMessage { Message = "Saving pipeline… please don't navigate away.", Created = DateTime.UtcNow });
                     StateHasChanged();
                     
                     var createOrUpdateResult = await Helpers.GetOrPost<DataObjects.BuildDefinition>($"{DataObjects.Endpoints.DevOps.CreateOrUpdateDevOpsPipeline}", DevOpsPipelineRequest);
@@ -833,9 +833,9 @@
     /// <summary>
     /// Gets the wizard step information for the WizardStepper component.
     /// </summary>
-    private List<WizardStepper_App_FreeCICD.WizardStepInfo> GetWizardSteps()
+    private List<FreeCICD_App_UI_Wizard_Stepper.WizardStepInfo> GetWizardSteps()
     {
-        var steps = new List<WizardStepper_App_FreeCICD.WizardStepInfo>();
+        var steps = new List<FreeCICD_App_UI_Wizard_Stepper.WizardStepInfo>();
         
         for (int i = _hidePAT ? 1 : 0; i < StepNames.Length; i++)
         {
@@ -843,7 +843,7 @@
             var shortName = GetShortStepName(stepName);
             var selectedValue = GetStepSelectedValue(i);
             
-            steps.Add(new WizardStepper_App_FreeCICD.WizardStepInfo
+            steps.Add(new FreeCICD_App_UI_Wizard_Stepper.WizardStepInfo
             {
                 Name = stepName,
                 ShortName = shortName,
@@ -892,42 +892,42 @@
     /// <summary>
     /// Gets the selection summary items for the SelectionSummary component.
     /// </summary>
-    private List<SelectionSummary_App_FreeCICD.SelectionItem> GetSelectionSummary()
+    private List<FreeCICD_App_UI_Wizard_Summary.SelectionItem> GetSelectionSummary()
     {
-        var selections = new List<SelectionSummary_App_FreeCICD.SelectionItem>();
+        var selections = new List<FreeCICD_App_UI_Wizard_Summary.SelectionItem>();
         
         if (!string.IsNullOrWhiteSpace(SelectedProjectInfo?.ProjectName))
         {
-            selections.Add(new SelectionSummary_App_FreeCICD.SelectionItem { Label = "Project", Value = SelectedProjectInfo.ProjectName });
+            selections.Add(new FreeCICD_App_UI_Wizard_Summary.SelectionItem { Label = "Project", Value = SelectedProjectInfo.ProjectName });
         }
         
         if (!string.IsNullOrWhiteSpace(SelectedRepoInfo?.RepoName))
         {
-            selections.Add(new SelectionSummary_App_FreeCICD.SelectionItem { Label = "Repository", Value = SelectedRepoInfo.RepoName });
+            selections.Add(new FreeCICD_App_UI_Wizard_Summary.SelectionItem { Label = "Repository", Value = SelectedRepoInfo.RepoName });
         }
         
         if (!string.IsNullOrWhiteSpace(SelectedBranchInfo?.BranchName))
         {
-            selections.Add(new SelectionSummary_App_FreeCICD.SelectionItem { Label = "Branch", Value = SelectedBranchInfo.BranchName });
+            selections.Add(new FreeCICD_App_UI_Wizard_Summary.SelectionItem { Label = "Branch", Value = SelectedBranchInfo.BranchName });
         }
         
         if (!string.IsNullOrWhiteSpace(SelectedCsprojPath))
         {
-            selections.Add(new SelectionSummary_App_FreeCICD.SelectionItem { Label = ".csproj File", Value = SelectedCsprojPath });
+            selections.Add(new FreeCICD_App_UI_Wizard_Summary.SelectionItem { Label = ".csproj File", Value = SelectedCsprojPath });
         }
         
         if (EnvSettings.Any())
         {
-            selections.Add(new SelectionSummary_App_FreeCICD.SelectionItem { Label = "Environments", Value = string.Join(", ", EnvSettings.Keys.Select(k => k.ToString())) });
+            selections.Add(new FreeCICD_App_UI_Wizard_Summary.SelectionItem { Label = "Environments", Value = string.Join(", ", EnvSettings.Keys.Select(k => k.ToString())) });
         }
         
         if (SelectedPipelineInfo != null)
         {
-            selections.Add(new SelectionSummary_App_FreeCICD.SelectionItem { Label = "Pipeline", Value = SelectedPipelineInfo.Name ?? "" });
+            selections.Add(new FreeCICD_App_UI_Wizard_Summary.SelectionItem { Label = "Pipeline", Value = SelectedPipelineInfo.Name ?? "" });
         }
         else if (!string.IsNullOrWhiteSpace(NewPipelineName))
         {
-            selections.Add(new SelectionSummary_App_FreeCICD.SelectionItem { Label = "New Pipeline", Value = NewPipelineName });
+            selections.Add(new FreeCICD_App_UI_Wizard_Summary.SelectionItem { Label = "New Pipeline", Value = NewPipelineName });
         }
         
         return selections;
