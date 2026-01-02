@@ -1,4 +1,4 @@
-namespace FreeCICD;
+﻿namespace FreeCICD;
 
 public static partial class GlobalSettings
 {

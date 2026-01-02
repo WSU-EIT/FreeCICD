@@ -6,12 +6,12 @@ namespace FreeCICD;
 
 // FreeCICD-specific data access methods for Azure DevOps integration
 // Implementation split across partial files:
-//   - DataAccess.App.FreeCICD.DevOps.Resources.cs   (Projects, Repos, Branches, Variable Groups)
-//   - DataAccess.App.FreeCICD.DevOps.GitFiles.cs    (Git file operations)
-//   - DataAccess.App.FreeCICD.DevOps.Pipelines.cs   (Pipeline CRUD + YAML generation)
-//   - DataAccess.App.FreeCICD.DevOps.Dashboard.cs   (Dashboard operations)
-//   - DataAccess.App.FreeCICD.Import.Validation.cs  (Import validation)
-//   - DataAccess.App.FreeCICD.Import.Operations.cs  (Import execution)
+//   - FreeCICD.App.DataAccess.DevOps.Resources.cs   (Projects, Repos, Branches, Variable Groups)
+//   - FreeCICD.App.DataAccess.DevOps.GitFiles.cs    (Git file operations)
+//   - FreeCICD.App.DataAccess.DevOps.Pipelines.cs   (Pipeline CRUD + YAML generation)
+//   - FreeCICD.App.DataAccess.DevOps.Dashboard.cs   (Dashboard operations)
+//   - FreeCICD.App.DataAccess.Import.Validation.cs  (Import validation)
+//   - FreeCICD.App.DataAccess.Import.Operations.cs  (Import execution)
 
 public partial interface IDataAccess
 {
