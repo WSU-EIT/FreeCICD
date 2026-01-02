@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/FreeTools/">
+    <Project Path="FreeTools/Docs/Docs.csproj" />
     <Project Path="FreeTools/FreeTools.AppHost/FreeTools.AppHost.csproj" />
     <Project Path="FreeTools/FreeTools.BrowserSnapshot/FreeTools.BrowserSnapshot.csproj" />
     <Project Path="FreeTools/FreeTools.Core/FreeTools.Core.csproj" />

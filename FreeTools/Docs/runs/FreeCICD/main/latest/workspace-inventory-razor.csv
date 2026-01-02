@@ -1,0 +1,5 @@
+﻿FilePath,RelativePath,Extension,SizeBytes,LineCount,CharCount,CreatedUtc,ModifiedUtc,ReadError,Kind,Namespaces,DeclaredTypes,Routes,RequiresAuth,AzureDevOpsUrl
+"Components/App.razor","Components/App.razor",".razor",18097,433,18094,2025-12-31T04:31:14.0000000Z,2025-12-30T20:33:18.1366758Z,"","RazorComponent","","","",false,""
+"Components/Modules.App.razor","Components/Modules.App.razor",".razor",1862,52,1859,2025-12-31T04:31:14.0000000Z,2025-12-30T20:33:18.1398342Z,"","RazorComponent","","","",false,""
+"Components/Pages/Error.razor","Components/Pages/Error.razor",".razor",1179,36,1176,2025-12-31T04:31:14.0000000Z,2025-12-30T20:33:18.1634894Z,"","RazorPage","","","/Error",false,""
+"Components/_Imports.razor","Components/_Imports.razor",".razor",397,11,397,2025-12-31T04:31:14.0000000Z,2025-12-30T20:33:18.1524704Z,"","RazorComponent","","","",false,""

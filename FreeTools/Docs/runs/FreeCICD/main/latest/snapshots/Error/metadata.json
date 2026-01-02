@@ -1,0 +1,20 @@
+{
+  "Route": "/Error",
+  "Url": "https://localhost:7271/Error",
+  "StatusCode": 200,
+  "FileSize": 12238,
+  "IsSuspiciouslySmall": false,
+  "RetryAttempted": false,
+  "ConsoleErrors": [],
+  "CapturedAt": "2026-01-02T18:54:27.0973127Z",
+  "IsSuccess": true,
+  "IsHttpError": false,
+  "IsError": false,
+  "ErrorMessage": null,
+  "RequiresAuth": false,
+  "AuthFlowCompleted": false,
+  "AuthStep1Path": null,
+  "AuthStep2Path": null,
+  "AuthStep3Path": null,
+  "AuthFlowNote": null
+}

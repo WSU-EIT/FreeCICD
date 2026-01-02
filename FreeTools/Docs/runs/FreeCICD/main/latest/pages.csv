@@ -1,0 +1,5 @@
+﻿FilePath,Route,RequiresAuth,Project
+"Components/App.razor","",false,"Components"
+"Components/Modules.App.razor","",false,"Components"
+"Components/_Imports.razor","",false,"Components"
+"Components/Pages/Error.razor","/Error",false,"Components"
