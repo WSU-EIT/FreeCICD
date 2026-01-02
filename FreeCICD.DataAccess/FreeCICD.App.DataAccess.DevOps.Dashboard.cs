@@ -98,7 +98,8 @@ public partial class DataAccess
 
                             // === Phase 1 Dashboard Enhancement Fields ===
                             
-                            // Build number (e.g., "20241219.3")
+                            // Build ID and number (e.g., "20241219.3")
+                            item.LastRunBuildId = latestBuild.Id;
                             item.LastRunBuildNumber = latestBuild.BuildNumber;
                             
                             // Duration calculation
@@ -137,6 +138,20 @@ public partial class DataAccess
                     
                     // Pipeline runs URL: https://dev.azure.com/{org}/{project}/_build?definitionId={id}
                     item.PipelineRunsUrl = $"{baseUrl}/_build?definitionId={item.Id}";
+                    
+                    // === Phase 3 Clickability Enhancement: Build-specific URLs ===
+                    
+                    // Last run results URL: https://dev.azure.com/{org}/{project}/_build/results?buildId={id}&view=results
+                    if (item.LastRunBuildId.HasValue) {
+                        item.LastRunResultsUrl = $"{baseUrl}/_build/results?buildId={item.LastRunBuildId}&view=results";
+                        item.LastRunLogsUrl = $"{baseUrl}/_build/results?buildId={item.LastRunBuildId}&view=logs";
+                    }
+                    
+                    // Pipeline config URL: https://dev.azure.com/{org}/{project}/_apps/hub/ms.vss-build-web.ci-designer-hub?pipelineId={id}&branch={branch}
+                    var configBranch = !string.IsNullOrWhiteSpace(item.TriggerBranch) 
+                        ? item.TriggerBranch.Replace("refs/heads/", "") 
+                        : item.DefaultBranch?.Replace("refs/heads/", "") ?? "main";
+                    item.PipelineConfigUrl = $"{baseUrl}/_apps/hub/ms.vss-build-web.ci-designer-hub?pipelineId={item.Id}&branch={Uri.EscapeDataString(configBranch)}";
                     
                     // Edit Wizard URL (internal Blazor navigation)
                     item.EditWizardUrl = $"/Wizard?import={item.Id}";
@@ -194,11 +209,30 @@ public partial class DataAccess
                                             ResourceUrl = null
                                         };
 
-                                        // Match to actual variable group for URL and count
-                                        if (variableGroupsDict.TryGetValue(env.VariableGroupName, out var matchedGroup)) {
+                                        // Match to actual variable group for URL and count (try exact match first)
+                                        var vgName = env.VariableGroupName.Trim();
+                                        DataObjects.DevopsVariableGroup? matchedGroup = null;
+                                        
+                                        // Try exact case-insensitive match
+                                        if (variableGroupsDict.TryGetValue(vgName, out matchedGroup)) {
+                                            // Found exact match
+                                        } else {
+                                            // Try fuzzy match - find by contains (useful for prefixed/suffixed names)
+                                            matchedGroup = variableGroupsDict.Values
+                                                .FirstOrDefault(vg => vg.Name != null && 
+                                                    (vg.Name.Equals(vgName, StringComparison.OrdinalIgnoreCase) ||
+                                                     vg.Name.Contains(vgName, StringComparison.OrdinalIgnoreCase) ||
+                                                     vgName.Contains(vg.Name, StringComparison.OrdinalIgnoreCase)));
+                                        }
+                                        
+                                        if (matchedGroup != null) {
                                             vgRef.Id = matchedGroup.Id;
                                             vgRef.VariableCount = matchedGroup.Variables?.Count ?? 0;
                                             vgRef.ResourceUrl = matchedGroup.ResourceUrl;
+                                        } else {
+                                            // No match found - construct a fallback URL to Library search
+                                            // This links to the Library page (user can search for the variable group)
+                                            vgRef.ResourceUrl = $"{projectUrl}/_library?itemType=VariableGroups";
                                         }
 
                                         item.VariableGroups.Add(vgRef);
@@ -226,6 +260,9 @@ public partial class DataAccess
                                     if (!string.IsNullOrWhiteSpace(vg.Name) && variableGroupsDict.TryGetValue(vg.Name, out var fullVg)) {
                                         vgRef.ResourceUrl = fullVg.ResourceUrl;
                                         vgRef.VariableCount = fullVg.Variables?.Count ?? 0;
+                                    } else {
+                                        // Fallback: Link to Library page if no match
+                                        vgRef.ResourceUrl = $"{projectUrl}/_library?itemType=VariableGroups";
                                     }
                                     
                                     item.VariableGroups.Add(vgRef);

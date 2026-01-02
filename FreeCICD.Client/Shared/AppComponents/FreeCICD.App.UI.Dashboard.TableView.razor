@@ -147,22 +147,47 @@
                             }
                         </td>
 
-                        @* Status *@
+                        @* Status - Clickable link to build results *@
                         <td>
-                            @GetStatusBadge(pipeline)
+                            @if (!string.IsNullOrWhiteSpace(pipeline.LastRunResultsUrl)) {
+                                <a href="@pipeline.LastRunResultsUrl" target="_blank" 
+                                   class="text-decoration-none clickable-badge"
+                                   title="View build results in Azure DevOps">
+                                    @GetStatusBadge(pipeline)
+                                </a>
+                            } else {
+                                @GetStatusBadge(pipeline)
+                            }
                         </td>
 
-                        @* Trigger *@
+                        @* Trigger - Clickable link to pipeline config *@
                         <td>
-                            @GetTriggerDisplay(pipeline)
+                            @if (!string.IsNullOrWhiteSpace(pipeline.PipelineConfigUrl)) {
+                                <a href="@pipeline.PipelineConfigUrl" target="_blank" 
+                                   class="text-decoration-none clickable-badge"
+                                   title="Configure pipeline triggers in Azure DevOps">
+                                    @GetTriggerDisplay(pipeline)
+                                </a>
+                            } else {
+                                @GetTriggerDisplay(pipeline)
+                            }
                         </td>
 
-                        @* Last Run - Relative Timestamp with Tooltip *@
+                        @* Last Run - Clickable link to build logs *@
                         <td>
                             @if (pipeline.LastRunTime.HasValue) {
-                                <span title="@pipeline.LastRunTime.Value.ToString("g")" class="cursor-help">
-                                    @pipeline.LastRunTime.Value.Humanize()
-                                </span>
+                                @if (!string.IsNullOrWhiteSpace(pipeline.LastRunLogsUrl)) {
+                                    <a href="@pipeline.LastRunLogsUrl" target="_blank" 
+                                       class="text-decoration-none link-body-emphasis link-underline-opacity-0 link-underline-opacity-75-hover"
+                                       title="View build logs - @pipeline.LastRunTime.Value.ToString("g")">
+                                        @pipeline.LastRunTime.Value.Humanize()
+                                        <i class="fa fa-external-link-square ms-1 small text-muted"></i>
+                                    </a>
+                                } else {
+                                    <span title="@pipeline.LastRunTime.Value.ToString("g")" class="cursor-help">
+                                        @pipeline.LastRunTime.Value.Humanize()
+                                    </span>
+                                }
                             } else {
                                 <span class="text-muted">Never run</span>
                             }
@@ -533,5 +558,20 @@
     .library-link:hover {
         transform: translateY(-1px);
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    /* Clickable badge styles for Status and Trigger cells */
+    .clickable-badge {
+        display: inline-block;
+        transition: transform 0.1s ease, filter 0.1s ease;
+    }
+    
+    .clickable-badge:hover {
+        transform: translateY(-1px);
+        filter: brightness(0.95);
+    }
+    
+    .clickable-badge:hover .badge {
+        box-shadow: 0 2px 4px rgba(0,0,0,0.15);
     }
 </style>

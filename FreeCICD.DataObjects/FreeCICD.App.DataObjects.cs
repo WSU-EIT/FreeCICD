@@ -454,6 +454,31 @@ public partial class DataObjects
         /// </summary>
         public string? EditWizardUrl { get; set; }
 
+        // === Phase 3 Clickability Enhancement: Build-specific URLs ===
+        
+        /// <summary>
+        /// The build ID of the last run (for constructing build-specific URLs).
+        /// </summary>
+        public int? LastRunBuildId { get; set; }
+        
+        /// <summary>
+        /// Direct URL to the last run's build results page.
+        /// Format: https://dev.azure.com/{org}/{project}/_build/results?buildId={id}&amp;view=results
+        /// </summary>
+        public string? LastRunResultsUrl { get; set; }
+        
+        /// <summary>
+        /// Direct URL to the last run's build logs page.
+        /// Format: https://dev.azure.com/{org}/{project}/_build/results?buildId={id}&amp;view=logs
+        /// </summary>
+        public string? LastRunLogsUrl { get; set; }
+        
+        /// <summary>
+        /// Direct URL to the pipeline YAML configuration editor.
+        /// Format: https://dev.azure.com/{org}/{project}/_apps/hub/ms.vss-build-web.ci-designer-hub?pipelineId={id}&amp;branch={branch}
+        /// </summary>
+        public string? PipelineConfigUrl { get; set; }
+
         // === Trigger information for the last run ===
         
         /// <summary>

@@ -33,7 +33,16 @@
                     </div>
                 }
             </div>
-            @GetStatusBadge()
+            @* Status Badge - Clickable link to build results *@
+            @if (!string.IsNullOrWhiteSpace(Pipeline?.LastRunResultsUrl)) {
+                <a href="@Pipeline.LastRunResultsUrl" target="_blank"
+                   class="text-decoration-none clickable-badge"
+                   title="View build results in Azure DevOps">
+                    @GetStatusBadge()
+                </a>
+            } else {
+                @GetStatusBadge()
+            }
         </div>
     </div>
 
@@ -68,10 +77,19 @@
         @* Last Run Time (Relative) + Duration *@
         <div class="small text-muted d-flex align-items-center gap-2 flex-wrap mb-1">
             @if (Pipeline?.LastRunTime.HasValue == true) {
-                <span title="@Pipeline.LastRunTime.Value.ToString("g")" class="cursor-help">
-                    <i class="fa fa-calendar me-1"></i>
-                    @Pipeline.LastRunTime.Value.Humanize()
-                </span>
+                @if (!string.IsNullOrWhiteSpace(Pipeline?.LastRunLogsUrl)) {
+                    <a href="@Pipeline.LastRunLogsUrl" target="_blank"
+                       class="text-muted text-decoration-none link-underline-opacity-0 link-underline-opacity-75-hover"
+                       title="View build logs - @Pipeline.LastRunTime.Value.ToString("g")">
+                        <i class="fa fa-calendar me-1"></i>
+                        @Pipeline.LastRunTime.Value.Humanize()
+                    </a>
+                } else {
+                    <span title="@Pipeline.LastRunTime.Value.ToString("g")" class="cursor-help">
+                        <i class="fa fa-calendar me-1"></i>
+                        @Pipeline.LastRunTime.Value.Humanize()
+                    </span>
+                }
             } else {
                 <span>
                     <i class="fa fa-calendar me-1"></i>
@@ -88,10 +106,18 @@
             }
         </div>
 
-        @* Trigger Info *@
+        @* Trigger Info - Clickable link to pipeline config *@
         <div class="small text-muted d-flex align-items-center gap-2 flex-wrap">
             @if (!string.IsNullOrWhiteSpace(Pipeline?.TriggerReason)) {
-                @GetTriggerBadge()
+                @if (!string.IsNullOrWhiteSpace(Pipeline?.PipelineConfigUrl)) {
+                    <a href="@Pipeline.PipelineConfigUrl" target="_blank"
+                       class="text-decoration-none clickable-badge"
+                       title="Configure pipeline triggers in Azure DevOps">
+                        @GetTriggerBadge()
+                    </a>
+                } else {
+                    @GetTriggerBadge()
+                }
             }
         </div>
 
@@ -407,5 +433,20 @@
     .library-link:hover {
         transform: translateY(-1px);
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    /* Clickable badge styles for Status and Trigger */
+    .clickable-badge {
+        display: inline-block;
+        transition: transform 0.1s ease, filter 0.1s ease;
+    }
+    
+    .clickable-badge:hover {
+        transform: translateY(-1px);
+        filter: brightness(0.95);
+    }
+    
+    .clickable-badge:hover .badge {
+        box-shadow: 0 2px 4px rgba(0,0,0,0.15);
     }
 </style>
