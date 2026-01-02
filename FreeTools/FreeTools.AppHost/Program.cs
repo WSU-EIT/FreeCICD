@@ -114,8 +114,10 @@ static class AppHostRunner
         Directory.CreateDirectory(projectConfig.SnapshotsDir);
 
         // Static analysis tools (no web app dependency)
+        // EndpointMapper needs to scan the Client project where Blazor pages live
+        var clientProjectRoot = Path.GetFullPath(Path.Combine(repoRoot, "FreeCICD.Client"));
         var endpointMapper = builder.AddProject<Projects.FreeTools_EndpointMapper>("endpoint-mapper")
-            .WithArgs(projectConfig.ProjectRoot, projectConfig.PagesCsv)
+            .WithArgs(clientProjectRoot, projectConfig.PagesCsv)
             .WithEnvironment("START_DELAY_MS", ToolStartupDelayMs.ToString());
 
         // WorkspaceInventory scans the ENTIRE solution/repo, not just the target project
@@ -127,12 +129,16 @@ static class AppHostRunner
         // =============================================================================
         // HTTP Tools - Example (requires running web app)
         // =============================================================================
+        // Default route parameter substitutions for testing
+        var routeParamTenantCode = "Tenant1";
+        
         var poker = builder.AddProject<Projects.FreeTools_EndpointPoker>("poker")
             .WithEnvironment("BASE_URL", webApp.GetEndpoint("https"))
             .WithEnvironment("CSV_PATH", projectConfig.PagesCsv)
             .WithEnvironment("OUTPUT_DIR", projectConfig.SnapshotsDir)
             .WithEnvironment("MAX_THREADS", "10")
             .WithEnvironment("START_DELAY_MS", (WebAppStartupDelayMs + HttpToolDelayMs).ToString())
+            .WithEnvironment("ROUTE_PARAM_TenantCode", routeParamTenantCode)
             .WaitFor(webApp)
             .WaitForCompletion(endpointMapper);
 
@@ -143,6 +149,7 @@ static class AppHostRunner
             .WithEnvironment("SCREENSHOT_BROWSER", "chromium")
             .WithEnvironment("MAX_THREADS", "10")
             .WithEnvironment("START_DELAY_MS", (WebAppStartupDelayMs + HttpToolDelayMs).ToString())
+            .WithEnvironment("ROUTE_PARAM_TenantCode", routeParamTenantCode)
             .WaitFor(webApp)
             .WaitForCompletion(endpointMapper);
 
@@ -157,6 +164,7 @@ static class AppHostRunner
             .WithEnvironment("SNAPSHOTS_DIR", projectConfig.SnapshotsDir)
             .WithEnvironment("TARGET_PROJECT", target)
             .WithEnvironment("START_DELAY_MS", ToolStartupDelayMs.ToString())
+            .WithEnvironment("ROUTE_PARAM_TenantCode", routeParamTenantCode)
             .WaitForCompletion(inventory)
             .WaitForCompletion(endpointMapper)
             .WaitForCompletion(poker)

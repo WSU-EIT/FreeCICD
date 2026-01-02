@@ -489,7 +489,7 @@ internal partial class Program
         sb.AppendLine("## 🛤️ Blazor Page Routes");
         sb.AppendLine();
         sb.AppendLine("> **Note:** This section shows Blazor pages with `@page` directives only.");
-        sb.AppendLine("> API endpoints (`/api/*`) are not included. Routes with parameters are skipped.");
+        sb.AppendLine("> API endpoints (`/api/*`) are not included. Routes with unresolvable parameters are skipped.");
         sb.AppendLine();
 
         if (!File.Exists(pagesCsv))
@@ -508,6 +508,7 @@ internal partial class Program
         }
 
         var routes = new List<RouteEntry>();
+        var substitutedRoutes = new List<RouteEntry>();
         var skippedRoutes = new List<RouteEntry>();
         var authRequired = 0;
         var publicRoutes = 0;
@@ -530,10 +531,31 @@ internal partial class Program
                 Project = project
             };
 
+            // Try parameter substitution for routes with parameters
             if (RouteParser.HasParameter(route))
             {
-                skippedRoutes.Add(entry);
-                continue;
+                var (substituted, wasSubstituted) = RouteParser.SubstituteParameters(route);
+                
+                if (wasSubstituted && !RouteParser.HasParameter(substituted))
+                {
+                    // Successfully substituted all parameters
+                    entry.Route = substituted;
+                    entry.OriginalRoute = route;
+                    substitutedRoutes.Add(entry);
+                    routes.Add(entry);
+                    
+                    if (requiresAuth)
+                        authRequired++;
+                    else
+                        publicRoutes++;
+                    continue;
+                }
+                else
+                {
+                    // Could not substitute all parameters
+                    skippedRoutes.Add(entry);
+                    continue;
+                }
             }
 
             routes.Add(entry);
@@ -551,8 +573,16 @@ internal partial class Program
         sb.AppendLine($"| **Testable Routes** | {routes.Count} |");
         sb.AppendLine($"| **Public Routes** | {publicRoutes} |");
         sb.AppendLine($"| **Auth Required** | {authRequired} |");
-        sb.AppendLine($"| **Skipped (parameters)** | {skippedRoutes.Count} |");
+        sb.AppendLine($"| **Substituted Parameters** | {substitutedRoutes.Count} |");
+        sb.AppendLine($"| **Skipped (unresolved params)** | {skippedRoutes.Count} |");
         sb.AppendLine();
+
+        // Show substituted routes info
+        if (substitutedRoutes.Count > 0)
+        {
+            sb.AppendLine("> **Parameter Substitution:** Routes like `/{TenantCode}/Page` are tested as `/Tenant1/Page`.");
+            sb.AppendLine();
+        }
 
         if (routes.Count > 0)
         {
@@ -857,10 +887,7 @@ internal partial class Program
                 sb.AppendLine();
                 sb.AppendLine("```");
                 foreach (var error in entry.ConsoleErrors.Take(5))
-                {
-                    var errorMsg = error.Length > 200 ? error[..200] + "..." : error;
-                    sb.AppendLine(errorMsg);
-                }
+                sb.AppendLine($"{error}");
                 if (entry.ConsoleErrors.Count > 5)
                 {
                     sb.AppendLine($"... and {entry.ConsoleErrors.Count - 5} more errors");
@@ -1246,6 +1273,7 @@ internal partial class Program
         public string Route { get; set; } = "";
         public bool RequiresAuth { get; set; }
         public string Project { get; set; } = "";
+        public string OriginalRoute { get; set; } = ""; // Store the original route with parameters
     }
 
     private class WorkspaceStats
