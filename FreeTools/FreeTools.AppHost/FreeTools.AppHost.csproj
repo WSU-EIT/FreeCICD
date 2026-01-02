@@ -19,9 +19,9 @@
 
   <ItemGroup>
     <!-- BlazorApp1 - target web app for analysis -->
-    <ProjectReference Include="..\..\BlazorApp1\BlazorApp1.csproj" />
     
     <!-- FreeTools projects -->
+    <ProjectReference Include="..\..\FreeCICD\FreeCICD.csproj" />
     <ProjectReference Include="..\FreeTools.EndpointMapper\FreeTools.EndpointMapper.csproj" />
     <ProjectReference Include="..\FreeTools.EndpointPoker\FreeTools.EndpointPoker.csproj" />
     <ProjectReference Include="..\FreeTools.BrowserSnapshot\FreeTools.BrowserSnapshot.csproj" />

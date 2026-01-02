@@ -15,8 +15,8 @@ var keepBackupsOption = new Option<int>(
 
 var targetOption = new Option<string>(
     name: "--target",
-    description: "Target project to analyze (default: 'BlazorApp1')",
-    getDefaultValue: () => "BlazorApp1");
+    description: "Target project to analyze (default: 'FreeCICD')",
+    getDefaultValue: () => "FreeCICD");
 
 var rootCommand = new RootCommand("FreeTools AppHost - Run analysis tools against Blazor web projects")
 {
@@ -54,8 +54,8 @@ static class AppHostRunner
         var docsRoot = Path.Combine(toolsRoot, "Docs");
         var runsRoot = Path.Combine(docsRoot, "runs");
 
-        // Define repo root (BlazorApp1 is a sibling folder to FreeTools, not inside it)
-        // toolsRoot = .../FreeTools/FreeTools/  -> go up one level to find BlazorApp1 and .git
+        // Define repo root (FreeCICD is a sibling folder to FreeTools, not inside it)
+        // toolsRoot = .../FreeTools/FreeTools/  -> go up one level to find FreeCICD and .git
         var repoRoot = Path.GetDirectoryName(toolsRoot) ?? toolsRoot;
         var projectRoot = Path.GetFullPath(Path.Combine(repoRoot, target));
 
@@ -75,12 +75,12 @@ static class AppHostRunner
         Console.WriteLine("------------------------------------------------------------");
 
         // =============================================================================
-        // Web App - Run BlazorApp1 for HTTP testing
+        // Web App - Run FreeCICD for HTTP testing
         // =============================================================================
-        var webApp = builder.AddProject<Projects.BlazorApp1>("blazorapp1-webapp")
+        var webApp = builder.AddProject<Projects.FreeCICD>("FreeCICD-webapp")
             .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development");
         
-        Console.WriteLine("  [WebApp] BlazorApp1 - Development mode");
+        Console.WriteLine("  [WebApp] FreeCICD - Development mode");
 
         // =============================================================================
         // Static Analysis (no web app dependency)
