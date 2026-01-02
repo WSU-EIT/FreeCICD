@@ -740,6 +740,13 @@
 
     private string GetDefaultRepoName()
     {
-        return _repoInfo?.Name ?? _detectedRepoName ?? _projectName ?? "imported-repo";
+        // When creating a new project, Azure DevOps creates an empty repo with the project name.
+        // So default to project name to use that auto-created repo instead of creating another one.
+        // Only fall back to source repo name if project name is empty.
+        if (!string.IsNullOrWhiteSpace(_projectName))
+        {
+            return _projectName;
+        }
+        return _repoInfo?.Name ?? _detectedRepoName ?? "imported-repo";
     }
 }

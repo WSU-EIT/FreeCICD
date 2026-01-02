@@ -195,9 +195,15 @@ public partial class DataAccess
             result.ProjectName = projectName;
 
             // === Step 2: Get or create repository ===
+            // Determine target repo name:
+            // - If explicitly specified by user, use that
+            // - If project was just created (new project), default to project name (Azure DevOps auto-creates this repo)
+            // - Otherwise, fall back to source repo name or project name
             var targetRepoName = !string.IsNullOrWhiteSpace(request.TargetRepoName) 
                 ? request.TargetRepoName 
-                : (repoInfo?.Name ?? request.NewProjectName ?? "imported-repo");
+                : (!result.ProjectExisted 
+                    ? projectName  // New project: use the auto-created repo with same name as project
+                    : (repoInfo?.Name ?? request.NewProjectName ?? "imported-repo"));
             
             var targetBranchName = !string.IsNullOrWhiteSpace(request.TargetBranchName) 
                 ? request.TargetBranchName 

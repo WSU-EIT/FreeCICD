@@ -118,8 +118,9 @@ static class AppHostRunner
             .WithArgs(projectConfig.ProjectRoot, projectConfig.PagesCsv)
             .WithEnvironment("START_DELAY_MS", ToolStartupDelayMs.ToString());
 
+        // WorkspaceInventory scans the ENTIRE solution/repo, not just the target project
         var inventory = builder.AddProject<Projects.FreeTools_WorkspaceInventory>("inventory")
-            .WithArgs(projectConfig.ProjectRoot, projectConfig.InventoryCsv)
+            .WithArgs(repoRoot, projectConfig.InventoryCsv)  // Use repoRoot for full solution scanning
             .WithEnvironment("MAX_THREADS", "10")
             .WithEnvironment("START_DELAY_MS", ToolStartupDelayMs.ToString());
 
