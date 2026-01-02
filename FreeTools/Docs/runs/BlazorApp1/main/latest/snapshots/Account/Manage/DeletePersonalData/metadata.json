@@ -1,0 +1,30 @@
+{
+  "Route": "/Account/Manage/DeletePersonalData",
+  "Url": "https://localhost:7161/Account/Manage/DeletePersonalData",
+  "StatusCode": 200,
+  "FileSize": 59261,
+  "IsSuspiciouslySmall": false,
+  "RetryAttempted": false,
+  "ConsoleErrors": [
+    "Access to XMLHttpRequest at \u0027http://localhost:63028/710cf446006747979221431a65af8989/browserLinkSignalR/start?transport=webSockets\u0026clientProtocol=2.1\u0026requestUrl=https%3A%2F%2Flocalhost%3A7161%2FAccount%2FLogin%3FReturnUrl%3D%252FAccount%252FManage%252FDeletePersonalData\u0026browserName=\u0026userAgent=Mozilla%2F5.0%20(Windows%20NT%2010.0%3B%20Win64%3B%20x64)%20AppleWebKit%2F537.36%20(KHTML%2C%20like%20Gecko)%20HeadlessChrome%2F141.0.7390.37%20Safari%2F537.36\u0026browserIdKey=window.browserLink.initializationData.browserId\u0026browserId=3fe2-4444\u0026connectionToken=AQAAANCMnd8BFdERjHoAwE%2FCl%2BsBAAAABDp90XHsUkqffVEv%2Bu76MAAAAAACAAAAAAAQZgAAAAEAACAAAAB5EZvra2oXfnBpVwzECXmE3pR%2F%2BskpThsTeclinaWe8QAAAAAOgAAAAAIAACAAAAAf6f2TOozW1XEqP9s1p5pGtLPQV3t5oDXfq4IZVoK7xTAAAAA2dATQuge%2FDwfolQLsXibjnevTYxM0kRqKUdjivVxZyDsYtIasEB31McC%2F1EhR3xJAAAAA%2BRzLqxP2sCFk11h%2BoNeRa5GVSaaMLpzgCmZmDgAK5zHHOhiv5jQtn4iRgJZFxddEtmgwfkYQ9ThhMAcMQ%2Bv49Q%3D%3D\u0026_=1767208752088\u0027 from origin \u0027https://localhost:7161\u0027 has been blocked by CORS policy: No \u0027Access-Control-Allow-Origin\u0027 header is present on the requested resource.",
+    "Failed to load resource: net::ERR_FAILED",
+    "Access to XMLHttpRequest at \u0027http://localhost:63028/710cf446006747979221431a65af8989/browserLinkSignalR/start?transport=webSockets\u0026clientProtocol=2.1\u0026requestUrl=https%3A%2F%2Flocalhost%3A7161%2FAccount%2FLogin%3FReturnUrl%3D%252FAccount%252FManage%252FDeletePersonalData\u0026browserName=\u0026userAgent=Mozilla%2F5.0%20(Windows%20NT%2010.0%3B%20Win64%3B%20x64)%20AppleWebKit%2F537.36%20(KHTML%2C%20like%20Gecko)%20HeadlessChrome%2F141.0.7390.37%20Safari%2F537.36\u0026browserIdKey=window.browserLink.initializationData.browserId\u0026browserId=5620-fa18\u0026connectionToken=AQAAANCMnd8BFdERjHoAwE%2FCl%2BsBAAAABDp90XHsUkqffVEv%2Bu76MAAAAAACAAAAAAAQZgAAAAEAACAAAAB3OLMUsUkKjc35wq0r%2BLEoAW0UzVXhjLPUX785ueMX7QAAAAAOgAAAAAIAACAAAACd%2FePePsSwmSvCrIjyRxSlM0W71aJIiUOsbkcwQyAxzDAAAAAxlvjS87Q1x9AYgaPQMJgDZWBaLDHll3ujeujdglV3BqqOLFJlgPPbGDoF05QuXaBAAAAAPjBPL3Al2ABfgJD%2FTrl0WMxHcjg6YiBIKnPwqyM7%2BNzrgRX1N7Tonktlx%2FjXvj0RratswMeYhIIBzl6F8Yl02A%3D%3D\u0026_=1767208752090\u0027 from origin \u0027https://localhost:7161\u0027 has been blocked by CORS policy: No \u0027Access-Control-Allow-Origin\u0027 header is present on the requested resource.",
+    "Failed to load resource: net::ERR_FAILED",
+    "NotSupportedError: Resident credentials or empty \u0027allowCredentials\u0027 lists are not supported at this time.",
+    "Access to XMLHttpRequest at \u0027http://localhost:63028/710cf446006747979221431a65af8989/browserLinkSignalR/start?transport=webSockets\u0026clientProtocol=2.1\u0026requestUrl=https%3A%2F%2Flocalhost%3A7161%2FAccount%2FLogin%3FReturnUrl%3D%252FAccount%252FManage%252FDeletePersonalData\u0026browserName=\u0026userAgent=Mozilla%2F5.0%20(Windows%20NT%2010.0%3B%20Win64%3B%20x64)%20AppleWebKit%2F537.36%20(KHTML%2C%20like%20Gecko)%20HeadlessChrome%2F141.0.7390.37%20Safari%2F537.36\u0026browserIdKey=window.browserLink.initializationData.browserId\u0026browserId=fe65-0b10\u0026connectionToken=AQAAANCMnd8BFdERjHoAwE%2FCl%2BsBAAAABDp90XHsUkqffVEv%2Bu76MAAAAAACAAAAAAAQZgAAAAEAACAAAABt8YUiaeCrrmhPoMlwohllvlv%2BSNdVPHu%2FPmSRXyYRAQAAAAAOgAAAAAIAACAAAABXHGntr73x77%2FA9ppkPq4lE6D07W3LjMo9ruWbhyfIFjAAAADAO%2FtSkFooYaPV7Ehect6L0Q%2FDvrhrwkiQI%2FAB6Oa5hRQ0cck3JgtybBb4Fs1NDSJAAAAAlid%2FtTK4e66713uoAbSL5h%2F7qHC%2BWw6k7aPtkTyO5xS93xPOc40TrpFA38bKb50RL4BwkA3vu6TQMF5dpUlz0Q%3D%3D\u0026_=1767208756440\u0027 from origin \u0027https://localhost:7161\u0027 has been blocked by CORS policy: No \u0027Access-Control-Allow-Origin\u0027 header is present on the requested resource.",
+    "Failed to load resource: net::ERR_FAILED",
+    "Access to XMLHttpRequest at \u0027http://localhost:63028/710cf446006747979221431a65af8989/browserLinkSignalR/start?transport=webSockets\u0026clientProtocol=2.1\u0026requestUrl=https%3A%2F%2Flocalhost%3A7161%2FAccount%2FLogin%3FReturnUrl%3D%252FAccount%252FManage%252FDeletePersonalData\u0026browserName=\u0026userAgent=Mozilla%2F5.0%20(Windows%20NT%2010.0%3B%20Win64%3B%20x64)%20AppleWebKit%2F537.36%20(KHTML%2C%20like%20Gecko)%20HeadlessChrome%2F141.0.7390.37%20Safari%2F537.36\u0026browserIdKey=window.browserLink.initializationData.browserId\u0026browserId=f23d-83ce\u0026connectionToken=AQAAANCMnd8BFdERjHoAwE%2FCl%2BsBAAAABDp90XHsUkqffVEv%2Bu76MAAAAAACAAAAAAAQZgAAAAEAACAAAACI7nvQHeg8OZSVPXe0WO%2FLe%2BNGEklIjLcUWbOYqH4hAAAAAAAOgAAAAAIAACAAAAD2JUteLKdt1doPiC42Q18QWsxw8PwiJL08zhlKqMUM5TAAAADK3e%2FrXWJjmXGEnKlbftRgyPnxmO%2BjpcIXTDSpgnV%2FyBVRucHeG5FfTE61sWIEgpRAAAAA%2FcX3CBAqwNAOxTiAeMLXXKfrxLmiRnJWZuU65X1KqBKRL1e16H5WniaYYOdBLU5smap%2B20mVZIkGbzjFvXxu3Q%3D%3D\u0026_=1767208756442\u0027 from origin \u0027https://localhost:7161\u0027 has been blocked by CORS policy: No \u0027Access-Control-Allow-Origin\u0027 header is present on the requested resource.",
+    "Failed to load resource: net::ERR_FAILED"
+  ],
+  "CapturedAt": "2025-12-31T19:19:11.5706951Z",
+  "IsSuccess": true,
+  "IsHttpError": false,
+  "IsError": false,
+  "ErrorMessage": null,
+  "RequiresAuth": false,
+  "AuthFlowCompleted": true,
+  "AuthStep1Path": "1-initial.png",
+  "AuthStep2Path": "2-filled.png",
+  "AuthStep3Path": "3-result.png",
+  "AuthFlowNote": "Redirected to login (unexpected)"
+}

@@ -1,0 +1,113 @@
+﻿<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <base href="/">
+    
+    <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.46ein0sx1k.css" />
+    <link rel="stylesheet" href="app.khy4lop6wu.css" />
+    <link rel="stylesheet" href="BlazorApp1.km0leyii9q.styles.css" />
+    <script type="importmap">{
+  "imports": {
+    "./Components/Account/Shared/PasskeySubmit.razor.js": "./Components/Account/Shared/PasskeySubmit.pr21mg9rrw.razor.js",
+    "./Components/Layout/ReconnectModal.razor.js": "./Components/Layout/ReconnectModal.13ja33weya.razor.js",
+    "./_framework/blazor.server.js": "./_framework/blazor.server.2lgipwaf5j.js",
+    "./_framework/blazor.web.js": "./_framework/blazor.web.wmp8iwak4q.js",
+    "./lib/bootstrap/dist/js/bootstrap.bundle.js": "./lib/bootstrap/dist/js/bootstrap.bundle.6cfz1n2cew.js",
+    "./lib/bootstrap/dist/js/bootstrap.bundle.min.js": "./lib/bootstrap/dist/js/bootstrap.bundle.min.493y06b0oq.js",
+    "./lib/bootstrap/dist/js/bootstrap.esm.min.js": "./lib/bootstrap/dist/js/bootstrap.esm.min.jj8uyg4cgr.js",
+    "./lib/bootstrap/dist/js/bootstrap.esm.js": "./lib/bootstrap/dist/js/bootstrap.esm.vr1egmr9el.js",
+    "./lib/bootstrap/dist/js/bootstrap.min.js": "./lib/bootstrap/dist/js/bootstrap.min.63fj8s7r0e.js",
+    "./lib/bootstrap/dist/js/bootstrap.js": "./lib/bootstrap/dist/js/bootstrap.notf2xhcfb.js"
+  }
+}</script>
+    <link rel="icon" type="image/png" href="favicon.png">
+    <title>Log in</title></head>
+
+<body><div class="page" b-j65y7q72mt><div class="sidebar" b-j65y7q72mt><div class="top-row ps-3 navbar navbar-dark" b-5bndfk4shp><div class="container-fluid" b-5bndfk4shp><a class="navbar-brand" href b-5bndfk4shp>BlazorApp1</a></div></div>
+
+<input type="checkbox" title="Navigation menu" class="navbar-toggler" b-5bndfk4shp>
+
+<div class="nav-scrollable" onclick="document.querySelector(&#x27;.navbar-toggler&#x27;).click()" b-5bndfk4shp><nav class="nav flex-column" b-5bndfk4shp><div class="nav-item px-3" b-5bndfk4shp><a href="" class="nav-link"><span class="bi bi-house-door-fill-nav-menu" aria-hidden="true" b-5bndfk4shp></span> Home
+            </a></div>
+
+        <div class="nav-item px-3" b-5bndfk4shp><a href="counter" class="nav-link"><span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true" b-5bndfk4shp></span> Counter
+            </a></div>
+
+        <div class="nav-item px-3" b-5bndfk4shp><a href="weather" class="nav-link"><span class="bi bi-list-nested-nav-menu" aria-hidden="true" b-5bndfk4shp></span> Weather
+            </a></div>
+
+        <div class="nav-item px-3" b-5bndfk4shp><a href="auth" class="nav-link"><span class="bi bi-lock-nav-menu" aria-hidden="true" b-5bndfk4shp></span> Auth Required
+            </a></div>
+
+        <div class="nav-item px-3" b-5bndfk4shp><a href="Account/Register" class="nav-link"><span class="bi bi-person-nav-menu" aria-hidden="true" b-5bndfk4shp></span> Register
+                    </a></div>
+                <div class="nav-item px-3" b-5bndfk4shp><a href="Account/Login" class="nav-link active" aria-current="page"><span class="bi bi-person-badge-nav-menu" aria-hidden="true" b-5bndfk4shp></span> Login
+                    </a></div></nav></div></div>
+
+    <main b-j65y7q72mt><div class="top-row px-4" b-j65y7q72mt><a href="https://learn.microsoft.com/aspnet/core/" target="_blank" b-j65y7q72mt>About</a></div>
+
+        <article class="content px-4" b-j65y7q72mt>
+
+<h1>Log in</h1>
+<div class="row"><div class="col-lg-6"><section>
+            <form method="post" action="/Account/Login?ReturnUrl=%2FAccount%2FManage"><input type="hidden" name="_handler" value="login" /><input type="hidden" name="__RequestVerificationToken" value="CfDJ8O22TcllvsdBgISRv7DRdfKWTSxO3UrRWxeAHPc_t9MDTg4Xa-6xJ4vX3L6x7ErnRgtC8_M21ZUitbPQvYsMA6M1bV3fqyde8x8osvwBgtALckHwCUa53yAlVy0yd2rvkZFPER_1X8LyRjUjlftpLqw" />
+                <h2>Use a local account to log in.</h2>
+                <hr>
+                
+                <div class="form-floating mb-3"><input id="Input.Email" autocomplete="username webauthn" aria-required="true" placeholder="name@example.com" name="Input.Email" class="form-control valid" value="" />
+                    <label for="Input.Email" class="form-label">Email</label>
+                    </div>
+                <div class="form-floating mb-3"><input type="password" id="Input.Password" autocomplete="current-password" aria-required="true" placeholder="password" name="Input.Password" class="form-control valid" value="" />
+                    <label for="Input.Password" class="form-label">Password</label>
+                    </div>
+                <div class="checkbox mb-3"><label class="form-label"><input type="checkbox" name="Input.RememberMe" class="darker-border-checkbox form-check-input valid" value="True" />
+                        Remember me
+                    </label></div>
+                <div><button type="submit" class="w-100 btn btn-lg btn-primary">Log in</button></div>
+                <hr>
+                <div class="d-flex flex-column"><span class="text-secondary mx-auto mt-2">OR</span>
+                    <button type="submit" name="__passkeySubmit" class="btn btn-link mx-auto">Log in with a passkey</button>
+<passkey-submit operation="Request" name="Input.Passkey" email-name="Input.Email" request-token-name="RequestVerificationToken" request-token-value="CfDJ8O22TcllvsdBgISRv7DRdfKWTSxO3UrRWxeAHPc_t9MDTg4Xa-6xJ4vX3L6x7ErnRgtC8_M21ZUitbPQvYsMA6M1bV3fqyde8x8osvwBgtALckHwCUa53yAlVy0yd2rvkZFPER_1X8LyRjUjlftpLqw"></passkey-submit></div>
+                <hr>
+                <div><p><a href="Account/ForgotPassword">Forgot your password?</a></p>
+                    <p><a href="Account/Register?ReturnUrl=%2FAccount%2FManage">Register as a new user</a></p>
+                    <p><a href="Account/ResendEmailConfirmation">Resend email confirmation</a></p></div></form></section></div>
+    <div class="col-lg-4 col-lg-offset-2"><section><h3>Use another service to log in.</h3>
+            <hr>
+            <div><p>
+            There are no external authentication services configured. See this <a href="https://go.microsoft.com/fwlink/?LinkID=532715">article
+            about setting up this ASP.NET application to support logging in via external services</a>.
+        </p></div></section></div></div></article></main></div>
+
+<div id="blazor-error-ui" data-nosnippet b-j65y7q72mt>
+    An unhandled error has occurred.
+    <a href="." class="reload" b-j65y7q72mt>Reload</a>
+    <span class="dismiss" b-j65y7q72mt>🗙</span></div>
+        <blazor-focus-on-navigate selector="h1"></blazor-focus-on-navigate>
+    <script type="module" src="Components/Layout/ReconnectModal.13ja33weya.razor.js" b-rp7b9a9cad></script>
+
+<dialog id="components-reconnect-modal" data-nosnippet b-rp7b9a9cad><div class="components-reconnect-container" b-rp7b9a9cad><div class="components-rejoining-animation" aria-hidden="true" b-rp7b9a9cad><div b-rp7b9a9cad></div>
+            <div b-rp7b9a9cad></div></div>
+        <p class="components-reconnect-first-attempt-visible" b-rp7b9a9cad>
+            Rejoining the server...
+        </p>
+        <p class="components-reconnect-repeated-attempt-visible" b-rp7b9a9cad>
+            Rejoin failed... trying again in <span id="components-seconds-to-next-attempt" b-rp7b9a9cad></span> seconds.
+        </p>
+        <p class="components-reconnect-failed-visible" b-rp7b9a9cad>
+            Failed to rejoin.<br b-rp7b9a9cad>Please retry or reload the page.
+        </p>
+        <button id="components-reconnect-button" class="components-reconnect-failed-visible" b-rp7b9a9cad>
+            Retry
+        </button>
+        <p class="components-pause-visible" b-rp7b9a9cad>
+            The session has been paused by the server.
+        </p>
+        <button id="components-resume-button" class="components-pause-visible" b-rp7b9a9cad>
+            Resume
+        </button>
+        <p class="components-resume-failed-visible" b-rp7b9a9cad>
+            Failed to resume the session.<br b-rp7b9a9cad>Please reload the page.
+        </p></div></dialog>
+    <script src="_framework/blazor.web.wmp8iwak4q.js"></script>
+    <script src="Components/Account/Shared/PasskeySubmit.pr21mg9rrw.razor.js" type="module"></script></body></html><!--Blazor-Server-Component-State:CfDJ8O22TcllvsdBgISRv7DRdfKNcFZD88NwksCpOrp7JfJFwdnPzn8UItT2zUx85xR7EdoanTXLpCeeXIrRQQDLWeIrSSIAPUbgrS5VI/+qfdGIJugKPVCBmajXvHezweDYX2ed++XXYfo2Hqk961ihQwXb15o/tNu0O67uhLnnFnUkotlmOdSEHL8Ct2Dd6FyY56gnOTy8waOrOWwvGzZnBvbHgyS7wGAnyqKtwGCz4vjsV16yV98I2TsOJuVDGu86x7jcdQ4gDYnr8H5ujk3gR4rkig7E2eORxfL5Oakcj+gkt5MvI8x3l65PgZRt0XeVoVD1s7IZAxaTPeYnYpl4ZVBQlLfFh7jlX52n8d6NIaK5THKh8geH1G/mbS0PJzxJ5Mb3qev+0mS9w21HHKExESqxa+kYIfmiNAFsK1WfgEAk+HIxjNcO6OSrZet3jHgAh8R6WKaY4zbFXqnF1Ljnm1lhHzi8GxkCOg08MYfVCLOUMgz1W0XGt8eEoI990RZ8OTofoxGbJI0H5ip6fVR7UztryLVIVHdHlKupGsGK7YLLYe/14zuVNt5Uar2QZUSVsIJCDSA5PeY7rBGoMTXPAwr5j4tVgKjovrSrdjnoziiCHzAV+rB4n781/cELcL4DRGv/bnxAboqJtZ7al0wjs1EmJ4/zSAXQqnWrkrpve9Luigpmd97MijSo0gBihgnWfPvJJagijN2I/UenP0V50J4Zc0WXgSEXzGlPEDa1NE6waQW1++J3W+etZvMV8Ze1E4t6VX2bmCVwzhXhxSQWDmqkNlaxS0MP3sQx6chHAyTlRUatAudSg5SSpWjvaM2ZYM5rlt6rwi7HSv8tC33VgToJTsRn+r/Kj8xE3zG2D5FtEBemX/mpKys/ETLdfxO99Va/39rMliXVqkDlHptHMrheUik+E3Avvebq/wrng25Z0DtNCuY94gE9e8/Pzrt/1gEehqhP4YinZhm+K3rkXz5TEPNpMknfFuu6iuBxxd7dHzeHrg0asxnzsuppusgFk9j8DriKAdeRnUMRZx4aPO69jeCVbdzYiGTaporR4ZbwEaHaIRkHNOgdSDcUM0T8L2xEIY/PCRYOb1Vl03T2KB9MVDOyHt3uqaxzxk+Gt3i/oup7RqT1Q9Hpb6WuKNsl0Q==-->

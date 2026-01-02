@@ -1,0 +1,29 @@
+{
+  "Route": "/Account/Register",
+  "Url": "https://localhost:7161/Account/Register",
+  "StatusCode": 200,
+  "FileSize": 68446,
+  "IsSuspiciouslySmall": false,
+  "RetryAttempted": false,
+  "ConsoleErrors": [
+    "Access to XMLHttpRequest at \u0027http://localhost:63028/710cf446006747979221431a65af8989/browserLinkSignalR/start?transport=webSockets\u0026clientProtocol=2.1\u0026requestUrl=https%3A%2F%2Flocalhost%3A7161%2FAccount%2FRegister\u0026browserName=\u0026userAgent=Mozilla%2F5.0%20(Windows%20NT%2010.0%3B%20Win64%3B%20x64)%20AppleWebKit%2F537.36%20(KHTML%2C%20like%20Gecko)%20HeadlessChrome%2F141.0.7390.37%20Safari%2F537.36\u0026browserIdKey=window.browserLink.initializationData.browserId\u0026browserId=2ca4-f31f\u0026connectionToken=AQAAANCMnd8BFdERjHoAwE%2FCl%2BsBAAAABDp90XHsUkqffVEv%2Bu76MAAAAAACAAAAAAAQZgAAAAEAACAAAAA%2Blwvi8lHnY2tgzQcWOlWtXiUytjFaFPuIoxBQtnlzmAAAAAAOgAAAAAIAACAAAABCpov%2BP5UNu1DOipWQD4qcXxkTimbpzYr9O9d2Q71PRTAAAAANFiIPaBF49fUjhY87ooqbV4k8DHXDqgUX47GORBudcshKEvUqK1AHHpAZD8phNQdAAAAAWe3Q1xsYfpKb0ZaVxxvS1crJk%2BWXvllJHP9zAMDVrcWDr5MknR4LTOkIJvgWJZTn2I47DT1%2BKCpIxbhjlagdUA%3D%3D\u0026_=1767208752086\u0027 from origin \u0027https://localhost:7161\u0027 has been blocked by CORS policy: No \u0027Access-Control-Allow-Origin\u0027 header is present on the requested resource.",
+    "Failed to load resource: net::ERR_FAILED",
+    "Access to XMLHttpRequest at \u0027http://localhost:63028/710cf446006747979221431a65af8989/browserLinkSignalR/start?transport=webSockets\u0026clientProtocol=2.1\u0026requestUrl=https%3A%2F%2Flocalhost%3A7161%2FAccount%2FRegister\u0026browserName=\u0026userAgent=Mozilla%2F5.0%20(Windows%20NT%2010.0%3B%20Win64%3B%20x64)%20AppleWebKit%2F537.36%20(KHTML%2C%20like%20Gecko)%20HeadlessChrome%2F141.0.7390.37%20Safari%2F537.36\u0026browserIdKey=window.browserLink.initializationData.browserId\u0026browserId=293d-ed27\u0026connectionToken=AQAAANCMnd8BFdERjHoAwE%2FCl%2BsBAAAABDp90XHsUkqffVEv%2Bu76MAAAAAACAAAAAAAQZgAAAAEAACAAAAAjha4Rdl8932Fc7M6JF5NAgmN3yck1YFogbU263oO3ZwAAAAAOgAAAAAIAACAAAADak4oIMZbESbAUU%2FYL64nRvUbP021KtyPl1qZFr5%2BoXzAAAADAcCbKub4XoIkxpOL5xR1XOiK7GuoJfwTEuHJa2HiSUTTIUk6WGhgCczizwsWfO89AAAAADaQp%2BHpy%2BzTFVc%2Fp7dyV%2BjE0lQvv75UlR15sMjzfJgAWRzdJTFDtm6ILIMugVFZyCfGrqhhGVTrG4LIdqH03Tg%3D%3D\u0026_=1767208752088\u0027 from origin \u0027https://localhost:7161\u0027 has been blocked by CORS policy: No \u0027Access-Control-Allow-Origin\u0027 header is present on the requested resource.",
+    "Failed to load resource: net::ERR_FAILED",
+    "Access to XMLHttpRequest at \u0027http://localhost:63028/710cf446006747979221431a65af8989/browserLinkSignalR/start?transport=webSockets\u0026clientProtocol=2.1\u0026requestUrl=https%3A%2F%2Flocalhost%3A7161%2FAccount%2FRegister\u0026browserName=\u0026userAgent=Mozilla%2F5.0%20(Windows%20NT%2010.0%3B%20Win64%3B%20x64)%20AppleWebKit%2F537.36%20(KHTML%2C%20like%20Gecko)%20HeadlessChrome%2F141.0.7390.37%20Safari%2F537.36\u0026browserIdKey=window.browserLink.initializationData.browserId\u0026browserId=35fd-0458\u0026connectionToken=AQAAANCMnd8BFdERjHoAwE%2FCl%2BsBAAAABDp90XHsUkqffVEv%2Bu76MAAAAAACAAAAAAAQZgAAAAEAACAAAAATg4shlteWZuAR1ocB3iZHEb7hjb4dQRPwlIq3MRDJeQAAAAAOgAAAAAIAACAAAADfVUDVVmgUJyPTGjYJcExEHqsTzpMvTF5e1aCfQaPUizAAAAANNBXjYR9%2BU6FRhgVVEdDaCDD9j1RW%2BPBqkZrIPhL2vwQ3r%2FvOAfqqqH52Y9elZKRAAAAASVve9%2FCmOw4rAIuMxb0yacQ84k8nTEGXMuHZ7H%2FyLa0IULuZ6Aot2n8Xi9azLQ%2BXd2YcWewbGY8dA5WC9s5ryA%3D%3D\u0026_=1767208756457\u0027 from origin \u0027https://localhost:7161\u0027 has been blocked by CORS policy: No \u0027Access-Control-Allow-Origin\u0027 header is present on the requested resource.",
+    "Failed to load resource: net::ERR_FAILED",
+    "Access to XMLHttpRequest at \u0027http://localhost:63028/710cf446006747979221431a65af8989/browserLinkSignalR/start?transport=webSockets\u0026clientProtocol=2.1\u0026requestUrl=https%3A%2F%2Flocalhost%3A7161%2FAccount%2FRegister\u0026browserName=\u0026userAgent=Mozilla%2F5.0%20(Windows%20NT%2010.0%3B%20Win64%3B%20x64)%20AppleWebKit%2F537.36%20(KHTML%2C%20like%20Gecko)%20HeadlessChrome%2F141.0.7390.37%20Safari%2F537.36\u0026browserIdKey=window.browserLink.initializationData.browserId\u0026browserId=219a-6832\u0026connectionToken=AQAAANCMnd8BFdERjHoAwE%2FCl%2BsBAAAABDp90XHsUkqffVEv%2Bu76MAAAAAACAAAAAAAQZgAAAAEAACAAAADK%2Fiy%2FxqSLNg8ap4zqcfa6b6Rf%2FE3WFBD%2B%2FHpH5soATAAAAAAOgAAAAAIAACAAAACrA4IZGc76CqTxE6csXSna1DZTg9NnUmO8UTcgGexvXzAAAAC2hQYH0aeWOiJcMD3w%2B1z%2Fo8%2BU0YMGNJ3SROvSLPo0O6va7p8sh03mFw0wSc6eH6RAAAAAo3jakDkhUuff7fqzs2hqQMBiWlomcAt9RH2o7dR%2BZubgrJ2R%2FvxYMWuIeUGBW2S149yINh1DzZ4eG1Fr5dw%2Bfw%3D%3D\u0026_=1767208756459\u0027 from origin \u0027https://localhost:7161\u0027 has been blocked by CORS policy: No \u0027Access-Control-Allow-Origin\u0027 header is present on the requested resource.",
+    "Failed to load resource: net::ERR_FAILED"
+  ],
+  "CapturedAt": "2025-12-31T19:19:11.4399286Z",
+  "IsSuccess": true,
+  "IsHttpError": false,
+  "IsError": false,
+  "ErrorMessage": null,
+  "RequiresAuth": false,
+  "AuthFlowCompleted": true,
+  "AuthStep1Path": "1-initial.png",
+  "AuthStep2Path": "2-filled.png",
+  "AuthStep3Path": "3-result.png",
+  "AuthFlowNote": "Redirected to login (unexpected)"
+}

@@ -1,0 +1,25 @@
+{
+  "Route": "/Error",
+  "Url": "https://localhost:7161/Error",
+  "StatusCode": 200,
+  "FileSize": 52407,
+  "IsSuspiciouslySmall": false,
+  "RetryAttempted": false,
+  "ConsoleErrors": [
+    "Access to XMLHttpRequest at \u0027http://localhost:63028/710cf446006747979221431a65af8989/browserLinkSignalR/start?transport=webSockets\u0026clientProtocol=2.1\u0026requestUrl=https%3A%2F%2Flocalhost%3A7161%2FError\u0026browserName=\u0026userAgent=Mozilla%2F5.0%20(Windows%20NT%2010.0%3B%20Win64%3B%20x64)%20AppleWebKit%2F537.36%20(KHTML%2C%20like%20Gecko)%20HeadlessChrome%2F141.0.7390.37%20Safari%2F537.36\u0026browserIdKey=window.browserLink.initializationData.browserId\u0026browserId=a650-72b0\u0026connectionToken=AQAAANCMnd8BFdERjHoAwE%2FCl%2BsBAAAABDp90XHsUkqffVEv%2Bu76MAAAAAACAAAAAAAQZgAAAAEAACAAAABMjkSH2g0rbRc4GlmixD1qd4Hi9X9CTWWh4ZvLqgk1wQAAAAAOgAAAAAIAACAAAABW%2FWl49Jmai9OsABmYs00uBtWxZmSs8bg41wKE0Z8euTAAAAA4ULvCCSOehjxdvG%2BYoWToux7Y8j6In9jeQm6bhukizYRi35xqu9W1KiW5Qnq55ghAAAAAT9SUbvEDw2l6Qv6sWttZnqeQ29C%2FroMbWK%2BPkFJAHbsdvY5Mkx%2Fs4gmGZd%2FdW3CwjepI9NEa7CxdJREGMqJDpw%3D%3D\u0026_=1767208743791\u0027 from origin \u0027https://localhost:7161\u0027 has been blocked by CORS policy: No \u0027Access-Control-Allow-Origin\u0027 header is present on the requested resource.",
+    "Failed to load resource: net::ERR_FAILED",
+    "Access to XMLHttpRequest at \u0027http://localhost:63028/710cf446006747979221431a65af8989/browserLinkSignalR/start?transport=webSockets\u0026clientProtocol=2.1\u0026requestUrl=https%3A%2F%2Flocalhost%3A7161%2FError\u0026browserName=\u0026userAgent=Mozilla%2F5.0%20(Windows%20NT%2010.0%3B%20Win64%3B%20x64)%20AppleWebKit%2F537.36%20(KHTML%2C%20like%20Gecko)%20HeadlessChrome%2F141.0.7390.37%20Safari%2F537.36\u0026browserIdKey=window.browserLink.initializationData.browserId\u0026browserId=fc0f-2e36\u0026connectionToken=AQAAANCMnd8BFdERjHoAwE%2FCl%2BsBAAAABDp90XHsUkqffVEv%2Bu76MAAAAAACAAAAAAAQZgAAAAEAACAAAAD1hPcoyQzDSVmf0dud0wEj%2BFpKCJiyqyfS2YCCIRjd3QAAAAAOgAAAAAIAACAAAAA8AWlGFK2Zb%2Fz5jR5dSfszFUbseo3bjzfS3A6xxTfUPDAAAADbN5HhS2FZfhpwx%2FWn5kJ4HlNOVN8sqc1UnSdU8u9M5IMZQh0XE3ZaIMyPb%2FQRqI5AAAAAIE2ad9NjWYUSLH3pXQ9jvv66tK9MJLIwOawMaUJ6E59hjWKk9JPsuQGTyIvEghcmlPlS1DyY5SEylLUFreEpFQ%3D%3D\u0026_=1767208743793\u0027 from origin \u0027https://localhost:7161\u0027 has been blocked by CORS policy: No \u0027Access-Control-Allow-Origin\u0027 header is present on the requested resource.",
+    "Failed to load resource: net::ERR_FAILED"
+  ],
+  "CapturedAt": "2025-12-31T19:19:02.7600279Z",
+  "IsSuccess": true,
+  "IsHttpError": false,
+  "IsError": false,
+  "ErrorMessage": null,
+  "RequiresAuth": false,
+  "AuthFlowCompleted": false,
+  "AuthStep1Path": null,
+  "AuthStep2Path": null,
+  "AuthStep3Path": null,
+  "AuthFlowNote": null
+}

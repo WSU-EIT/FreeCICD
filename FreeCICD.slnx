@@ -1,4 +1,14 @@
 <Solution>
+  <Folder Name="/FreeTools/">
+    <Project Path="../FreeTools/FreeTools/FreeTools.AppHost/FreeTools.AppHost.csproj" />
+    <Project Path="../FreeTools/FreeTools/FreeTools.BrowserSnapshot/FreeTools.BrowserSnapshot.csproj" />
+    <Project Path="../FreeTools/FreeTools/FreeTools.Core/FreeTools.Core.csproj" />
+    <Project Path="../FreeTools/FreeTools/FreeTools.EndpointMapper/FreeTools.EndpointMapper.csproj" />
+    <Project Path="../FreeTools/FreeTools/FreeTools.EndpointPoker/FreeTools.EndpointPoker.csproj" />
+    <Project Path="../FreeTools/FreeTools/FreeTools.ForkCRM/FreeTools.ForkCRM.csproj" />
+    <Project Path="../FreeTools/FreeTools/FreeTools.WorkspaceInventory/FreeTools.WorkspaceInventory.csproj" />
+    <Project Path="../FreeTools/FreeTools/FreeTools.WorkspaceReporter/FreeTools.WorkspaceReporter.csproj" />
+  </Folder>
   <Folder Name="/Solution Items/">
     <File Path=".editorconfig" />
     <File Path=".gitignore" />

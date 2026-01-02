@@ -1,0 +1,105 @@
+﻿<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <base href="/">
+    
+    <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.46ein0sx1k.css" />
+    <link rel="stylesheet" href="app.khy4lop6wu.css" />
+    <link rel="stylesheet" href="BlazorApp1.km0leyii9q.styles.css" />
+    <script type="importmap">{
+  "imports": {
+    "./Components/Account/Shared/PasskeySubmit.razor.js": "./Components/Account/Shared/PasskeySubmit.pr21mg9rrw.razor.js",
+    "./Components/Layout/ReconnectModal.razor.js": "./Components/Layout/ReconnectModal.13ja33weya.razor.js",
+    "./_framework/blazor.server.js": "./_framework/blazor.server.2lgipwaf5j.js",
+    "./_framework/blazor.web.js": "./_framework/blazor.web.wmp8iwak4q.js",
+    "./lib/bootstrap/dist/js/bootstrap.bundle.js": "./lib/bootstrap/dist/js/bootstrap.bundle.6cfz1n2cew.js",
+    "./lib/bootstrap/dist/js/bootstrap.bundle.min.js": "./lib/bootstrap/dist/js/bootstrap.bundle.min.493y06b0oq.js",
+    "./lib/bootstrap/dist/js/bootstrap.esm.min.js": "./lib/bootstrap/dist/js/bootstrap.esm.min.jj8uyg4cgr.js",
+    "./lib/bootstrap/dist/js/bootstrap.esm.js": "./lib/bootstrap/dist/js/bootstrap.esm.vr1egmr9el.js",
+    "./lib/bootstrap/dist/js/bootstrap.min.js": "./lib/bootstrap/dist/js/bootstrap.min.63fj8s7r0e.js",
+    "./lib/bootstrap/dist/js/bootstrap.js": "./lib/bootstrap/dist/js/bootstrap.notf2xhcfb.js"
+  }
+}</script>
+    <link rel="icon" type="image/png" href="favicon.png">
+    <!--Blazor:{"type":"server","prerenderId":"5d775ad70d644dca9caf52947c996f29","key":{"locationHash":"77D12F14A8105320B1AAED6AE7E689DA0EC4483270A645E84079EAA0FFDF550D:21","formattedComponentKey":""},"sequence":0,"descriptor":"CfDJ8O22TcllvsdBgISRv7DRdfJzryL/ThROzQZe/AjryU0L/POwZZGPUuHu6cPrBnFHI8EcH97vh8hrzOF5Q3LwH7IzjE9lVr4iS9WKbU2foqxtBPkgn5y3PvhzKHF4h5FHDZ50AJ\u002BvW7zF0utoEYCgt0Forp11Lr\u002BzlvHB8haDOAUZ9EJK2/XvIKnFHzJ3cragZJZIqFF\u002B/JRSt9VaJo/bMzwdVNJHIm9uwtnIFhjqmOtrRiPewhGb9UDbaZhlR0Ck14V/UfoHq5sKyx55JGkDKzQ6XQBjUJ9tyzJou9uQwb4QWddONPZjlaLgcTI76hak58n6nijyRhBFuGBW1TbcKXq98Y8supAZyqczYG0fAVHnI2otw6XAX6YSG1ZbCWLs/fbwomSmYxQAxWfVfahwWq9nKvPxZ/pnYtV\u002BMJkVK25uNOoj6PRcPchScZV78McMDXtL9\u002Beca0y2qnnoDGU40mDpd97ZHVTYhi0JOG7ndRHz0\u002BNOGQu8gM12vsWXOaHNfNMt9ad5BadNyh57eGDW72ObVktH1gnB/ZFrszCk92W2NOE7ron8Aa5kEbpT01pxWszPoZ/pI1iXz1lmkwUTxys="}--><title>Weather</title><!--Blazor:{"prerenderId":"5d775ad70d644dca9caf52947c996f29"}--></head>
+
+<body><!--Blazor:{"type":"server","prerenderId":"99711a761122459798fde43fc843a12c","key":{"locationHash":"F2437871F6CA3E3CAE73B54B05A7BBCF7E21A366563A27CB6AF8BF8C1462DB75:24","formattedComponentKey":""},"sequence":1,"descriptor":"CfDJ8O22TcllvsdBgISRv7DRdfJZnmmhqI/HCnbobJ26vBOBLPzYnmU2Y1EQcRi1hPhrP3O\u002BodUcMZcSXB/MIxQHkmKRoaosDRo\u002ByR8l5Djrv\u002B0E8KaBoM0RdZCktx3n0Llh64fN6gi28j64OXVEe9V4hFINzwg5cH3Raq2PhLNKgWtpp0F0mnJ2ynsRbo5oMQD/rikxU2WMt3kiFxk2TKRttRjk2OzPubo5zZiYOZXV4x/hf1yYceGKfeEBNHoLcNo47tEIqwPiX2vwBPF8eL5AXAPWJp0bypnqlaLt\u002BIZthu7m4Zfbuj6TMl7oWuxMXAKcX8GE\u002B\u002BUbsjOhFJMg\u002BQPZAppZc/xDtwlCdNjumMPNWaGWyYUhrr6\u002B9sX5Uw8Rbw0O1yiBuxjejoLUn\u002Bsl1mdNwu1bG0mX\u002BNeJb8gxJ0hsipqm96d/HRBlYNTn1af3Ife1DXt9qhrhnUjM30cd97CMN33GKT\u002BvNboZyOg4pf2ZvdKGx5vIt97EOQ4GGN6TLPWM8dw4pIpfIOjlPa99ut2vl5E="}--><div class="page" b-j65y7q72mt><div class="sidebar" b-j65y7q72mt><div class="top-row ps-3 navbar navbar-dark" b-5bndfk4shp><div class="container-fluid" b-5bndfk4shp><a class="navbar-brand" href b-5bndfk4shp>BlazorApp1</a></div></div>
+
+<input type="checkbox" title="Navigation menu" class="navbar-toggler" b-5bndfk4shp>
+
+<div class="nav-scrollable" onclick="document.querySelector(&#x27;.navbar-toggler&#x27;).click()" b-5bndfk4shp><nav class="nav flex-column" b-5bndfk4shp><div class="nav-item px-3" b-5bndfk4shp><a href="" class="nav-link"><span class="bi bi-house-door-fill-nav-menu" aria-hidden="true" b-5bndfk4shp></span> Home
+            </a></div>
+
+        <div class="nav-item px-3" b-5bndfk4shp><a href="counter" class="nav-link"><span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true" b-5bndfk4shp></span> Counter
+            </a></div>
+
+        <div class="nav-item px-3" b-5bndfk4shp><a href="weather" class="nav-link active" aria-current="page"><span class="bi bi-list-nested-nav-menu" aria-hidden="true" b-5bndfk4shp></span> Weather
+            </a></div>
+
+        <div class="nav-item px-3" b-5bndfk4shp><a href="auth" class="nav-link"><span class="bi bi-lock-nav-menu" aria-hidden="true" b-5bndfk4shp></span> Auth Required
+            </a></div>
+
+        <div class="nav-item px-3" b-5bndfk4shp><a href="Account/Register" class="nav-link"><span class="bi bi-person-nav-menu" aria-hidden="true" b-5bndfk4shp></span> Register
+                    </a></div>
+                <div class="nav-item px-3" b-5bndfk4shp><a href="Account/Login" class="nav-link"><span class="bi bi-person-badge-nav-menu" aria-hidden="true" b-5bndfk4shp></span> Login
+                    </a></div></nav></div></div>
+
+    <main b-j65y7q72mt><div class="top-row px-4" b-j65y7q72mt><a href="https://learn.microsoft.com/aspnet/core/" target="_blank" b-j65y7q72mt>About</a></div>
+
+        <article class="content px-4" b-j65y7q72mt>
+
+<h1>Weather</h1>
+
+<p>This component demonstrates showing data.</p><table class="table"><thead><tr><th>Date</th>
+                <th aria-label="Temperature in Celsius">Temp. (C)</th>
+                <th aria-label="Temperature in Fahrenheit">Temp. (F)</th>
+                <th>Summary</th></tr></thead>
+        <tbody><tr><td>1/1/2026</td>
+                    <td>-10</td>
+                    <td>15</td>
+                    <td>Cool</td></tr><tr><td>1/2/2026</td>
+                    <td>19</td>
+                    <td>66</td>
+                    <td>Balmy</td></tr><tr><td>1/3/2026</td>
+                    <td>43</td>
+                    <td>109</td>
+                    <td>Mild</td></tr><tr><td>1/4/2026</td>
+                    <td>48</td>
+                    <td>118</td>
+                    <td>Freezing</td></tr><tr><td>1/5/2026</td>
+                    <td>38</td>
+                    <td>100</td>
+                    <td>Freezing</td></tr></tbody></table></article></main></div>
+
+<div id="blazor-error-ui" data-nosnippet b-j65y7q72mt>
+    An unhandled error has occurred.
+    <a href="." class="reload" b-j65y7q72mt>Reload</a>
+    <span class="dismiss" b-j65y7q72mt>🗙</span></div>
+        <!--Blazor:{"prerenderId":"99711a761122459798fde43fc843a12c"}-->
+    <script type="module" src="Components/Layout/ReconnectModal.13ja33weya.razor.js" b-rp7b9a9cad></script>
+
+<dialog id="components-reconnect-modal" data-nosnippet b-rp7b9a9cad><div class="components-reconnect-container" b-rp7b9a9cad><div class="components-rejoining-animation" aria-hidden="true" b-rp7b9a9cad><div b-rp7b9a9cad></div>
+            <div b-rp7b9a9cad></div></div>
+        <p class="components-reconnect-first-attempt-visible" b-rp7b9a9cad>
+            Rejoining the server...
+        </p>
+        <p class="components-reconnect-repeated-attempt-visible" b-rp7b9a9cad>
+            Rejoin failed... trying again in <span id="components-seconds-to-next-attempt" b-rp7b9a9cad></span> seconds.
+        </p>
+        <p class="components-reconnect-failed-visible" b-rp7b9a9cad>
+            Failed to rejoin.<br b-rp7b9a9cad>Please retry or reload the page.
+        </p>
+        <button id="components-reconnect-button" class="components-reconnect-failed-visible" b-rp7b9a9cad>
+            Retry
+        </button>
+        <p class="components-pause-visible" b-rp7b9a9cad>
+            The session has been paused by the server.
+        </p>
+        <button id="components-resume-button" class="components-pause-visible" b-rp7b9a9cad>
+            Resume
+        </button>
+        <p class="components-resume-failed-visible" b-rp7b9a9cad>
+            Failed to resume the session.<br b-rp7b9a9cad>Please reload the page.
+        </p></div></dialog>
+    <script src="_framework/blazor.web.wmp8iwak4q.js"></script>
+    <script src="Components/Account/Shared/PasskeySubmit.pr21mg9rrw.razor.js" type="module"></script></body></html><!--Blazor-Server-Component-State:CfDJ8O22TcllvsdBgISRv7DRdfKLkWxDgnxBjCf+7WfScgn88bqgpTyN+W4buvZ1IC9hg0/VbSgyRrZQjSQm57YWlHbLNkJpknSR83pXdNkHoo+bIpbgL8k2Em54dj641X9w7cNMsZ2MMbM+2DVpGDbCPqCaebTupwXYcgSCK2E+rfmUc7aRyzs/AmyICTR37yDC9piLIKyW8M5xgNZhBMGekcX28d63ABN13zLooZpWSEQEIXZX+hH8ecmkliQvjfgTUYZ0kj0gxlvifvYz2BMaC+UmlP7Jl1P6sxO0g0WGikRIYSe/XMpzbTxCBOCDOLZ1AGtQGEmlYcNEzQNcjOtC8gMMvvBc0aVHQUH5+PmPEctMFdw9l1YgXCQrNrC1XyrGijN3INtZcdnevhi+I1gSw2LI1qPs44gqpjw/Ti+S+k/IjsMJt8qU1LhZhK2j48r4GwfjGzjrb4P3XsCcF0+H9oT7U5T7vOIfmZ9A3IpT+VNZMrjN7QmBxKk4zZFCObiE9lALNwD+VXJGrDU5J8UKq+Fr58lZMY1WH++Pa380lGF4WBqrWoZJG4B5FWw7QxhM+OBEZFRx3fHaBdvOnMmnYsLxKDnmhCiuQ2xqjcSwSQhSYBfLY+7MyqKI5ZoQrC+I5JDeuKfolXvFAOSrmjOq4r5Jp0VHtbIoEDXMtoNL6HyRvuikQUdHzpwAb8AzQzlaH8DrEj0Kyh1lztEx36qD/UNqPQpROey/fdCf9d0bxKyF2IbXA7zx9//YErD14bsL5CWJehi2A9PmYFB1762yivbybg+JLpKbrHQ4O7biZuaono6lH8rleyO9Bwn0f5KhysNJA3CXvp8oDgWVuvcrZTnY44f6BaublsVlltJy8x6PFOvW8zcK3gnezynLetZAp31Th9ONJt+UogShlLoQ+Pp7IJdoO+pxwNEGzaPSp5pVeyr7ThiBOpuMx5AzgQaq/FoZ6TCbzz5g8ML4g+03vUURntgsFrEVehcGxHSn8aYENRCQKH0DFLLS4qnVdJqrISY8Jx2C7siUKZ3E+LFgnT9kpjG3u00U3TnROZtKJkiG6wOtfxd2rIU/4RZkBKT1+Q2PzG75JWScZOYbc5dyf0GuOebaf3LToXGJB6CH74zKDkrkkhxx4HFCvM63b9r3zQ==-->
