@@ -2014,8 +2014,67 @@ public partial class DataAccess
             var projectClient = connection.GetClient<ProjectHttpClient>();
             var gitClient = connection.GetClient<GitHttpClient>();
 
-            // 1. Check project name conflict (only if creating new project)
-            if (!string.IsNullOrWhiteSpace(newProjectName) && string.IsNullOrWhiteSpace(targetProjectId)) {
+            // Scenario 1: User wants to import into an EXISTING project
+            if (!string.IsNullOrWhiteSpace(targetProjectId)) {
+                // Only check for repo name conflicts in the target project
+                try {
+                    var existingRepos = await gitClient.GetRepositoriesAsync(targetProjectId);
+                    var existingRepo = existingRepos.FirstOrDefault(r => 
+                        string.Equals(r.Name, repoName, StringComparison.OrdinalIgnoreCase));
+                    
+                    if (existingRepo != null) {
+                        result.HasRepoConflict = true;
+                        result.ExistingRepoId = existingRepo.Id.ToString();
+                        result.ExistingRepoName = existingRepo.Name;
+                        
+                        // Try to get URL - Links may be null on GetRepositoriesAsync
+                        if (existingRepo.Links?.Links != null && existingRepo.Links.Links.ContainsKey("web")) {
+                            try {
+                                dynamic webLink = existingRepo.Links.Links["web"];
+                                result.ExistingRepoUrl = webLink.Href;
+                            } catch {
+                                // Ignore URL extraction errors
+                            }
+                        }
+                        // Fallback to WebUrl or RemoteUrl if Links not available
+                        if (string.IsNullOrWhiteSpace(result.ExistingRepoUrl)) {
+                            result.ExistingRepoUrl = existingRepo.WebUrl ?? existingRepo.RemoteUrl;
+                        }
+                        
+                        // Generate suggested alternative names
+                        result.SuggestedRepoNames = GenerateSuggestedNames(repoName, 
+                            existingRepos.Select(r => r.Name).ToList());
+                    }
+                    
+                    // Also check for duplicate import (same source URL name already exists)
+                    var normalizedSourceName = ExtractRepoNameFromUrl(sourceUrl);
+                    if (!string.IsNullOrWhiteSpace(normalizedSourceName) && 
+                        !string.Equals(normalizedSourceName, repoName, StringComparison.OrdinalIgnoreCase)) {
+                        // User specified a different repo name, check if source name also exists
+                        var sourceNameRepo = existingRepos.FirstOrDefault(r => 
+                            string.Equals(r.Name, normalizedSourceName, StringComparison.OrdinalIgnoreCase));
+                        if (sourceNameRepo != null) {
+                            result.IsDuplicateImport = true;
+                            if (sourceNameRepo.Links?.Links != null && sourceNameRepo.Links.Links.ContainsKey("web")) {
+                                try {
+                                    dynamic webLink = sourceNameRepo.Links.Links["web"];
+                                    result.PreviousImportRepoUrl = webLink.Href;
+                                } catch { }
+                            }
+                            if (string.IsNullOrWhiteSpace(result.PreviousImportRepoUrl)) {
+                                result.PreviousImportRepoUrl = sourceNameRepo.WebUrl ?? sourceNameRepo.RemoteUrl;
+                            }
+                        }
+                    }
+                } catch {
+                    // Ignore errors checking repos - let actual import handle it
+                }
+                
+                return result;
+            }
+
+            // Scenario 2: User wants to create a NEW project
+            if (!string.IsNullOrWhiteSpace(newProjectName)) {
                 try {
                     var existingProjects = await projectClient.GetProjects();
                     var existingProject = existingProjects.FirstOrDefault(p => 
@@ -2026,70 +2085,43 @@ public partial class DataAccess
                         result.ExistingProjectId = existingProject.Id.ToString();
                         result.ExistingProjectName = existingProject.Name;
                         
-                        // Generate suggested alternative names
+                        // Generate suggested alternative project names
                         result.SuggestedProjectNames = GenerateSuggestedNames(newProjectName, 
                             existingProjects.Select(p => p.Name).ToList());
-                    }
-                } catch (InvalidOperationException) {
-                    throw; // Re-throw our own exception
-                } catch {
-                    // Ignore errors checking existing projects
-                }
-            }
-
-            // 2. Check repo name conflict in target project
-            string? projectIdToCheck = targetProjectId;
-            if (string.IsNullOrWhiteSpace(projectIdToCheck) && result.HasProjectConflict) {
-                // If project exists and we're creating new, check in existing project
-                projectIdToCheck = result.ExistingProjectId;
-            }
-
-            if (!string.IsNullOrWhiteSpace(projectIdToCheck)) {
-                try {
-                    var existingRepos = await gitClient.GetRepositoriesAsync(projectIdToCheck);
-                    var existingRepo = existingRepos.FirstOrDefault(r => 
-                        string.Equals(r.Name, repoName, StringComparison.OrdinalIgnoreCase));
-                    
-                    if (existingRepo != null) {
-                        result.HasRepoConflict = true;
-                        result.ExistingRepoId = existingRepo.Id.ToString();
-                        result.ExistingRepoName = existingRepo.Name;
                         
+                        // Since project exists, also check if repo would conflict in that project
                         try {
-                            dynamic webLink = existingRepo.Links.Links["web"];
-                            result.ExistingRepoUrl = webLink.Href;
+                            var existingRepos = await gitClient.GetRepositoriesAsync(existingProject.Id.ToString());
+                            var existingRepo = existingRepos.FirstOrDefault(r => 
+                                string.Equals(r.Name, repoName, StringComparison.OrdinalIgnoreCase));
+                            
+                            if (existingRepo != null) {
+                                result.HasRepoConflict = true;
+                                result.ExistingRepoId = existingRepo.Id.ToString();
+                                result.ExistingRepoName = existingRepo.Name;
+                                
+                                if (existingRepo.Links?.Links != null && existingRepo.Links.Links.ContainsKey("web")) {
+                                    try {
+                                        dynamic webLink = existingRepo.Links.Links["web"];
+                                        result.ExistingRepoUrl = webLink.Href;
+                                    } catch { }
+                                }
+                                if (string.IsNullOrWhiteSpace(result.ExistingRepoUrl)) {
+                                    result.ExistingRepoUrl = existingRepo.WebUrl ?? existingRepo.RemoteUrl;
+                                }
+                                
+                                result.SuggestedRepoNames = GenerateSuggestedNames(repoName, 
+                                    existingRepos.Select(r => r.Name).ToList());
+                            }
                         } catch {
-                            // Ignore URL extraction errors
-                        }
-                        
-                        // Generate suggested alternative names
-                        result.SuggestedRepoNames = GenerateSuggestedNames(repoName, 
-                            existingRepos.Select(r => r.Name).ToList());
-                    }
-                } catch {
-                    // Ignore errors checking repos
-                }
-            }
-
-            // 3. Check for duplicate import (same source URL already imported)
-            // This checks if any repo in the org has a remote URL matching the source
-            // Note: This is a best-effort check - imports don't always preserve source URL
-            if (!string.IsNullOrWhiteSpace(targetProjectId)) {
-                try {
-                    var existingRepos = await gitClient.GetRepositoriesAsync(targetProjectId);
-                    foreach (var repo in existingRepos) {
-                        // Check if repo name suggests it came from this source
-                        var normalizedSourceName = ExtractRepoNameFromUrl(sourceUrl);
-                        if (string.Equals(repo.Name, normalizedSourceName, StringComparison.OrdinalIgnoreCase)) {
-                            // Likely a duplicate - warn the user
-                            result.IsDuplicateImport = true;
-                            result.PreviousImportRepoUrl = result.ExistingRepoUrl;
-                            // We don't have exact date, but the repo exists
-                            break;
+                            // Ignore errors checking repos in existing project
                         }
                     }
+                    // If project doesn't exist, no conflicts - it will be created fresh
+                } catch (InvalidOperationException) {
+                    throw; // Re-throw our own exceptions
                 } catch {
-                    // Ignore errors checking for duplicates
+                    // Ignore errors checking projects - let actual import handle it
                 }
             }
 
@@ -2140,7 +2172,6 @@ public partial class DataAccess
     /// <summary>
     /// Creates a new Azure DevOps project with Git source control.
     /// Polls until the project is fully created (wellFormed state).
-    /// Returns ImportPublicRepoResponse with ProjectId/ProjectName on success, or ErrorMessage on failure.
     /// </summary>
     public async Task<DataObjects.DevopsProjectInfo> CreateDevOpsProjectAsync(string pat, string orgName, string projectName, string? description = null, string? connectionId = null)
     {
@@ -2152,12 +2183,11 @@ public partial class DataAccess
             try {
                 var existingProjects = await projectClient.GetProjects();
                 if (existingProjects.Any(p => string.Equals(p.Name, projectName, StringComparison.OrdinalIgnoreCase))) {
-                    // Return existing project info (caller should check if this is intended)
                     var existing = existingProjects.First(p => string.Equals(p.Name, projectName, StringComparison.OrdinalIgnoreCase));
                     throw new InvalidOperationException($"Project '{projectName}' already exists.");
                 }
             } catch (InvalidOperationException) {
-                throw; // Re-throw our own exception
+                throw;
             } catch {
                 // Ignore errors checking existing projects
             }
@@ -2195,12 +2225,16 @@ public partial class DataAccess
                 try {
                     var project = await projectClient.GetProject(projectName);
                     if (project != null && project.State == ProjectState.WellFormed) {
-                        dynamic webLink = project.Links.Links["web"];
+                        string resourceUrl = string.Empty;
+                        if (project.Links?.Links != null && project.Links.Links.ContainsKey("web")) {
+                            dynamic webLink = project.Links.Links["web"];
+                            resourceUrl = webLink.Href;
+                        }
                         return new DataObjects.DevopsProjectInfo {
                             ProjectId = project.Id.ToString(),
                             ProjectName = project.Name,
                             CreationDate = project.LastUpdateTime,
-                            ResourceUrl = webLink.Href
+                            ResourceUrl = resourceUrl
                         };
                     }
                 } catch {
@@ -2211,7 +2245,7 @@ public partial class DataAccess
             throw new TimeoutException("Project creation timed out. The project may still be creating in Azure DevOps.");
 
         } catch (Exception) {
-            throw; // Let caller handle the exception
+            throw;
         }
     }
 
@@ -2247,15 +2281,15 @@ public partial class DataAccess
 
             var createdRepo = await gitClient.CreateRepositoryAsync(newRepo);
 
-            dynamic webLink = createdRepo.Links.Links["web"];
+            // Use WebUrl directly - Links may be null on newly created repos
             return new DataObjects.DevopsGitRepoInfo {
                 RepoId = createdRepo.Id.ToString(),
                 RepoName = createdRepo.Name,
-                ResourceUrl = webLink.Href
+                ResourceUrl = createdRepo.WebUrl ?? createdRepo.RemoteUrl ?? string.Empty
             };
 
         } catch (Exception) {
-            throw; // Let caller handle the exception
+            throw;
         }
     }
 
@@ -2263,6 +2297,7 @@ public partial class DataAccess
     /// Imports a public Git repository into Azure DevOps.
     /// Supports three methods: GitClone (native import), GitSnapshot (fresh commit), ZipUpload.
     /// Creates project (if needed) and repo, then imports the code.
+    /// Gracefully handles existing projects/repos when user proceeds after conflict warning.
     /// </summary>
     public async Task<DataObjects.ImportPublicRepoResponse> ImportPublicRepoAsync(string pat, string orgName, DataObjects.ImportPublicRepoRequest request, string? connectionId = null)
     {
@@ -2305,20 +2340,47 @@ public partial class DataAccess
 
             // Step 1: Get or create project
             if (!string.IsNullOrWhiteSpace(request.TargetProjectId)) {
-                // Use existing project
+                // User explicitly selected existing project - use it directly
                 projectId = request.TargetProjectId;
                 var project = await projectClient.GetProject(projectId);
                 projectName = project.Name;
             } else if (!string.IsNullOrWhiteSpace(request.NewProjectName)) {
-                // Create new project
-                try {
-                    var projectResult = await CreateDevOpsProjectAsync(pat, orgName, request.NewProjectName, repoInfo?.Description, connectionId);
-                    projectId = projectResult.ProjectId!;
-                    projectName = projectResult.ProjectName!;
-                } catch (Exception ex) {
-                    result.Success = false;
-                    result.ErrorMessage = ex.Message;
-                    return result;
+                // User wants new project - check if it already exists first
+                var existingProjects = await projectClient.GetProjects();
+                var existingProject = existingProjects.FirstOrDefault(p => 
+                    string.Equals(p.Name, request.NewProjectName, StringComparison.OrdinalIgnoreCase));
+                
+                if (existingProject != null) {
+                    // Project already exists - use it (user was warned by CheckImportConflictsAsync)
+                    projectId = existingProject.Id.ToString();
+                    projectName = existingProject.Name;
+                    
+                    if (!string.IsNullOrWhiteSpace(connectionId)) {
+                        await SignalRUpdate(new DataObjects.SignalRUpdate {
+                            UpdateType = DataObjects.SignalRUpdateType.LoadingDevOpsInfoStatusUpdate,
+                            ConnectionId = connectionId,
+                            ItemId = Guid.NewGuid(),
+                            Message = $"Using existing project '{projectName}'..."
+                        });
+                    }
+                } else {
+                    // Create new project
+                    try {
+                        var projectResult = await CreateDevOpsProjectAsync(pat, orgName, request.NewProjectName, repoInfo?.Description, connectionId);
+                        projectId = projectResult.ProjectId!;
+                        projectName = projectResult.ProjectName!;
+                    } catch (InvalidOperationException) {
+                        // Project was created between our check and create attempt - try to fetch it
+                        var retryProjects = await projectClient.GetProjects();
+                        var justCreated = retryProjects.FirstOrDefault(p => 
+                            string.Equals(p.Name, request.NewProjectName, StringComparison.OrdinalIgnoreCase));
+                        if (justCreated != null) {
+                            projectId = justCreated.Id.ToString();
+                            projectName = justCreated.Name;
+                        } else {
+                            throw;
+                        }
+                    }
                 }
             } else {
                 result.Success = false;
@@ -2329,17 +2391,71 @@ public partial class DataAccess
             result.ProjectId = projectId;
             result.ProjectName = projectName;
 
-            // Step 2: Create repository
+            // Step 2: Get or create repository
             var targetRepoName = request.TargetRepoName ?? repoInfo?.Name ?? "imported-repo";
-            try {
-                var repoResult = await CreateDevOpsRepoAsync(pat, orgName, projectId, targetRepoName, connectionId);
-                result.RepoId = repoResult.RepoId;
-                result.RepoName = repoResult.RepoName;
-                result.RepoUrl = repoResult.ResourceUrl;
-            } catch (Exception ex) {
-                result.Success = false;
-                result.ErrorMessage = ex.Message;
-                return result;
+            
+            // Check if repo already exists in the target project
+            var existingRepos = await gitClient.GetRepositoriesAsync(projectId);
+            var existingRepo = existingRepos.FirstOrDefault(r => 
+                string.Equals(r.Name, targetRepoName, StringComparison.OrdinalIgnoreCase));
+            
+            if (existingRepo != null) {
+                // Repo exists - check if it's empty (no default branch = empty)
+                bool repoIsEmpty = string.IsNullOrWhiteSpace(existingRepo.DefaultBranch);
+                
+                if (!repoIsEmpty && request.Method == DataObjects.ImportMethod.GitClone) {
+                    // Native Git import requires an empty repo - can't import into existing content
+                    result.Success = false;
+                    result.ErrorMessage = $"Repository '{targetRepoName}' already exists and contains code. Native Git import requires an empty repository. Please use a different repository name or choose 'Snapshot' import mode.";
+                    return result;
+                }
+                
+                if (!repoIsEmpty) {
+                    // Repo has content - for now, error out (future: could import to new branch)
+                    result.Success = false;
+                    result.ErrorMessage = $"Repository '{targetRepoName}' already contains code. Please choose a different repository name.";
+                    return result;
+                }
+                
+                // Repo exists but is empty - we can use it
+                result.RepoId = existingRepo.Id.ToString();
+                result.RepoName = existingRepo.Name;
+                result.RepoUrl = existingRepo.WebUrl ?? existingRepo.RemoteUrl;
+                
+                if (!string.IsNullOrWhiteSpace(connectionId)) {
+                    await SignalRUpdate(new DataObjects.SignalRUpdate {
+                        UpdateType = DataObjects.SignalRUpdateType.LoadingDevOpsInfoStatusUpdate,
+                        ConnectionId = connectionId,
+                        ItemId = Guid.NewGuid(),
+                        Message = $"Using existing empty repository '{targetRepoName}'..."
+                    });
+                }
+            } else {
+                // Create new repo
+                try {
+                    var repoResult = await CreateDevOpsRepoAsync(pat, orgName, projectId, targetRepoName, connectionId);
+                    result.RepoId = repoResult.RepoId;
+                    result.RepoName = repoResult.RepoName;
+                    result.RepoUrl = repoResult.ResourceUrl;
+                } catch (InvalidOperationException) {
+                    // Repo was created between check and create - try to use it
+                    var retryRepos = await gitClient.GetRepositoriesAsync(projectId);
+                    var justCreated = retryRepos.FirstOrDefault(r => 
+                        string.Equals(r.Name, targetRepoName, StringComparison.OrdinalIgnoreCase));
+                    if (justCreated != null) {
+                        bool isEmpty = string.IsNullOrWhiteSpace(justCreated.DefaultBranch);
+                        if (!isEmpty) {
+                            result.Success = false;
+                            result.ErrorMessage = $"Repository '{targetRepoName}' was just created by another process and contains code.";
+                            return result;
+                        }
+                        result.RepoId = justCreated.Id.ToString();
+                        result.RepoName = justCreated.Name;
+                        result.RepoUrl = justCreated.WebUrl ?? justCreated.RemoteUrl;
+                    } else {
+                        throw;
+                    }
+                }
             }
 
             // Step 3: Import based on method
@@ -2692,8 +2808,12 @@ public partial class DataAccess
             if (result.Status == DataObjects.ImportStatus.Completed) {
                 try {
                     var repo = await gitClient.GetRepositoryAsync(projectId, repoId);
-                    dynamic webLink = repo.Links.Links["web"];
-                    result.RepoUrl = webLink.Href;
+                    if (repo.Links?.Links != null && repo.Links.Links.ContainsKey("web")) {
+                        dynamic webLink = repo.Links.Links["web"];
+                        result.RepoUrl = webLink.Href;
+                    } else {
+                        result.RepoUrl = repo.WebUrl ?? repo.RemoteUrl ?? string.Empty;
+                    }
                 } catch {
                     // Ignore errors getting repo URL
                 }
