@@ -165,11 +165,11 @@ internal class Program
     {
         var relativePath = Path.GetRelativePath(root, filePath);
         
-        if (relativePath.Contains("FreeTools.Web"))
-            return "FreeTools.Web";
-        if (relativePath.Contains("Account"))
+        // Check for Identity/Account pages
+        if (relativePath.Contains("Account", StringComparison.OrdinalIgnoreCase))
             return "Identity";
             
+        // Extract the first directory segment as the project name
         var parts = relativePath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         return parts.Length > 0 ? parts[0] : "Unknown";
     }

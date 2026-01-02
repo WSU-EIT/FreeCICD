@@ -568,19 +568,26 @@ internal partial class Program
 
         sb.AppendLine("### Route Summary");
         sb.AppendLine();
+        
+        // Group routes by their base path (without tenant prefix)
+        var consolidatedRoutes = ConsolidateRouteVariants(routes);
+        var consolidatedSkipped = ConsolidateRouteVariants(skippedRoutes);
+        
         sb.AppendLine("| Metric | Count |");
         sb.AppendLine("|--------|------:|");
-        sb.AppendLine($"| **Testable Routes** | {routes.Count} |");
+        sb.AppendLine($"| **Unique Routes** | {consolidatedRoutes.Count} |");
+        sb.AppendLine($"| **Total Variants** | {routes.Count} |");
         sb.AppendLine($"| **Public Routes** | {publicRoutes} |");
         sb.AppendLine($"| **Auth Required** | {authRequired} |");
-        sb.AppendLine($"| **Substituted Parameters** | {substitutedRoutes.Count} |");
         sb.AppendLine($"| **Skipped (unresolved params)** | {skippedRoutes.Count} |");
         sb.AppendLine();
 
         // Show substituted routes info
         if (substitutedRoutes.Count > 0)
         {
-            sb.AppendLine("> **Parameter Substitution:** Routes like `/{TenantCode}/Page` are tested as `/Tenant1/Page`.");
+            sb.AppendLine("> **Route Variants:** Routes with `/{TenantCode}/...` are shown with tenant prefix indicator.");
+            sb.AppendLine("> - **(1)** = Without tenant prefix (e.g., `/Wizard`)");
+            sb.AppendLine("> - **(2)** = With tenant prefix (e.g., `/Tenant1/Wizard`)");
             sb.AppendLine();
         }
 
@@ -598,7 +605,7 @@ internal partial class Program
             sb.AppendLine();
         }
 
-        var routesByProject = routes.GroupBy(r => r.Project).OrderBy(g => g.Key).ToList();
+        var routesByProject = consolidatedRoutes.GroupBy(r => r.Project).OrderBy(g => g.Key).ToList();
 
         sb.AppendLine("### Routes by Area");
         sb.AppendLine();
@@ -608,42 +615,49 @@ internal partial class Program
             sb.AppendLine($"<details>");
             sb.AppendLine($"<summary><strong>{group.Key}</strong> ({group.Count()} routes)</summary>");
             sb.AppendLine();
-            sb.AppendLine("| Route | Auth |");
-            sb.AppendLine("|-------|:----:|");
-            foreach (var route in group.OrderBy(r => r.Route))
+            sb.AppendLine("| Route | Variants | Auth |");
+            sb.AppendLine("|-------|:--------:|:----:|");
+            foreach (var route in group.OrderBy(r => r.BaseRoute))
             {
                 var authIcon = route.RequiresAuth ? "🔐" : "🔓";
-                sb.AppendLine($"| `{route.Route}` | {authIcon} |");
+                var variants = route.HasBothVariants ? "(1)(2)" : route.HasTenantVariant ? "(2)" : "(1)";
+                sb.AppendLine($"| `{route.BaseRoute}` | {variants} | {authIcon} |");
             }
             sb.AppendLine();
             sb.AppendLine("</details>");
             sb.AppendLine();
         }
 
-        if (skippedRoutes.Count > 0)
+        if (consolidatedSkipped.Count > 0)
         {
             sb.AppendLine("<details>");
-            sb.AppendLine($"<summary><strong>⚠️ Skipped Routes</strong> ({skippedRoutes.Count} routes with parameters)</summary>");
+            sb.AppendLine($"<summary><strong>⚠️ Skipped Routes</strong> ({consolidatedSkipped.Count} routes with parameters)</summary>");
             sb.AppendLine();
             sb.AppendLine("These routes contain parameters (e.g., `{Id}`) and cannot be tested without valid values:");
             sb.AppendLine();
-            sb.AppendLine("| Route | Auth |");
-            sb.AppendLine("|-------|:----:|");
-            foreach (var r in skippedRoutes.OrderBy(x => x.Route))
+            sb.AppendLine("| Route | Variants | Auth |");
+            sb.AppendLine("|-------|:--------:|:----:|");
+            foreach (var r in consolidatedSkipped.OrderBy(x => x.BaseRoute))
             {
                 var authIcon = r.RequiresAuth ? "🔐" : "🔓";
-                sb.AppendLine($"| `{r.Route}` | {authIcon} |");
+                var variants = r.HasBothVariants ? "(1)(2)" : r.HasTenantVariant ? "(2)" : "(1)";
+                sb.AppendLine($"| `{r.BaseRoute}` | {variants} | {authIcon} |");
             }
             sb.AppendLine();
             sb.AppendLine("</details>");
             sb.AppendLine();
         }
 
-        // Generate Mermaid Route Map
-        GenerateRouteMap(routes.Concat(skippedRoutes).ToList(), sb);
+        // Generate Mermaid Route Map using consolidated routes
+        GenerateRouteMap(consolidatedRoutes.Concat(consolidatedSkipped).Select(r => new RouteEntry 
+        { 
+            Route = r.BaseRoute, 
+            RequiresAuth = r.RequiresAuth, 
+            Project = r.Project 
+        }).ToList(), sb);
     }
 
-    private static void GenerateRouteMap(List<RouteEntry> allRoutes, StringBuilder sb)
+    private static void GenerateRouteMap(List<RouteEntry> routes, StringBuilder sb)
     {
         sb.AppendLine("## 🗺️ Route Map");
         sb.AppendLine();
@@ -651,109 +665,128 @@ internal partial class Program
         sb.AppendLine();
         sb.AppendLine("```mermaid");
         sb.AppendLine("graph TD");
-        
-        // Build a tree structure
-        var nodeId = 0;
-        var nodeMap = new Dictionary<string, string>(); // path -> node id
-        
-        // Root node
         sb.AppendLine("    ROOT[(\"/\")]");
-        nodeMap["/"] = "ROOT";
-
-        // Sort routes and build tree
-        var sortedRoutes = allRoutes.OrderBy(r => r.Route).ToList();
         
-        foreach (var route in sortedRoutes)
+        var nodeIndex = 1;
+        var nodeMap = new Dictionary<string, string>();
+        
+        foreach (var route in routes.OrderBy(r => r.Route))
         {
-            var segments = route.Route.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
-            if (segments.Length == 0) continue;
-
+            if (route.Route == "/") continue;
+            
+            var segments = route.Route.Trim('/').Split('/');
             var currentPath = "";
             var parentNode = "ROOT";
-
-            for (int i = 0; i < segments.Length; i++)
+            
+            foreach (var segment in segments)
             {
-                var segment = segments[i];
-                var isLast = i == segments.Length - 1;
                 currentPath += "/" + segment;
-
-                if (!nodeMap.ContainsKey(currentPath))
+                
+                if (!nodeMap.TryGetValue(currentPath, out var nodeName))
                 {
-                    nodeId++;
-                    var newNodeId = $"N{nodeId}";
-                    nodeMap[currentPath] = newNodeId;
-
-                    // Determine node style
-                    var hasParam = segment.Contains('{');
-                    var isAuthRequired = isLast && route.RequiresAuth;
-
-                    string nodeLabel;
-                    if (hasParam)
-                    {
-                        nodeLabel = $"{newNodeId}[[\"{segment}\"]]"; // Double bracket for parameters
-                    }
-                    else if (isLast && isAuthRequired)
-                    {
-                        nodeLabel = $"{newNodeId}[🔐 {segment}]";
-                    }
-                    else if (isLast)
-                    {
-                        nodeLabel = $"{newNodeId}[{segment}]";
-                    }
+                    nodeName = $"N{nodeIndex++}";
+                    nodeMap[currentPath] = nodeName;
+                    
+                    // Determine node style based on whether it has parameters
+                    var isParam = segment.StartsWith("{") && segment.EndsWith("}");
+                    var isLeaf = currentPath == route.Route;
+                    
+                    if (isParam)
+                        sb.AppendLine($"    {parentNode} --> {nodeName}[[\"{segment}\"]]");
+                    else if (isLeaf)
+                        sb.AppendLine($"    {parentNode} --> {nodeName}[{segment}]");
                     else
-                    {
-                        nodeLabel = $"{newNodeId}({segment})"; // Rounded for intermediate
-                    }
-
-                    sb.AppendLine($"    {parentNode} --> {nodeLabel}");
+                        sb.AppendLine($"    {parentNode} --> {nodeName}({segment})");
                 }
-
-                parentNode = nodeMap[currentPath];
+                
+                parentNode = nodeName;
             }
         }
-
-        // Add styling
+        
         sb.AppendLine();
         sb.AppendLine("    classDef authPage fill:#ff6b6b,stroke:#333,stroke-width:2px");
         sb.AppendLine("    classDef paramRoute fill:#ffd93d,stroke:#333,stroke-width:2px");
-        
-        // Apply styles to auth nodes
-        var authNodes = allRoutes
-            .Where(r => r.RequiresAuth)
-            .Select(r => nodeMap.GetValueOrDefault("/" + r.Route.Trim('/').Split('/').Last()))
-            .Where(n => n != null)
-            .ToList();
-        
-        if (authNodes.Count > 0)
-        {
-            sb.AppendLine($"    class {string.Join(",", authNodes)} authPage");
-        }
-
         sb.AppendLine("```");
         sb.AppendLine();
-
+        
         // Route depth analysis
-        var routeDepths = allRoutes
-            .Select(r => new { Route = r, Depth = r.Route.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries).Length })
-            .GroupBy(x => x.Depth)
+        var depthGroups = routes
+            .GroupBy(r => r.Route.Trim('/').Split('/').Length)
             .OrderBy(g => g.Key)
             .ToList();
-
-        sb.AppendLine("### Route Depth Analysis");
-        sb.AppendLine();
-        sb.AppendLine("| Depth | Count | Routes |");
-        sb.AppendLine("|------:|------:|--------|");
-
-        foreach (var group in routeDepths)
+            
+        if (depthGroups.Count > 0)
         {
-            var routeList = string.Join(", ", group.Take(3).Select(x => $"`{x.Route.Route}`"));
-            if (group.Count() > 3)
+            sb.AppendLine("### Route Depth Analysis");
+            sb.AppendLine();
+            sb.AppendLine("| Depth | Count | Routes |");
+            sb.AppendLine("|------:|------:|--------|");
+            
+            foreach (var group in depthGroups)
             {
-                routeList += $" +{group.Count() - 3} more";
+                var depth = group.Key;
+                if (group.Any(r => r.Route == "/")) depth = 0;
+                
+                var examples = group.Take(3).Select(r => $"`{r.Route}`");
+                var more = group.Count() > 3 ? $" +{group.Count() - 3} more" : "";
+                sb.AppendLine($"| {depth} | {group.Count()} | {string.Join(", ", examples)}{more} |");
             }
-            sb.AppendLine($"| {group.Key} | {group.Count()} | {routeList} |");
+            sb.AppendLine();
         }
-        sb.AppendLine();
+    }
+
+    /// <summary>
+    /// Consolidates route variants (with/without tenant prefix) into single entries.
+    /// </summary>
+    private static List<ConsolidatedRouteEntry> ConsolidateRouteVariants(List<RouteEntry> routes)
+    {
+        var consolidated = new Dictionary<string, ConsolidatedRouteEntry>(StringComparer.OrdinalIgnoreCase);
+        
+        // Known tenant prefixes to strip
+        var tenantPrefixes = new[] { "/Tenant1/", "/{TenantCode}/" };
+        
+        foreach (var route in routes)
+        {
+            var routePath = route.Route;
+            var isTenantVariant = false;
+            var baseRoute = routePath;
+            
+            // Check if this route has a tenant prefix
+            foreach (var prefix in tenantPrefixes)
+            {
+                if (routePath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    baseRoute = "/" + routePath.Substring(prefix.Length);
+                    isTenantVariant = true;
+                    break;
+                }
+            }
+            
+            // Also check for single-segment tenant routes like "/Tenant1"
+            if (routePath.Equals("/Tenant1", StringComparison.OrdinalIgnoreCase))
+            {
+                baseRoute = "/";
+                isTenantVariant = true;
+            }
+            
+            if (!consolidated.TryGetValue(baseRoute, out var entry))
+            {
+                entry = new ConsolidatedRouteEntry
+                {
+                    BaseRoute = baseRoute,
+                    RequiresAuth = route.RequiresAuth,
+                    Project = route.Project
+                };
+                consolidated[baseRoute] = entry;
+            }
+            
+            if (isTenantVariant)
+                entry.HasTenantVariant = true;
+            else
+                entry.HasNonTenantVariant = true;
+        }
+        
+        return consolidated.Values.ToList();
     }
 
     private static async Task GenerateScreenshotHealthAsync(string snapshotsDir, StringBuilder sb)
@@ -1315,5 +1348,15 @@ internal partial class Program
         public string? AuthStep2Path { get; set; }
         public string? AuthStep3Path { get; set; }
         public string? AuthFlowNote { get; set; }
+    }
+
+    private class ConsolidatedRouteEntry
+    {
+        public string BaseRoute { get; set; } = "";
+        public bool RequiresAuth { get; set; }
+        public string Project { get; set; } = "";
+        public bool HasTenantVariant { get; set; }
+        public bool HasNonTenantVariant { get; set; }
+        public bool HasBothVariants => HasTenantVariant && HasNonTenantVariant;
     }
 }
