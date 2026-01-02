@@ -1,0 +1,747 @@
+﻿<!doctype html>
+<html lang="en"><head><meta name="app:server" content="EM2672" />
+    <meta name="app:version" content="2.0.0" />
+    <meta name="app:released" content="12/3/2025" />
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg&#x2B;xml" href="https://localhost:7271/favicon.svg" />
+    <link rel="icon" type="image/png" href="https://localhost:7271/favicon-96x96.png" sizes="96x96" />
+    <link rel="shortcut icon" href="https://localhost:7271/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="https://localhost:7271/apple-touch-icon.png" />
+    <link rel="manifest" href="https://localhost:7271/site.webmanifest" />
+    <base href="/" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="https://localhost:7271/_content/Blazor.Bootstrap/blazor.bootstrap.css?v=2.0.0" />
+    <link rel="stylesheet" href="https://localhost:7271/_content/FreeBlazor/styles.css?v=2.0.0" />
+    <link rel="stylesheet" href="https://localhost:7271/_content/MudBlazor/MudBlazor.min.css?v=2.0.0" />
+    <link rel="stylesheet" href="https://localhost:7271/_content/Radzen.Blazor/css/material-base.css?v=2.0.0" />
+    <link rel="stylesheet" href="fontawesome/css/all.9z318bggar.css" />
+    <link rel="stylesheet" href="js/bootstrap/css/bootstrap.min.026e6kk7rh.css" />
+    <link rel="stylesheet" href="css/themes.puvvodkue3.css" />
+    <link rel="stylesheet" href="css/site.jzzgrjdlxf.css" />
+    <link rel="stylesheet" href="css/site.App.u3gnge00hf.css" />
+    <link rel="stylesheet" href="css/tags.b26jx26gqt.css" />
+    <script type="importmap">{
+  "imports": {
+    "./Shared/Highcharts.razor.js": "./Shared/Highcharts.m4dul4ckey.razor.js",
+    "./Shared/UploadFile.razor.js": "./Shared/UploadFile.75o0uoe3ax.razor.js",
+    "./Shared/UserDefinedFields.razor.js": "./Shared/UserDefinedFields.9s0ie1rkr9.razor.js",
+    "./_content/Blazor.Bootstrap/blazor.bootstrap.js": "./_content/Blazor.Bootstrap/blazor.bootstrap.5c2gp224fj.js",
+    "./_content/Blazor.Bootstrap/blazor.bootstrap.pdf.js": "./_content/Blazor.Bootstrap/blazor.bootstrap.pdf.n1mvvrfiip.js",
+    "./_content/Blazor.Bootstrap/blazor.bootstrap.sortable-list.js": "./_content/Blazor.Bootstrap/blazor.bootstrap.sortable-list.ezlxc6gzv3.js",
+    "./_content/Blazor.Bootstrap/blazor.bootstrap.theme-switcher.js": "./_content/Blazor.Bootstrap/blazor.bootstrap.theme-switcher.pisakkcwob.js",
+    "./_content/Blazor.Bootstrap/pdfjs-4.0.379.min.js": "./_content/Blazor.Bootstrap/pdfjs-4.0.379.min.j8zp7bt7w3.js",
+    "./_content/Blazor.Bootstrap/pdfjs-4.0.379.worker.min.js": "./_content/Blazor.Bootstrap/pdfjs-4.0.379.worker.min.79hai7knhw.js",
+    "./_content/BlazorMonaco/jsInterop.js": "./_content/BlazorMonaco/jsInterop.3rwx0l4qnu.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/_commonjsHelpers-CT9FvmAN.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/_commonjsHelpers-CT9FvmAN.0qkzxcfpna.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/abap-D-t0cyap.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/abap-D-t0cyap.y41s58hgcc.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/apex-CcIm7xu6.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/apex-CcIm7xu6.kj8jnj8b8b.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/assets/css.worker-cO8rX8Iy.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/assets/css.worker-cO8rX8Iy.zbbjsp2td6.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/assets/editor.worker-DM0G1eFj.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/assets/editor.worker-DM0G1eFj.iz4uwwgikj.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/assets/html.worker-BruuIJkK.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/assets/html.worker-BruuIJkK.czqim4ygft.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/assets/json.worker-DghZTZS7.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/assets/json.worker-DghZTZS7.bpye42qbzr.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/assets/ts.worker-C4E4vgbE.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/assets/ts.worker-C4E4vgbE.lxjvupmfr7.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/azcli-BA0tQDCg.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/azcli-BA0tQDCg.sbwg0431ef.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/basic-languages/monaco.contribution.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/basic-languages/monaco.contribution.slqvseq8l0.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/bat-C397hTD6.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/bat-C397hTD6.d16phbmfhg.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/bicep-DF5aW17k.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/bicep-DF5aW17k.bb770rt345.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/cameligo-plsz8qhj.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/cameligo-plsz8qhj.7atggcyvmw.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/clojure-Y2auQMzK.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/clojure-Y2auQMzK.blnukqjblr.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/coffee-Bu45yuWE.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/coffee-Bu45yuWE.mzj0xz6iuz.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/cpp-CkKPQIni.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/cpp-CkKPQIni.hcfzcoaf4y.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/csharp-CX28MZyh.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/csharp-CX28MZyh.7n5mf66pl2.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/csp-D8uWnyxW.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/csp-D8uWnyxW.8t94827gb8.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/css-CaeNmE3S.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/css-CaeNmE3S.57qv739bjp.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/cssMode-CGp6dFmI.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/cssMode-CGp6dFmI.srdlhv6c1z.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/cypher-DVThT8BS.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/cypher-DVThT8BS.bm1so3k3o1.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/dart-CmGfCvrO.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/dart-CmGfCvrO.6ezniqibh4.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/dockerfile-CZqqYdch.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/dockerfile-CZqqYdch.32vv6x5yuo.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/ecl-30fUercY.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/ecl-30fUercY.z64y7f27qp.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/editor.api-i0YVFWkl.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/editor.api-i0YVFWkl.trh8bto88o.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/editor/editor.main.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/editor/editor.main.g1j1hz1y1a.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/elixir-xjPaIfzF.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/elixir-xjPaIfzF.0mekfb355x.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/flow9-DqtmStfK.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/flow9-DqtmStfK.kbzadqbyw3.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/freemarker2-CJME-ah8.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/freemarker2-CJME-ah8.hc28dq83m0.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/fsharp-BOMdg4U1.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/fsharp-BOMdg4U1.esuft57hvk.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/go-D_hbi-Jt.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/go-D_hbi-Jt.1gpd5ovzmq.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/graphql-CKUU4kLG.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/graphql-CKUU4kLG.qv8rgjts4p.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/handlebars-NccI6MVO.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/handlebars-NccI6MVO.8n4fd1d29s.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/hcl-DTaboeZW.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/hcl-DTaboeZW.6yyn3tmgrk.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/html-K7M-xuod.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/html-K7M-xuod.wor7jnl0yq.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/htmlMode-DtjCNH-N.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/htmlMode-DtjCNH-N.t2cmfmoa2c.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/ini-CsNwO04R.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/ini-CsNwO04R.t82ahri0wa.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/java-CI4ZMsH9.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/java-CI4ZMsH9.evklba7n1a.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/javascript-CUpTMdAr.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/javascript-CUpTMdAr.zg1pz2sipz.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/jsonMode-CJjR_ECa.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/jsonMode-CJjR_ECa.ifarun2w6e.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/julia-BwzEvaQw.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/julia-BwzEvaQw.1svkjoixzg.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/kotlin-BLeVJFaw.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/kotlin-BLeVJFaw.t48jggbd8z.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/language/css/monaco.contribution.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/language/css/monaco.contribution.fucjyu1qfl.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/language/html/monaco.contribution.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/language/html/monaco.contribution.a57sb7zq0m.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/language/json/monaco.contribution.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/language/json/monaco.contribution.leji8x1azo.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/language/typescript/monaco.contribution.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/language/typescript/monaco.contribution.x62ejb0dks.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/less-C0eDYdqa.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/less-C0eDYdqa.v9hbsqq0av.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/lexon-iON-Kj97.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/lexon-iON-Kj97.gmht4fzle6.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/liquid-STktYroN.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/liquid-STktYroN.wdxc2tb5xr.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/loader.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/loader.4c9epzzkcu.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/lspLanguageFeatures-A02kBDb6.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/lspLanguageFeatures-A02kBDb6.7ys9cgefbh.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/lua-DtygF91M.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/lua-DtygF91M.v4l657o28m.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/m3-CsR4AuFi.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/m3-CsR4AuFi.ujavabw4ce.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/markdown-C_rD0bIw.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/markdown-C_rD0bIw.ngblbztmb9.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/mdx-C6mq4H94.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/mdx-C6mq4H94.83ng60cmr3.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/mips-CiYP61RB.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/mips-CiYP61RB.c2v5qlhodi.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/msdax-C38-sJlp.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/msdax-C38-sJlp.vpb6tadywi.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/mysql-CdtbpvbG.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/mysql-CdtbpvbG.mfyn9fsta3.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/nls.messages-loader.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/nls.messages-loader.jtjdlggvxb.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/nls.messages.de.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/nls.messages.de.j4ww27ct92.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/nls.messages.es.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/nls.messages.es.4p2xcjr9j3.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/nls.messages.fr.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/nls.messages.fr.25zckatyd3.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/nls.messages.it.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/nls.messages.it.126x4eacry.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/nls.messages.ja.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/nls.messages.ja.13838jxvfx.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/nls.messages.ko.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/nls.messages.ko.zesmhoe0gt.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/nls.messages.ru.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/nls.messages.ru.3la8m105yw.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/nls.messages.zh-cn.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/nls.messages.zh-cn.leggyg0cis.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/nls.messages.zh-tw.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/nls.messages.zh-tw.e4zn2qs5it.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/objective-c-CntZFaHX.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/objective-c-CntZFaHX.j0nf7xy7ee.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/pascal-r6kuqfl_.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/pascal-r6kuqfl_.jdv7iogabb.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/pascaligo-BiXoTmXh.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/pascaligo-BiXoTmXh.bnd4z7x3zs.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/perl-DABw_TcH.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/perl-DABw_TcH.66dnui7vyr.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/pgsql-me_jFXeX.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/pgsql-me_jFXeX.tfsbp95cud.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/php-D_kh-9LK.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/php-D_kh-9LK.ldvjbalzf0.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/pla-VfZjczW0.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/pla-VfZjczW0.ybdrkrp4kw.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/postiats-BBSzz8Pk.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/postiats-BBSzz8Pk.xp11vah7on.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/powerquery-Dt-g_2cc.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/powerquery-Dt-g_2cc.0f73eux9u9.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/powershell-B-7ap1zc.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/powershell-B-7ap1zc.3ho8a1xaaf.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/protobuf-BmtuEB1A.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/protobuf-BmtuEB1A.905vnfsa0v.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/pug-BRpRNeEb.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/pug-BRpRNeEb.9knn4yfgnt.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/python-B-Y2SC3b.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/python-B-Y2SC3b.v9olr549zn.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/qsharp-BzsFaUU9.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/qsharp-BzsFaUU9.6enz7iz0m5.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/r-f8dDdrp4.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/r-f8dDdrp4.ytmq1vlu69.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/razor-JzN5FpSg.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/razor-JzN5FpSg.a2lpd1j1u7.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/redis-fvZQY4PI.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/redis-fvZQY4PI.3ogen0ame0.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/redshift-45Et0LQi.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/redshift-45Et0LQi.omquid35ft.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/restructuredtext-C7UUFKFD.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/restructuredtext-C7UUFKFD.8cyntluwmv.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/ruby-CZO8zYTz.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/ruby-CZO8zYTz.3e4org7ret.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/rust-Bfetafyc.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/rust-Bfetafyc.1ubvs081zc.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/sb-3GYllVck.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/sb-3GYllVck.kpkd98478y.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/scala-foMgrKo1.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/scala-foMgrKo1.5qgx63lwp2.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/scheme-CHdMtr7p.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/scheme-CHdMtr7p.rtlkjy8vtt.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/scss-C1cmLt9V.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/scss-C1cmLt9V.trengwc0ie.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/shell-ClXCKCEW.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/shell-ClXCKCEW.2dq3k26t2v.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/solidity-MZ6ExpPy.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/solidity-MZ6ExpPy.e27cwnsyx5.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/sophia-DWkuSsPQ.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/sophia-DWkuSsPQ.e6oa864dsm.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/sparql-AUGFYSyk.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/sparql-AUGFYSyk.z05hf5a64p.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/sql-32GpJSV2.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/sql-32GpJSV2.10fkscgje7.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/st-CuDFIVZ_.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/st-CuDFIVZ_.aul2u3zu8u.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/swift-n-2HociN.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/swift-n-2HociN.xt4g7h8jl5.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/systemverilog-Ch4vA8Yt.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/systemverilog-Ch4vA8Yt.1nu5j2xveo.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/tcl-D74tq1nH.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/tcl-D74tq1nH.7ailzm0nea.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/tsMode-i88JHxDY.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/tsMode-i88JHxDY.xmrgbttviz.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/twig-C6taOxMV.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/twig-C6taOxMV.tta4hpkg05.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/typescript-4zug7YwV.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/typescript-4zug7YwV.87xp4nv42s.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/typespec-D-PIh9Xw.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/typespec-D-PIh9Xw.lzq49dth0d.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/vb-Dyb2648j.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/vb-Dyb2648j.1pe0nzzb5d.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/wgsl-BhLXMOR0.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/wgsl-BhLXMOR0.2i6dmytskz.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/workers-CbP2cVmy.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/workers-CbP2cVmy.mndmkp5r6w.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/xml-DRHZuZwg.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/xml-DRHZuZwg.l8q5gbfrd6.js",
+    "./_content/BlazorMonaco/lib/monaco-editor/min/vs/yaml-CkWIGXBM.js": "./_content/BlazorMonaco/lib/monaco-editor/min/vs/yaml-CkWIGXBM.2e33dx4jqv.js",
+    "./_content/FreeBlazor/AutoComplete.razor.js": "./_content/FreeBlazor/AutoComplete.2gw1h67cm8.razor.js",
+    "./_content/FreeBlazor/AutoGrowText.razor.js": "./_content/FreeBlazor/AutoGrowText.ak6kkq8b6f.razor.js",
+    "./_content/FreeBlazor/GeneratePassword.razor.js": "./_content/FreeBlazor/GeneratePassword.l99n7rseq7.razor.js",
+    "./_content/FreeBlazor/GetInput.razor.js": "./_content/FreeBlazor/GetInput.aaej6qtqi5.razor.js",
+    "./_content/FreeBlazor/HtmlEditor.razor.js": "./_content/FreeBlazor/HtmlEditor.flg8xu1igj.razor.js",
+    "./_content/FreeBlazor/TogglePasswordInput.razor.js": "./_content/FreeBlazor/TogglePasswordInput.q27049tccw.razor.js",
+    "./_content/FreeBlazor/ckEditor/adapters/jquery.js": "./_content/FreeBlazor/ckEditor/adapters/jquery.kem07i7mdx.js",
+    "./_content/FreeBlazor/ckEditor/build-config.js": "./_content/FreeBlazor/ckEditor/build-config.y0jx7osk9f.js",
+    "./_content/FreeBlazor/ckEditor/ckeditor.js": "./_content/FreeBlazor/ckEditor/ckeditor.w76sfwedj7.js",
+    "./_content/FreeBlazor/ckEditor/config.js": "./_content/FreeBlazor/ckEditor/config.8xg3h3ne9e.js",
+    "./_content/FreeBlazor/ckEditor/lang/en.js": "./_content/FreeBlazor/ckEditor/lang/en.s6a62zst0d.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/a11yhelp.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/a11yhelp.21ve2voibe.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/af.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/af.h8v8h9kt2r.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/ar.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/ar.fo3qpi3rj7.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/az.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/az.a826vw8lkj.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/bg.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/bg.6dbfvd6qx8.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/ca.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/ca.04vc5vplid.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/cs.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/cs.4m077v7iys.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/cy.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/cy.t0p3hi6zfo.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/da.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/da.f6ghtbhv4a.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/de-ch.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/de-ch.j6pu1o46ye.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/de.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/de.u2cv0j8acb.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/el.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/el.0qzbn3b4cx.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/en-au.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/en-au.2zafnhjmrp.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/en-gb.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/en-gb.3bdlj312sh.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/en.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/en.on080wvzyr.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/eo.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/eo.ted0mmin6c.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/es-mx.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/es-mx.h5ncnwzak9.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/es.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/es.mzuv38avue.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/et.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/et.sfo6dp8k9y.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/eu.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/eu.z0v19tcncu.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/fa.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/fa.p0bd2gqdmp.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/fi.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/fi.v5yf976acv.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/fo.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/fo.8mjtz89xvd.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/fr-ca.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/fr-ca.9gknkibd81.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/fr.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/fr.pux0dr8vrg.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/gl.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/gl.ixvqaol5ih.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/gu.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/gu.t7hn0fbxpb.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/he.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/he.1igw4lo4th.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/hi.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/hi.esy9sjqh82.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/hr.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/hr.nkun7nkwum.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/hu.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/hu.rz5xbb7nud.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/id.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/id.q49tf66rwy.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/it.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/it.3orbmp688t.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/ja.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/ja.w8gjkizjd5.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/km.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/km.29h2trwdfu.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/ko.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/ko.uddr6vxrl6.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/ku.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/ku.0k7rpr1ulm.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/lt.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/lt.jlenvwmcnv.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/lv.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/lv.vg2ca5t5ow.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/mk.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/mk.p9meg4r2wf.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/mn.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/mn.vf4zrwra8v.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/nb.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/nb.xqxv29nkxv.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/nl.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/nl.pfwmbp1yxd.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/no.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/no.796pgea5ia.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/oc.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/oc.kce8bvqrx4.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/pl.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/pl.pzpmy1eraq.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/pt-br.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/pt-br.mt1u0qhzmo.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/pt.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/pt.c71cp595i1.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/ro.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/ro.9vcp6dnxrp.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/ru.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/ru.5rxjx0airm.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/si.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/si.my0vqvs2wz.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/sk.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/sk.bt53hj24qs.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/sl.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/sl.9ev52uy4th.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/sq.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/sq.623wiv0593.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/sr-latn.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/sr-latn.c43ma5piu5.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/sr.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/sr.pygpt7u19v.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/sv.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/sv.zbr00idbb1.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/th.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/th.hh60lke3v3.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/tr.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/tr.c5o1nl9vmu.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/tt.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/tt.u3haosholv.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/ug.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/ug.krv5fc07xf.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/uk.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/uk.58uch94j1m.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/vi.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/vi.c4irqqt18m.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/zh-cn.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/zh-cn.h1pharotxa.js",
+    "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/zh.js": "./_content/FreeBlazor/ckEditor/plugins/a11yhelp/dialogs/lang/zh.cxp2336vyl.js",
+    "./_content/FreeBlazor/ckEditor/plugins/about/dialogs/about.js": "./_content/FreeBlazor/ckEditor/plugins/about/dialogs/about.33s7si6ho7.js",
+    "./_content/FreeBlazor/ckEditor/plugins/clipboard/dialogs/paste.js": "./_content/FreeBlazor/ckEditor/plugins/clipboard/dialogs/paste.z7ntypqy0e.js",
+    "./_content/FreeBlazor/ckEditor/plugins/colordialog/dialogs/colordialog.js": "./_content/FreeBlazor/ckEditor/plugins/colordialog/dialogs/colordialog.s4g8mtvs7t.js",
+    "./_content/FreeBlazor/ckEditor/plugins/dialog/dialogDefinition.js": "./_content/FreeBlazor/ckEditor/plugins/dialog/dialogDefinition.jowyo6217k.js",
+    "./_content/FreeBlazor/ckEditor/plugins/div/dialogs/div.js": "./_content/FreeBlazor/ckEditor/plugins/div/dialogs/div.sjhiy6yuhg.js",
+    "./_content/FreeBlazor/ckEditor/plugins/find/dialogs/find.js": "./_content/FreeBlazor/ckEditor/plugins/find/dialogs/find.j1lo1lrrhl.js",
+    "./_content/FreeBlazor/ckEditor/plugins/forms/dialogs/button.js": "./_content/FreeBlazor/ckEditor/plugins/forms/dialogs/button.76br5no4hn.js",
+    "./_content/FreeBlazor/ckEditor/plugins/forms/dialogs/checkbox.js": "./_content/FreeBlazor/ckEditor/plugins/forms/dialogs/checkbox.gcrkdv7fhx.js",
+    "./_content/FreeBlazor/ckEditor/plugins/forms/dialogs/form.js": "./_content/FreeBlazor/ckEditor/plugins/forms/dialogs/form.g1gxbri36l.js",
+    "./_content/FreeBlazor/ckEditor/plugins/forms/dialogs/hiddenfield.js": "./_content/FreeBlazor/ckEditor/plugins/forms/dialogs/hiddenfield.ks5fqixdxb.js",
+    "./_content/FreeBlazor/ckEditor/plugins/forms/dialogs/radio.js": "./_content/FreeBlazor/ckEditor/plugins/forms/dialogs/radio.gbg0ytiitp.js",
+    "./_content/FreeBlazor/ckEditor/plugins/forms/dialogs/select.js": "./_content/FreeBlazor/ckEditor/plugins/forms/dialogs/select.6l23xmpvnw.js",
+    "./_content/FreeBlazor/ckEditor/plugins/forms/dialogs/textarea.js": "./_content/FreeBlazor/ckEditor/plugins/forms/dialogs/textarea.xc7dan92h2.js",
+    "./_content/FreeBlazor/ckEditor/plugins/forms/dialogs/textfield.js": "./_content/FreeBlazor/ckEditor/plugins/forms/dialogs/textfield.tddx2kexc3.js",
+    "./_content/FreeBlazor/ckEditor/plugins/iframe/dialogs/iframe.js": "./_content/FreeBlazor/ckEditor/plugins/iframe/dialogs/iframe.7ndozg8qhv.js",
+    "./_content/FreeBlazor/ckEditor/plugins/image/dialogs/image.js": "./_content/FreeBlazor/ckEditor/plugins/image/dialogs/image.wgfre0bkl9.js",
+    "./_content/FreeBlazor/ckEditor/plugins/image2/dialogs/image2.js": "./_content/FreeBlazor/ckEditor/plugins/image2/dialogs/image2.6m8b15n7tx.js",
+    "./_content/FreeBlazor/ckEditor/plugins/link/dialogs/anchor.js": "./_content/FreeBlazor/ckEditor/plugins/link/dialogs/anchor.x2e7t7qgkf.js",
+    "./_content/FreeBlazor/ckEditor/plugins/link/dialogs/link.js": "./_content/FreeBlazor/ckEditor/plugins/link/dialogs/link.zfzvkyv5rz.js",
+    "./_content/FreeBlazor/ckEditor/plugins/liststyle/dialogs/liststyle.js": "./_content/FreeBlazor/ckEditor/plugins/liststyle/dialogs/liststyle.7fi8nbakxx.js",
+    "./_content/FreeBlazor/ckEditor/plugins/pastefromgdocs/filter/default.js": "./_content/FreeBlazor/ckEditor/plugins/pastefromgdocs/filter/default.u9ek2n3uzx.js",
+    "./_content/FreeBlazor/ckEditor/plugins/pastefromlibreoffice/filter/default.js": "./_content/FreeBlazor/ckEditor/plugins/pastefromlibreoffice/filter/default.r5xqimfuks.js",
+    "./_content/FreeBlazor/ckEditor/plugins/pastefromword/filter/default.js": "./_content/FreeBlazor/ckEditor/plugins/pastefromword/filter/default.m78ldvjlqt.js",
+    "./_content/FreeBlazor/ckEditor/plugins/pastetools/filter/common.js": "./_content/FreeBlazor/ckEditor/plugins/pastetools/filter/common.79axtziw2t.js",
+    "./_content/FreeBlazor/ckEditor/plugins/pastetools/filter/image.js": "./_content/FreeBlazor/ckEditor/plugins/pastetools/filter/image.3j2v65jz21.js",
+    "./_content/FreeBlazor/ckEditor/plugins/scayt/dialogs/options.js": "./_content/FreeBlazor/ckEditor/plugins/scayt/dialogs/options.bfvea7b1mt.js",
+    "./_content/FreeBlazor/ckEditor/plugins/smiley/dialogs/smiley.js": "./_content/FreeBlazor/ckEditor/plugins/smiley/dialogs/smiley.8dcn7bac46.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/af.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/af.c38k2xlxh8.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/ar.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/ar.bq8lja5gw3.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/az.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/az.x31w2662b8.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/bg.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/bg.0lp8zbf010.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/ca.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/ca.3f4kjmqwvo.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/cs.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/cs.cxz6x0kym3.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/cy.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/cy.aau5euqgas.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/da.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/da.lg2xd20tp3.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/de-ch.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/de-ch.u8bh72qpxl.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/de.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/de.fkq24y9vkr.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/el.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/el.9gvbc0xwa3.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/en-au.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/en-au.khq76j5bj5.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/en-ca.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/en-ca.uo5ekaw5mi.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/en-gb.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/en-gb.jt8k63ztv6.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/en.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/en.jo0l2f8xxb.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/eo.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/eo.fpt05xr66p.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/es-mx.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/es-mx.r4br79qgeu.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/es.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/es.1k1p6ivmyg.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/et.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/et.ct5vibj8yz.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/eu.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/eu.6ituk9vuow.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/fa.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/fa.eoyzj4v5eq.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/fi.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/fi.3liziazx2p.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/fr-ca.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/fr-ca.6tlv1y663a.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/fr.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/fr.m92q750bgf.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/gl.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/gl.oldqw0tmxy.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/he.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/he.9ul72vd89d.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/hr.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/hr.17r792iwgd.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/hu.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/hu.thjlwg5d5w.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/id.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/id.9svaawgbqs.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/it.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/it.piydgs0kxc.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/ja.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/ja.8zxxkkr98j.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/km.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/km.ddyihj88oz.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/ko.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/ko.f1qf9u4480.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/ku.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/ku.77bncxue4h.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/lt.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/lt.14zcnggv44.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/lv.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/lv.feq99v37qm.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/nb.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/nb.puzvxuop0z.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/nl.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/nl.i16h05zlup.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/no.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/no.8xze7hjhvv.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/oc.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/oc.9u29q3ucf3.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/pl.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/pl.be6frdylx5.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/pt-br.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/pt-br.bdd7z4oopo.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/pt.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/pt.45u3s2sttn.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/ro.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/ro.51h83r5nxv.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/ru.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/ru.fzpdrei8cx.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/si.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/si.eohetxtajq.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/sk.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/sk.6q7v906vk3.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/sl.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/sl.z8ttavml1m.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/sq.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/sq.p1uedb7yl1.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/sr-latn.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/sr-latn.1nrwh804qi.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/sr.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/sr.laxhfgp8qc.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/sv.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/sv.1b3d0q2o9m.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/th.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/th.73tdpq17fx.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/tr.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/tr.35l6ffej5k.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/tt.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/tt.9ug9zbcwkt.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/ug.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/ug.f0qznvxcwu.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/uk.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/uk.cqe12t5ud4.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/vi.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/vi.35tu22q0qx.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/zh-cn.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/zh-cn.o732xv7amn.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/zh.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/lang/zh.cvdnu14cdc.js",
+    "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/specialchar.js": "./_content/FreeBlazor/ckEditor/plugins/specialchar/dialogs/specialchar.xz5i7sxqfp.js",
+    "./_content/FreeBlazor/ckEditor/plugins/table/dialogs/table.js": "./_content/FreeBlazor/ckEditor/plugins/table/dialogs/table.tjlpau0pkx.js",
+    "./_content/FreeBlazor/ckEditor/plugins/tabletools/dialogs/tableCell.js": "./_content/FreeBlazor/ckEditor/plugins/tabletools/dialogs/tableCell.z627466z6s.js",
+    "./_content/FreeBlazor/ckEditor/plugins/templates/dialogs/templates.js": "./_content/FreeBlazor/ckEditor/plugins/templates/dialogs/templates.2i79muphep.js",
+    "./_content/FreeBlazor/ckEditor/plugins/templates/templatedefinition.js": "./_content/FreeBlazor/ckEditor/plugins/templates/templatedefinition.jowyo6217k.js",
+    "./_content/FreeBlazor/ckEditor/plugins/templates/templates/default.js": "./_content/FreeBlazor/ckEditor/plugins/templates/templates/default.woq2x31dlq.js",
+    "./_content/FreeBlazor/ckEditor/samples/js/sample.js": "./_content/FreeBlazor/ckEditor/samples/js/sample.o9wkvayatx.js",
+    "./_content/FreeBlazor/ckEditor/samples/js/sf.js": "./_content/FreeBlazor/ckEditor/samples/js/sf.51srjoi1mb.js",
+    "./_content/FreeBlazor/ckEditor/samples/old/assets/uilanguages/languages.js": "./_content/FreeBlazor/ckEditor/samples/old/assets/uilanguages/languages.65exdczdnn.js",
+    "./_content/FreeBlazor/ckEditor/samples/old/dialog/assets/my_dialog.js": "./_content/FreeBlazor/ckEditor/samples/old/dialog/assets/my_dialog.lnco34y632.js",
+    "./_content/FreeBlazor/ckEditor/samples/old/sample.js": "./_content/FreeBlazor/ckEditor/samples/old/sample.cmu88iwocf.js",
+    "./_content/FreeBlazor/ckEditor/samples/toolbarconfigurator/js/abstracttoolbarmodifier.js": "./_content/FreeBlazor/ckEditor/samples/toolbarconfigurator/js/abstracttoolbarmodifier.a39wi0jqoy.js",
+    "./_content/FreeBlazor/ckEditor/samples/toolbarconfigurator/js/fulltoolbareditor.js": "./_content/FreeBlazor/ckEditor/samples/toolbarconfigurator/js/fulltoolbareditor.qp5cpxc5lx.js",
+    "./_content/FreeBlazor/ckEditor/samples/toolbarconfigurator/js/toolbarmodifier.js": "./_content/FreeBlazor/ckEditor/samples/toolbarconfigurator/js/toolbarmodifier.uq56uzbnph.js",
+    "./_content/FreeBlazor/ckEditor/samples/toolbarconfigurator/js/toolbartextmodifier.js": "./_content/FreeBlazor/ckEditor/samples/toolbarconfigurator/js/toolbartextmodifier.djmt9vypns.js",
+    "./_content/FreeBlazor/ckEditor/samples/toolbarconfigurator/lib/codemirror/codemirror.js": "./_content/FreeBlazor/ckEditor/samples/toolbarconfigurator/lib/codemirror/codemirror.nmzs0hdcq8.js",
+    "./_content/FreeBlazor/ckEditor/samples/toolbarconfigurator/lib/codemirror/javascript.js": "./_content/FreeBlazor/ckEditor/samples/toolbarconfigurator/lib/codemirror/javascript.9rzyumrztz.js",
+    "./_content/FreeBlazor/ckEditor/samples/toolbarconfigurator/lib/codemirror/show-hint.js": "./_content/FreeBlazor/ckEditor/samples/toolbarconfigurator/lib/codemirror/show-hint.qlla3479c2.js",
+    "./_content/FreeBlazor/ckEditor/styles.js": "./_content/FreeBlazor/ckEditor/styles.9l6pg925xq.js",
+    "./_content/FreeBlazor/ckEditor/vendor/promise.js": "./_content/FreeBlazor/ckEditor/vendor/promise.kq0twi1itf.js",
+    "./_content/Microsoft.DotNet.HotReload.WebAssembly.Browser/Microsoft.DotNet.HotReload.WebAssembly.Browser.lib.module.js": "./_content/Microsoft.DotNet.HotReload.WebAssembly.Browser/Microsoft.DotNet.HotReload.WebAssembly.Browser.99zm1jdh75.lib.module.js",
+    "./_content/MudBlazor/MudBlazor.min.js": "./_content/MudBlazor/MudBlazor.min.f96y5mhlyw.js",
+    "./_content/Radzen.Blazor/Radzen.Blazor.min.js": "./_content/Radzen.Blazor/Radzen.Blazor.min.ril6um76ir.js",
+    "./_content/Radzen.Blazor/Radzen.Blazor.js": "./_content/Radzen.Blazor/Radzen.Blazor.uza2tb8atg.js",
+    "./_framework/blazor.server.js": "./_framework/blazor.server.2lgipwaf5j.js",
+    "./_framework/blazor.web.js": "./_framework/blazor.web.wmp8iwak4q.js",
+    "./_framework/dotnet.native.js": "./_framework/dotnet.native.cs8mcre4gh.js",
+    "./_framework/dotnet.runtime.js": "./_framework/dotnet.runtime.0j6ezsi0n0.js",
+    "./_framework/dotnet.js": "./_framework/dotnet.sngwot9dj1.js",
+    "./js/bootstrap/js/bootstrap.js": "./js/bootstrap/js/bootstrap.5svw5dju7q.js",
+    "./js/bootstrap/js/bootstrap.bundle.js": "./js/bootstrap/js/bootstrap.bundle.lhbtj9850u.js",
+    "./js/bootstrap/js/bootstrap.bundle.min.js": "./js/bootstrap/js/bootstrap.bundle.min.wvublzrdv8.js",
+    "./js/bootstrap/js/bootstrap.esm.min.js": "./js/bootstrap/js/bootstrap.esm.min.p88p7jyaev.js",
+    "./js/bootstrap/js/bootstrap.esm.js": "./js/bootstrap/js/bootstrap.esm.whkg23h785.js",
+    "./js/bootstrap/js/bootstrap.min.js": "./js/bootstrap/js/bootstrap.min.5cl6jzyzps.js",
+    "./js/jquery/jquery-3.7.0.min.js": "./js/jquery/jquery-3.7.0.min.ah08mzq5v0.js",
+    "./js/sortablejs/Sortable.js": "./js/sortablejs/Sortable.5vvnqc1ak1.js",
+    "./js/sortablejs/sortable.1.13.0.min.js": "./js/sortablejs/sortable.1.13.0.min.3wemmjle56.js",
+    "./js/sortablejs/sortable.min.js": "./js/sortablejs/sortable.min.7b470tt6lt.js",
+    "_framework/resource-collection.js": "./_framework/resource-collection.Uv2iq.js",
+    "_framework/resource-collection.js.gz": "./_framework/resource-collection.Uv2iq.js.gz"
+  },
+  "integrity": {
+    "./_framework/resource-collection.Uv2iq.js": "sha256-wKtntft2LyGdTTOf7kaxpu8X3+q/8d25IiNlaw207ZI=",
+    "./_framework/resource-collection.Uv2iq.js.gz": "sha256-wKtntft2LyGdTTOf7kaxpu8X3+q/8d25IiNlaw207ZI="
+  }
+}</script>
+    <!--Blazor-WebAssembly:{"environmentName":"Development","environmentVariables":{"DOTNET_MODIFIABLE_ASSEMBLIES":"debug","__ASPNETCORE_BROWSER_TOOLS":"true"}}--><!--Blazor:{"type":"webassembly","key":{"locationHash":"77D12F14A8105320B1AAED6AE7E689DA0EC4483270A645E84079EAA0FFDF550D:88","formattedComponentKey":""},"assembly":"Microsoft.AspNetCore.Components.Web","typeName":"Microsoft.AspNetCore.Components.Web.HeadOutlet","parameterDefinitions":"W10=","parameterValues":"W10="}--></head>
+
+<body id="body-element" data-bs-theme class="loading"><!--Blazor:{"type":"webassembly","key":{"locationHash":"7791C3A4E51C2EED7CD0C40A10033DC2D639FEBF44005069446E68C3A374EEEC:94","formattedComponentKey":""},"assembly":"FreeCICD.Client","typeName":"FreeCICD.Client.Routes","parameterDefinitions":"W10=","parameterValues":"W10="}-->
+    <script src="https://cdn.jsdelivr.net/npm/@thumbmarkjs/thumbmarkjs/dist/thumbmark.umd.js"></script>
+    <script src="https://localhost:7271/_content/Blazor.Bootstrap/blazor.bootstrap.js?v=2.0.0"></script>
+    <script src="https://localhost:7271/_content/MudBlazor/MudBlazor.min.js?v=2.0.0"></script>
+    <script src="https://localhost:7271/_content/Radzen.Blazor/Radzen.Blazor.js?v=8.3.5.0"></script>
+    <script src="_content/BlazorSortableList/SortableList.razor.js?v=2.0.0" type="module"></script>
+    <script src="js/sortablejs/sortable.min.7b470tt6lt.js"></script>
+    <script src="js/jquery/jquery-3.7.0.min.ah08mzq5v0.js"></script>
+    <script src="js/bootstrap/js/bootstrap.bundle.min.wvublzrdv8.js"></script>
+    <script src="https://localhost:7271/_content/BlazorMonaco/jsInterop.js?v=2.0.0"></script>
+    <script src="https://localhost:7271/_content/BlazorMonaco/lib/monaco-editor/min/vs/loader.js?v=2.0.0"></script>
+    <script src="https://localhost:7271/_content/BlazorMonaco/lib/monaco-editor/min/vs/editor/editor.main.js?v=2.0.0"></script>
+    <script src="_framework/blazor.web.js"></script>
+    
+
+    <script type="text/javascript">
+        let cookiePrefix = "freecicd_";
+        let dotNetHelper;
+        let fingerprint;
+
+        const onReady = (callback) => {
+            if (document.readyState!='loading') {
+                callback();
+            } else if (document.addEventListener) {
+                document.addEventListener('DOMContentLoaded', callback);
+            } else {
+                document.attachEvent('onreadystatechange', function() {
+                    if (document.readyState=='complete') callback();
+                });
+            }
+        };
+
+        onReady(() => {
+            SetPreferredColorScheme("");
+        });
+
+        function ConsoleLog(message, objects) {
+            if (objects != undefined && objects != null) {
+                if (message != undefined && message != null && message != "") {
+                    console.log(message, objects);
+                } else {
+                    console.log(objects);
+                }
+            } else if (message != undefined && message != null && message != "") {
+                console.log(message);
+            }
+        }
+
+        function CookieRead(cname) {
+            let name = cookiePrefix + cname + "=";
+            let decodedCookie = decodeURIComponent(document.cookie);
+            let ca = decodedCookie.split(';');
+
+            for (let i = 0; i < ca.length; i++) {
+                let c = ca[i];
+
+                while (c.charAt(0) == ' ') {
+                    c = c.substring(1);
+                }
+
+                if (c.indexOf(name) == 0) {
+                    return c.substring(name.length, c.length);
+                }
+            }
+
+            return "";
+        }
+
+        function CookieWrite(name, value, days) {
+            var expires;
+
+            if (days == undefined || days == null || days < 1) {
+                days = 14;
+            }
+
+            if (days) {
+                var date = new Date();
+                date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+                expires = "; expires=" + date.toGMTString();
+            } else {
+                expires = "";
+            }
+
+            document.cookie = cookiePrefix + name + "=" + value + expires + "; path=/";
+        }
+
+        function CopyToClipboard(value) {
+            navigator.clipboard.writeText(value);
+        }
+
+        function DelayedFocus(element) {
+            setTimeout(() => DelayedFocusInternal(element, 0), 0);
+        }
+
+        function DelayedFocusInternal(element, safety) {
+            if (safety > 20) { return; }
+            safety++;
+
+            if (isVisibleByElementId(element)) {
+                let el = document.getElementById(element);
+
+                if (el != undefined && el != null) {
+                    if (el instanceof HTMLDivElement || el instanceof HTMLTableElement) {
+                        // The element provided was a div or table, so find the first input element inside that element.
+                        let inputElements = el.querySelectorAll("input,textarea,select");
+                        if (inputElements != null && inputElements.length > 0) {
+                            for (let i = 0; i < inputElements.length ; i++) {
+                                let inputElement = inputElements[i];
+                                if (isVisible(inputElement)) {
+                                    inputElement.focus();
+                                    break;
+                                }
+                            }
+                        }
+                    } else {
+                        el.focus();
+                    }
+                }
+            } else {
+                setTimeout(() => DelayedFocusInternal(element, safety), 20);
+            }
+        }
+
+        function DelayedSelect(element) {
+            setTimeout(() => DelayedSelectInternal(element, 0), 0);
+        }
+
+        function DelayedSelectInternal(element, safety) {
+            if (safety > 20) { return; }
+            safety++;
+
+            let el = document.getElementById(element);
+            if (el != undefined && el != null) {
+                if (isVisible(el)) {
+                    if (el instanceof HTMLDivElement || el instanceof HTMLTableElement) {
+                        // The element provided was a div or table, so find the first input element inside that element.
+                        let inputElements = el.querySelectorAll("input,textarea,select");
+                        if (inputElements != null && inputElements.length > 0) {
+                            for (let i = 0; i < inputElements.length ; i++) {
+                                let inputElement = inputElements[i];
+                                if (isVisible(inputElement)) {
+                                    inputElement.select();
+                                    break;
+                                }
+                            }
+                        }
+                    } else {
+                        el.select();
+                    }
+                } else {
+                    setTimeout(() => DelayedSelectInternal(element, safety), 20);
+                }
+            }
+
+        }
+
+        async function DownloadFileFromStream(fileName, contentStreamReference) {
+            const arrayBuffer = await contentStreamReference.arrayBuffer();
+            const blob = new Blob([arrayBuffer]);
+            const url = URL.createObjectURL(blob);
+            const anchorElement = document.createElement('a');
+            anchorElement.href = url;
+            anchorElement.download = fileName ?? '';
+            anchorElement.click();
+            anchorElement.remove();
+            URL.revokeObjectURL(url);
+        }
+
+        function ElementHasClass(elementId, className) {
+            let el = document.getElementById(elementId);
+            if (el != undefined && el != null) {
+                if (el.classList.contains(className)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function GetFingerprint(){
+            ThumbmarkJS.setOption('exclude', ['permissions']);
+            // ThumbmarkJS.getFingerprint(includeData = true).then(
+            //     function(fp) {
+            //         console.log("FP", fp.hash);
+            //         console.log("FP DATA", JSON.stringify(fp.data, null, 2));
+            //         dotNetHelper.invokeMethod("SetFingerprint", fp.hash);
+            //     }
+            // );
+
+            ThumbmarkJS.getFingerprint().then(
+                function(fp) {
+                    fingerprint = fp;
+                    dotNetHelper.invokeMethod("SetFingerprint", fp);
+                }
+            );
+        }
+
+        function HideElementByClass(className) {
+            let elements = document.getElementsByClassName(className);
+            if (elements != undefined && elements != null) {
+                for(let i = 0; i < elements.length ; i++) {
+                    elements[i].setAttribute("previous-display-style", elements[i].style.display);
+                    elements[i].style.display = "none";
+                }
+            }
+        }
+
+        function HideElementById(id) {
+            let el = document.getElementById(id);
+            if (el != undefined && el != null) {
+                el.style.display = "none";
+            }
+        }
+
+        function HideMenu() {
+            let bsOffcanvasUserMenu = bootstrap.Offcanvas.getInstance("#offcanvasUserMenu");
+            if (bsOffcanvasUserMenu != undefined && bsOffcanvasUserMenu != null && bsOffcanvasUserMenu._isShown) {
+                bsOffcanvasUserMenu.hide();
+            }
+
+            let bsOffcanvasQuickActionMenu = bootstrap.Offcanvas.getInstance("#offcanvasQuickAction");
+            if (bsOffcanvasQuickActionMenu != undefined && bsOffcanvasQuickActionMenu != null && bsOffcanvasQuickActionMenu._isShown) {
+                bsOffcanvasQuickActionMenu.hide();
+            }
+        }
+
+        function InsertAtCursor(field, value) {
+            var $txt = jQuery("#" + field);
+            var caretPos = $txt[0].selectionStart;
+            var textAreaTxt = $txt.val();
+            $txt.val(textAreaTxt.substring(0, caretPos) + value + textAreaTxt.substring(caretPos));
+        }
+
+        function isVisible(e) {
+            if (e == undefined || e == null) {
+                return false;
+            } else {
+                return !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length );
+            }
+        }
+
+        function isVisibleByElementId(elementId) {
+            let e = document.getElementById(elementId);
+            if (e == undefined || e == null) {
+                return false;
+            } else {
+                return isVisible(e);
+            }
+        }
+
+        function Loaded() {
+            let el = document.getElementById("body-element");
+            if (el != undefined && el != null) {
+                el.classList.remove("loading");
+            }
+        }
+
+        function NavigateTo(url) {
+            window.location.href = url;
+        }
+
+        function ReloadCurrentPage() {
+            window.location.href = window.location.href;
+        }
+
+        function RemoveElementHighlightByClass(className, classToRemove = "highlight") {
+            let elements = document.getElementsByClassName(className);
+            if (elements != undefined && elements != null) {
+                for(let i = 0; i < elements.length ; i++) {
+                    elements[i].classList.remove(classToRemove);
+                }
+            }
+        }
+
+        function SetDotNetHelper(value) {
+            dotNetHelper = value;
+        }
+
+        function SetPreferredColorScheme(preferred) {
+            Loaded();
+
+            if (preferred == undefined || preferred == null) {
+                preferred = "light";
+            }
+
+            if (preferred == "auto") {
+                let colorScheme = getComputedStyle(document.body, ':after').content;
+                preferred = colorScheme.indexOf("dark") > -1 ? "dark" : "light";
+            }
+
+            let setTheme = "";
+            let setClass = "";
+            let setMonacoTheme = "vs";
+
+            if (preferred == "dark") {
+                setTheme = "dark";
+                setClass = "dark";
+                setMonacoTheme = "vs-dark";
+            } else if (preferred == "light") {
+                setTheme = "";
+                setClass = "light";
+            } else {
+                setTheme = preferred;
+                setClass = preferred;
+            }
+
+            // Only update if this has changed.
+            if (ElementHasClass("body-element", setClass)) {
+                // Already up-to-date
+            } else {
+                let el = document.getElementById("body-element");
+                if (el != undefined && el != null) {
+                    el.setAttribute("data-bs-theme", setTheme);
+                    el.classList = "";
+
+                    if (setClass != "") {
+                        el.classList.add(setClass);
+                    }
+                }
+            }
+
+            if (typeof(monaco) == 'object'){
+                monaco.editor.setTheme(setMonacoTheme);
+            }
+        }
+
+        function ShowElementByClass(className, display = "block") {
+            let elements = document.getElementsByClassName(className);
+            if (elements != undefined && elements != null) {
+                for(let i = 0; i < elements.length ; i++) {
+                    let previous = elements[i].getAttribute("previous-display-style");
+                    if (previous != undefined && previous != null && previous != "") {
+                        elements[i].removeAttribute("previous-display-style");
+                        elements[i].style.display = previous;
+                    } else {
+                        elements[i].style.display = display;
+                    }
+                }
+            }
+        }
+
+        function ShowElementById(id, display = "block") {
+            let el = document.getElementById(id);
+            if (el != undefined && el != null) {
+                el.style.display = display;
+            }
+        }
+
+        function ShowQuickActionMenu() {
+            HideMenu();
+
+            const bsOffcanvasQuickActionMenu = new bootstrap.Offcanvas("#offcanvasQuickAction");
+            if (bsOffcanvasQuickActionMenu != undefined && bsOffcanvasQuickActionMenu != null) {
+                bsOffcanvasQuickActionMenu.show();
+            }
+        }
+
+        function SetElementValue(id, value) {
+            let el = document.getElementById(id);
+            if (el != undefined && el != null) {
+                if (el instanceof HTMLInputElement || el instanceof  HTMLSelectElement || el instanceof HTMLTextAreaElement) {
+                    el.value = value;
+                } else if (el.innerHTML != undefined && el.innerHTML != null) {
+                    el.innerHTML = value;
+                }
+            }
+        }
+    </script>
+
+    <script type="text/javascript">
+            const onReadyApp = (callback) => {
+                if (document.readyState!='loading') {
+                    callback();
+                } else if (document.addEventListener) {
+                    document.addEventListener('DOMContentLoaded', callback);
+                } else {
+                    document.attachEvent('onreadystatechange', function() {
+                        if (document.readyState=='complete') callback();
+                    });
+                }
+            };
+
+            onReadyApp(() => {
+                // myFunction();
+            });
+
+            function myFunction(){
+                // console.log("My Function");
+            }
+        </script></body></html><!--Blazor-Web-Initializers:Ww0KICAiX2NvbnRlbnQvTWljcm9zb2Z0LkRvdE5ldC5Ib3RSZWxvYWQuV2ViQXNzZW1ibHkuQnJvd3Nlci9NaWNyb3NvZnQuRG90TmV0LkhvdFJlbG9hZC5XZWJBc3NlbWJseS5Ccm93c2VyLjk5em0xamRoNzUubGliLm1vZHVsZS5qcyINCl0=--><!--Blazor-WebAssembly-Component-State:eyJNaWNyb3NvZnQuQXNwTmV0Q29yZS5Db21wb25lbnRzLkluZnJhc3RydWN0dXJlLlBlcnNpc3RlbnRTZXJ2aWNlc1JlZ2lzdHJ5IjoiVzNzaVlYTnpaVzFpYkhraU9pSk5hV055YjNOdlpuUXVRWE53VG1WMFEyOXlaUzVEYjIxd2IyNWxiblJ6TGtWdVpIQnZhVzUwY3lJc0ltWjFiR3hVZVhCbFRtRnRaU0k2SWsxcFkzSnZjMjltZEM1QmMzQk9aWFJEYjNKbExrTnZiWEJ2Ym1WdWRITXVVbVZ6YjNWeVkyVkRiMnhzWldOMGFXOXVVSEp2ZG1sa1pYSWlmU3g3SW1GemMyVnRZbXg1SWpvaVRXbGpjbTl6YjJaMExrRnpjRTVsZEVOdmNtVXVRMjl0Y0c5dVpXNTBjeTVYWldJaUxDSm1kV3hzVkhsd1pVNWhiV1VpT2lKTmFXTnliM052Wm5RdVFYTndUbVYwUTI5eVpTNURiMjF3YjI1bGJuUnpMa1p2Y20xekxrRnVkR2xtYjNKblpYSjVVM1JoZEdWUWNtOTJhV1JsY2lKOVhRPT0iLCJLU3p0VDg0Z0FpVjBJTy9VQlJScE9tOEs0anFFZlx1MDAyQjFKenZWT0NNQmxzaVU9IjoiZXlKMllXeDFaU0k2SWtObVJFbzRUekl5VkdOc2JIWnpaRUpuU1ZOU2RqZEVVbVJtU1MxYU9YbHFaR1pHY25VM01FaG5PV1JVWjFaWGNsUkVibkJ6ZDNKWldHUmpNbUZSVjAxcU0zSXRZbVZDTm5CMVVFbEhhSEZGWVdWa01FeDRiREZCU21aNU9URnZVa2RpZVZGSU9HZHBXVEpOUlRJeFJrZG9XVkUzU1VWcGVWZE1NMUJwTWpCMU5tMVFhMnhLU2xFemJtSjFSbVZ4V21wR2R6WkNjbG80ZFRsdklpd2labTl5YlVacFpXeGtUbUZ0WlNJNklsOWZVbVZ4ZFdWemRGWmxjbWxtYVdOaGRHbHZibFJ2YTJWdUluMD0iLCJLOVRlM0xEYlx1MDAyQjZ4ZkpDLzBSVDBCR0xRT3ZwWGlQNEtJU2dBa096RG5za0E9IjoiSWk0dlgyWnlZVzFsZDI5eWF5OXlaWE52ZFhKalpTMWpiMnhzWldOMGFXOXVMbFYyTW1seExtcHpJZz09In0=-->

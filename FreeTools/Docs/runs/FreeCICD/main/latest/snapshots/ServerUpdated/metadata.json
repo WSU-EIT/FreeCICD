@@ -1,0 +1,20 @@
+{
+  "Route": "/ServerUpdated",
+  "Url": "https://localhost:7271/ServerUpdated",
+  "StatusCode": 200,
+  "FileSize": 18198,
+  "IsSuspiciouslySmall": false,
+  "RetryAttempted": false,
+  "ConsoleErrors": [],
+  "CapturedAt": "2026-01-02T20:50:34.1136382Z",
+  "IsSuccess": true,
+  "IsHttpError": false,
+  "IsError": false,
+  "ErrorMessage": null,
+  "RequiresAuth": false,
+  "AuthFlowCompleted": false,
+  "AuthStep1Path": null,
+  "AuthStep2Path": null,
+  "AuthStep3Path": null,
+  "AuthFlowNote": null
+}

@@ -1,0 +1,20 @@
+{
+  "Route": "/Logout",
+  "Url": "https://localhost:7271/Logout",
+  "StatusCode": 200,
+  "FileSize": 17979,
+  "IsSuspiciouslySmall": false,
+  "RetryAttempted": true,
+  "ConsoleErrors": [],
+  "CapturedAt": "2026-01-02T20:50:48.310682Z",
+  "IsSuccess": true,
+  "IsHttpError": false,
+  "IsError": false,
+  "ErrorMessage": null,
+  "RequiresAuth": false,
+  "AuthFlowCompleted": false,
+  "AuthStep1Path": null,
+  "AuthStep2Path": null,
+  "AuthStep3Path": null,
+  "AuthFlowNote": null
+}

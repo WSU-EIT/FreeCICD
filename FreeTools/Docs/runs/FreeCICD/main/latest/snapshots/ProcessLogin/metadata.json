@@ -1,0 +1,20 @@
+{
+  "Route": "/ProcessLogin",
+  "Url": "https://localhost:7271/ProcessLogin",
+  "StatusCode": 200,
+  "FileSize": 7019,
+  "IsSuspiciouslySmall": true,
+  "RetryAttempted": true,
+  "ConsoleErrors": [],
+  "CapturedAt": "2026-01-02T20:50:48.7983163Z",
+  "IsSuccess": true,
+  "IsHttpError": false,
+  "IsError": false,
+  "ErrorMessage": null,
+  "RequiresAuth": false,
+  "AuthFlowCompleted": false,
+  "AuthStep1Path": null,
+  "AuthStep2Path": null,
+  "AuthStep3Path": null,
+  "AuthFlowNote": null
+}
