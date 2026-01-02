@@ -385,13 +385,13 @@ public partial class DataController
             }
         }
 
-        if (request == null || string.IsNullOrWhiteSpace(request.SourceUrl)) {
-            return BadRequest("SourceUrl is required.");
+        if (request == null || string.IsNullOrWhiteSpace(request.NewProjectName)) {
+            return BadRequest("NewProjectName is required.");
         }
 
-        // Safety check: ReplaceMain mode requires explicit confirmation
-        if (request.ConflictMode == DataObjects.ImportConflictMode.ReplaceMain && !request.ConfirmDestructiveAction) {
-            return BadRequest("ReplaceMain mode requires ConfirmDestructiveAction to be true. This action will overwrite existing repository content.");
+        // For URL-based imports, SourceUrl is required
+        if (request.Method != DataObjects.ImportMethod.ZipUpload && string.IsNullOrWhiteSpace(request.SourceUrl)) {
+            return BadRequest("SourceUrl is required for URL-based imports.");
         }
 
         var result = await da.ImportPublicRepoAsync(pat, orgName, request, connectionId);

@@ -18,19 +18,6 @@ public partial class DataAccess
             using var connection = CreateConnection(pat, orgName);
             var projectClient = connection.GetClient<ProjectHttpClient>();
 
-            // Check if project already exists
-            try {
-                var existingProjects = await projectClient.GetProjects();
-                if (existingProjects.Any(p => string.Equals(p.Name, projectName, StringComparison.OrdinalIgnoreCase))) {
-                    var existing = existingProjects.First(p => string.Equals(p.Name, projectName, StringComparison.OrdinalIgnoreCase));
-                    throw new InvalidOperationException($"Project '{projectName}' already exists.");
-                }
-            } catch (InvalidOperationException) {
-                throw;
-            } catch {
-                // Ignore errors checking existing projects
-            }
-
             // Create new project with Git source control
             var projectToCreate = new TeamProject {
                 Name = projectName,
@@ -90,19 +77,12 @@ public partial class DataAccess
 
     /// <summary>
     /// Creates a new Git repository in an Azure DevOps project.
-    /// Throws exception if repo already exists or on error.
     /// </summary>
     public async Task<DataObjects.DevopsGitRepoInfo> CreateDevOpsRepoAsync(string pat, string orgName, string projectId, string repoName, string? connectionId = null)
     {
         try {
             using var connection = CreateConnection(pat, orgName);
             var gitClient = connection.GetClient<GitHttpClient>();
-
-            // Check if repo already exists
-            var existingRepos = await gitClient.GetRepositoriesAsync(projectId);
-            if (existingRepos.Any(r => string.Equals(r.Name, repoName, StringComparison.OrdinalIgnoreCase))) {
-                throw new InvalidOperationException($"Repository '{repoName}' already exists in this project.");
-            }
 
             if (!string.IsNullOrWhiteSpace(connectionId)) {
                 await SignalRUpdate(new DataObjects.SignalRUpdate {
@@ -120,7 +100,6 @@ public partial class DataAccess
 
             var createdRepo = await gitClient.CreateRepositoryAsync(newRepo);
 
-            // Use WebUrl directly - Links may be null on newly created repos
             return new DataObjects.DevopsGitRepoInfo {
                 RepoId = createdRepo.Id.ToString(),
                 RepoName = createdRepo.Name,
@@ -134,16 +113,24 @@ public partial class DataAccess
 
     /// <summary>
     /// Imports a public Git repository into Azure DevOps.
-    /// Supports three methods: GitClone (native import), GitSnapshot (fresh commit), ZipUpload.
-    /// Creates project (if needed) and repo, then imports the code.
-    /// Gracefully handles existing projects/repos when user proceeds after conflict warning.
+    /// Simplified flow:
+    /// 1. Check if project exists → use existing or create new
+    /// 2. Check if repo exists → use existing or create new  
+    /// 3. Import code as a new branch (always flat snapshot, no history)
     /// </summary>
     public async Task<DataObjects.ImportPublicRepoResponse> ImportPublicRepoAsync(string pat, string orgName, DataObjects.ImportPublicRepoRequest request, string? connectionId = null)
     {
         var result = new DataObjects.ImportPublicRepoResponse();
 
         try {
-            // For ZipUpload, we don't need a source URL
+            // Validate inputs
+            if (string.IsNullOrWhiteSpace(request.NewProjectName)) {
+                result.Success = false;
+                result.ErrorMessage = "Project name is required.";
+                return result;
+            }
+
+            // For ZipUpload, we need the uploaded file
             if (request.Method == DataObjects.ImportMethod.ZipUpload) {
                 if (!request.UploadedFileId.HasValue) {
                     result.Success = false;
@@ -174,146 +161,89 @@ public partial class DataAccess
             var gitClient = connection.GetClient<GitHttpClient>();
             var projectClient = connection.GetClient<ProjectHttpClient>();
 
+            // === Step 1: Get or create project ===
             string projectId;
-            string projectName;
-
-            // Step 1: Get or create project
-            if (!string.IsNullOrWhiteSpace(request.TargetProjectId)) {
-                // User explicitly selected existing project - use it directly
-                projectId = request.TargetProjectId;
-                var project = await projectClient.GetProject(projectId);
-                projectName = project.Name;
-            } else if (!string.IsNullOrWhiteSpace(request.NewProjectName)) {
-                // User wants new project - check if it already exists first
-                var existingProjects = await projectClient.GetProjects();
-                var existingProject = existingProjects.FirstOrDefault(p => 
-                    string.Equals(p.Name, request.NewProjectName, StringComparison.OrdinalIgnoreCase));
-                
-                if (existingProject != null) {
-                    // Project already exists - use it (user was warned by CheckImportConflictsAsync)
-                    projectId = existingProject.Id.ToString();
-                    projectName = existingProject.Name;
-                    
-                    if (!string.IsNullOrWhiteSpace(connectionId)) {
-                        await SignalRUpdate(new DataObjects.SignalRUpdate {
-                            UpdateType = DataObjects.SignalRUpdateType.LoadingDevOpsInfoStatusUpdate,
-                            ConnectionId = connectionId,
-                            ItemId = Guid.NewGuid(),
-                            Message = $"Using existing project '{projectName}'..."
-                        });
-                    }
-                } else {
-                    // Create new project
-                    try {
-                        var projectResult = await CreateDevOpsProjectAsync(pat, orgName, request.NewProjectName, repoInfo?.Description, connectionId);
-                        projectId = projectResult.ProjectId!;
-                        projectName = projectResult.ProjectName!;
-                    } catch (InvalidOperationException) {
-                        // Project was created between our check and create attempt - try to fetch it
-                        var retryProjects = await projectClient.GetProjects();
-                        var justCreated = retryProjects.FirstOrDefault(p => 
-                            string.Equals(p.Name, request.NewProjectName, StringComparison.OrdinalIgnoreCase));
-                        if (justCreated != null) {
-                            projectId = justCreated.Id.ToString();
-                            projectName = justCreated.Name;
-                        } else {
-                            throw;
-                        }
-                    }
-                }
-            } else {
-                result.Success = false;
-                result.ErrorMessage = "Either TargetProjectId or NewProjectName is required.";
-                return result;
-            }
-
-            result.ProjectId = projectId;
-            result.ProjectName = projectName;
-
-            // Step 2: Get or create repository
-            var targetRepoName = request.TargetRepoName ?? repoInfo?.Name ?? "imported-repo";
+            string projectName = request.NewProjectName;
             
-            // Check if repo already exists in the target project
-            var existingRepos = await gitClient.GetRepositoriesAsync(projectId);
-            var existingRepo = existingRepos.FirstOrDefault(r => 
-                string.Equals(r.Name, targetRepoName, StringComparison.OrdinalIgnoreCase));
+            var existingProjects = await projectClient.GetProjects();
+            var existingProject = existingProjects.FirstOrDefault(p => 
+                string.Equals(p.Name, request.NewProjectName, StringComparison.OrdinalIgnoreCase));
             
-            if (existingRepo != null) {
-                // Repo exists - check if it's empty (no default branch = empty)
-                bool repoIsEmpty = string.IsNullOrWhiteSpace(existingRepo.DefaultBranch);
-                
-                if (!repoIsEmpty && request.Method == DataObjects.ImportMethod.GitClone) {
-                    // Native Git import requires an empty repo - can't import into existing content
-                    result.Success = false;
-                    result.ErrorMessage = $"Repository '{targetRepoName}' already exists and contains code. Native Git import requires an empty repository. Please use a different repository name or choose 'Snapshot' import mode.";
-                    return result;
-                }
-                
-                if (!repoIsEmpty) {
-                    // Repo has content - for now, error out (future: could import to new branch)
-                    result.Success = false;
-                    result.ErrorMessage = $"Repository '{targetRepoName}' already contains code. Please choose a different repository name.";
-                    return result;
-                }
-                
-                // Repo exists but is empty - we can use it
-                result.RepoId = existingRepo.Id.ToString();
-                result.RepoName = existingRepo.Name;
-                result.RepoUrl = existingRepo.WebUrl ?? existingRepo.RemoteUrl;
+            if (existingProject != null) {
+                // Project exists - use it
+                projectId = existingProject.Id.ToString();
+                projectName = existingProject.Name;
+                result.ProjectExisted = true;
                 
                 if (!string.IsNullOrWhiteSpace(connectionId)) {
                     await SignalRUpdate(new DataObjects.SignalRUpdate {
                         UpdateType = DataObjects.SignalRUpdateType.LoadingDevOpsInfoStatusUpdate,
                         ConnectionId = connectionId,
                         ItemId = Guid.NewGuid(),
-                        Message = $"Using existing empty repository '{targetRepoName}'..."
+                        Message = $"Using existing project '{projectName}'..."
+                    });
+                }
+            } else {
+                // Create new project
+                var projectResult = await CreateDevOpsProjectAsync(pat, orgName, request.NewProjectName, repoInfo?.Description, connectionId);
+                projectId = projectResult.ProjectId!;
+                projectName = projectResult.ProjectName!;
+                result.ProjectExisted = false;
+            }
+
+            result.ProjectId = projectId;
+            result.ProjectName = projectName;
+
+            // === Step 2: Get or create repository ===
+            var targetRepoName = !string.IsNullOrWhiteSpace(request.TargetRepoName) 
+                ? request.TargetRepoName 
+                : (repoInfo?.Name ?? request.NewProjectName ?? "imported-repo");
+            
+            var targetBranchName = !string.IsNullOrWhiteSpace(request.TargetBranchName) 
+                ? request.TargetBranchName 
+                : "main";
+            
+            var existingRepos = await gitClient.GetRepositoriesAsync(projectId);
+            var existingRepo = existingRepos.FirstOrDefault(r => 
+                string.Equals(r.Name, targetRepoName, StringComparison.OrdinalIgnoreCase));
+            
+            if (existingRepo != null) {
+                // Repo exists - we'll import to the specified branch
+                result.RepoId = existingRepo.Id.ToString();
+                result.RepoName = existingRepo.Name;
+                result.RepoUrl = existingRepo.WebUrl ?? existingRepo.RemoteUrl;
+                result.RepoExisted = true;
+                
+                if (!string.IsNullOrWhiteSpace(connectionId)) {
+                    await SignalRUpdate(new DataObjects.SignalRUpdate {
+                        UpdateType = DataObjects.SignalRUpdateType.LoadingDevOpsInfoStatusUpdate,
+                        ConnectionId = connectionId,
+                        ItemId = Guid.NewGuid(),
+                        Message = $"Using existing repository '{targetRepoName}', importing to branch '{targetBranchName}'..."
                     });
                 }
             } else {
                 // Create new repo
-                try {
-                    var repoResult = await CreateDevOpsRepoAsync(pat, orgName, projectId, targetRepoName, connectionId);
-                    result.RepoId = repoResult.RepoId;
-                    result.RepoName = repoResult.RepoName;
-                    result.RepoUrl = repoResult.ResourceUrl;
-                } catch (InvalidOperationException) {
-                    // Repo was created between check and create - try to use it
-                    var retryRepos = await gitClient.GetRepositoriesAsync(projectId);
-                    var justCreated = retryRepos.FirstOrDefault(r => 
-                        string.Equals(r.Name, targetRepoName, StringComparison.OrdinalIgnoreCase));
-                    if (justCreated != null) {
-                        bool isEmpty = string.IsNullOrWhiteSpace(justCreated.DefaultBranch);
-                        if (!isEmpty) {
-                            result.Success = false;
-                            result.ErrorMessage = $"Repository '{targetRepoName}' was just created by another process and contains code.";
-                            return result;
-                        }
-                        result.RepoId = justCreated.Id.ToString();
-                        result.RepoName = justCreated.Name;
-                        result.RepoUrl = justCreated.WebUrl ?? justCreated.RemoteUrl;
-                    } else {
-                        throw;
-                    }
-                }
+                var repoResult = await CreateDevOpsRepoAsync(pat, orgName, projectId, targetRepoName, connectionId);
+                result.RepoId = repoResult.RepoId;
+                result.RepoName = repoResult.RepoName;
+                result.RepoUrl = repoResult.ResourceUrl;
+                result.RepoExisted = false;
             }
 
-            // Step 3: Import based on method
+            result.ImportedBranch = targetBranchName;
+
+            // === Step 3: Import code as snapshot to specified branch ===
             switch (request.Method) {
-                case DataObjects.ImportMethod.GitClone:
-                    // Use Azure DevOps native import (preserves history)
-                    return await ImportViaGitCloneAsync(gitClient, projectId, result, repoInfo!, connectionId);
-                
                 case DataObjects.ImportMethod.GitSnapshot:
-                    // Download ZIP and push as snapshot
-                    return await ImportViaSnapshotAsync(pat, orgName, gitClient, projectId, result, repoInfo!, request.CommitMessage, connectionId);
+                    return await ImportViaSnapshotAsync(pat, orgName, gitClient, projectId, result, repoInfo!, targetBranchName, request.CommitMessage, connectionId);
                 
                 case DataObjects.ImportMethod.ZipUpload:
-                    // Use uploaded ZIP and push as snapshot
-                    return await ImportViaZipUploadAsync(pat, orgName, gitClient, projectId, result, request.UploadedFileId!.Value, request.CommitMessage, request.SourceUrl, connectionId);
+                    return await ImportViaZipUploadAsync(pat, orgName, gitClient, projectId, result, request.UploadedFileId!.Value, targetBranchName, request.CommitMessage, request.SourceUrl, connectionId);
                 
                 default:
                     result.Success = false;
-                    result.ErrorMessage = $"Unknown import method: {request.Method}";
+                    result.ErrorMessage = $"Unsupported import method: {request.Method}. Use GitSnapshot or ZipUpload.";
                     return result;
             }
 
@@ -325,47 +255,7 @@ public partial class DataAccess
     }
 
     /// <summary>
-    /// Import via Azure DevOps native Git import (preserves full history).
-    /// </summary>
-    private async Task<DataObjects.ImportPublicRepoResponse> ImportViaGitCloneAsync(
-        GitHttpClient gitClient, 
-        string projectId, 
-        DataObjects.ImportPublicRepoResponse result, 
-        DataObjects.PublicGitRepoInfo repoInfo,
-        string? connectionId)
-    {
-        if (!string.IsNullOrWhiteSpace(connectionId)) {
-            await SignalRUpdate(new DataObjects.SignalRUpdate {
-                UpdateType = DataObjects.SignalRUpdateType.LoadingDevOpsInfoStatusUpdate,
-                ConnectionId = connectionId,
-                ItemId = Guid.NewGuid(),
-                Message = "Starting repository import (full clone with history)..."
-            });
-        }
-
-        var importRequest = new GitImportRequest {
-            Parameters = new GitImportRequestParameters {
-                GitSource = new GitImportGitSource {
-                    Url = repoInfo.CloneUrl
-                }
-            }
-        };
-
-        var importResult = await gitClient.CreateImportRequestAsync(
-            importRequest,
-            projectId,
-            new Guid(result.RepoId!)
-        );
-
-        result.ImportRequestId = importResult.ImportRequestId;
-        result.Status = MapImportStatus(importResult.Status);
-        result.Success = true;
-
-        return result;
-    }
-
-    /// <summary>
-    /// Import via downloading ZIP from source and pushing as a fresh snapshot.
+    /// Import via downloading ZIP from source and pushing as a fresh snapshot to specified branch.
     /// </summary>
     private async Task<DataObjects.ImportPublicRepoResponse> ImportViaSnapshotAsync(
         string pat, 
@@ -374,6 +264,7 @@ public partial class DataAccess
         string projectId, 
         DataObjects.ImportPublicRepoResponse result, 
         DataObjects.PublicGitRepoInfo repoInfo,
+        string targetBranchName,
         string? commitMessage,
         string? connectionId)
     {
@@ -385,7 +276,7 @@ public partial class DataAccess
                     UpdateType = DataObjects.SignalRUpdateType.LoadingDevOpsInfoStatusUpdate,
                     ConnectionId = connectionId,
                     ItemId = Guid.NewGuid(),
-                    Message = "Downloading source code as snapshot..."
+                    Message = "Downloading source code..."
                 });
             }
 
@@ -417,7 +308,7 @@ public partial class DataAccess
             }
 
             // Extract and push
-            return await ExtractAndPushToRepoAsync(pat, orgName, gitClient, projectId, result, zipPath, 
+            return await ExtractAndPushToRepoAsync(pat, orgName, gitClient, projectId, result, zipPath, targetBranchName,
                 commitMessage ?? $"Initial import from {repoInfo.Source}: {repoInfo.Url}", connectionId);
 
         } finally {
@@ -429,7 +320,7 @@ public partial class DataAccess
     }
 
     /// <summary>
-    /// Import via user-uploaded ZIP file as a fresh snapshot.
+    /// Import via user-uploaded ZIP file as a fresh snapshot to specified branch.
     /// </summary>
     private async Task<DataObjects.ImportPublicRepoResponse> ImportViaZipUploadAsync(
         string pat, 
@@ -438,6 +329,7 @@ public partial class DataAccess
         string projectId, 
         DataObjects.ImportPublicRepoResponse result, 
         Guid uploadedFileId,
+        string targetBranchName,
         string? commitMessage,
         string? sourceUrl,
         string? connectionId)
@@ -467,7 +359,7 @@ public partial class DataAccess
                 : $"Initial import from: {sourceUrl}";
 
             // Extract and push
-            var importResult = await ExtractAndPushToRepoAsync(pat, orgName, gitClient, projectId, result, zipPath, 
+            var importResult = await ExtractAndPushToRepoAsync(pat, orgName, gitClient, projectId, result, zipPath, targetBranchName,
                 commitMessage ?? defaultCommitMessage, connectionId);
 
             // Clean up uploaded file after successful import
@@ -483,7 +375,7 @@ public partial class DataAccess
     }
 
     /// <summary>
-    /// Extracts a ZIP file and pushes contents to Azure DevOps repo as initial commit.
+    /// Extracts a ZIP file and pushes contents to Azure DevOps repo as a commit on the specified branch.
     /// </summary>
     private async Task<DataObjects.ImportPublicRepoResponse> ExtractAndPushToRepoAsync(
         string pat,
@@ -492,6 +384,7 @@ public partial class DataAccess
         string projectId,
         DataObjects.ImportPublicRepoResponse result,
         string zipPath,
+        string targetBranchName,
         string commitMessage,
         string? connectionId)
     {
@@ -530,7 +423,7 @@ public partial class DataAccess
             foreach (var filePath in Directory.GetFiles(sourceDir, "*", SearchOption.AllDirectories)) {
                 var relativePath = Path.GetRelativePath(sourceDir, filePath).Replace('\\', '/');
                 
-                // Skip hidden files and common non-essential files
+                // Skip hidden files (except .github, .vscode)
                 if (relativePath.StartsWith(".") && !relativePath.StartsWith(".github") && !relativePath.StartsWith(".vscode")) {
                     continue;
                 }
@@ -550,7 +443,7 @@ public partial class DataAccess
                     UpdateType = DataObjects.SignalRUpdateType.LoadingDevOpsInfoStatusUpdate,
                     ConnectionId = connectionId,
                     ItemId = Guid.NewGuid(),
-                    Message = $"Pushing {filesToPush.Count} files to repository..."
+                    Message = $"Pushing {filesToPush.Count} files to branch '{targetBranchName}'..."
                 });
             }
 
@@ -564,11 +457,25 @@ public partial class DataAccess
                 }
             }).ToList();
 
+            // Determine the old object ID for the ref update
+            // If repo is empty (new) or branch doesn't exist, use all zeros
+            string oldObjectId = "0000000000000000000000000000000000000000";
+            
+            try {
+                var refs = await gitClient.GetRefsAsync(projectId, result.RepoId, filter: $"heads/{targetBranchName}");
+                var existingRef = refs.FirstOrDefault();
+                if (existingRef != null) {
+                    oldObjectId = existingRef.ObjectId;
+                }
+            } catch {
+                // Branch doesn't exist, use all zeros (new branch)
+            }
+
             var push = new GitPush {
                 RefUpdates = new List<GitRefUpdate> {
                     new GitRefUpdate {
-                        Name = "refs/heads/main",
-                        OldObjectId = "0000000000000000000000000000000000000000" // New branch
+                        Name = $"refs/heads/{targetBranchName}",
+                        OldObjectId = oldObjectId
                     }
                 },
                 Commits = new List<GitCommitRef> {
@@ -583,7 +490,7 @@ public partial class DataAccess
 
             result.Status = DataObjects.ImportStatus.Completed;
             result.Success = true;
-            result.DetailedStatus = $"Pushed {filesToPush.Count} files as initial commit.";
+            result.DetailedStatus = $"Pushed {filesToPush.Count} files to branch '{targetBranchName}'.";
 
             return result;
 
@@ -609,7 +516,7 @@ public partial class DataAccess
             "github" => $"https://github.com/{repoInfo.Owner}/{repoInfo.Name}/archive/refs/heads/{repoInfo.DefaultBranch}.zip",
             "gitlab" => $"https://gitlab.com/{repoInfo.Owner}/{repoInfo.Name}/-/archive/{repoInfo.DefaultBranch}/{repoInfo.Name}-{repoInfo.DefaultBranch}.zip",
             "bitbucket" => $"https://bitbucket.org/{repoInfo.Owner}/{repoInfo.Name}/get/{repoInfo.DefaultBranch}.zip",
-            _ => null // Unknown source - can't determine download URL
+            _ => null
         };
     }
 

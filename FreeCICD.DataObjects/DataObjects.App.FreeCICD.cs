@@ -695,10 +695,11 @@ public partial class DataObjects
     /// </summary>
     public enum ImportMethod
     {
-        /// <summary>Full Git clone preserving history (Azure DevOps native import).</summary>
+        /// <summary>DEPRECATED: Full Git clone. Use GitSnapshot instead.</summary>
+        [Obsolete("Use GitSnapshot instead. GitClone is no longer supported.")]
         GitClone,
         
-        /// <summary>Download as ZIP and commit as fresh snapshot (no history).</summary>
+        /// <summary>Download as ZIP and commit as fresh snapshot (no history). Recommended.</summary>
         GitSnapshot,
         
         /// <summary>Upload ZIP file and commit as fresh snapshot.</summary>
@@ -795,21 +796,24 @@ public partial class DataObjects
         /// <summary>Public repository URL to import from (e.g., "https://github.com/dotnet/aspnetcore").</summary>
         public string SourceUrl { get; set; } = string.Empty;
 
-        /// <summary>Target Azure DevOps project ID. If null, a new project will be created.</summary>
+        /// <summary>Target Azure DevOps project ID. If null, uses NewProjectName to find or create.</summary>
         public string? TargetProjectId { get; set; }
 
-        /// <summary>Name for new project (required if TargetProjectId is null).</summary>
+        /// <summary>Project name - will use existing if found, or create new if not.</summary>
         public string? NewProjectName { get; set; }
 
         /// <summary>Override repository name (defaults to source repo name if null).</summary>
         public string? TargetRepoName { get; set; }
+        
+        /// <summary>Target branch name for the import (defaults to "main").</summary>
+        public string? TargetBranchName { get; set; } = "main";
 
         /// <summary>Whether to navigate to the CI/CD wizard after import completes.</summary>
         public bool LaunchWizardAfter { get; set; } = true;
 
         // === Import Method Fields ===
         
-        /// <summary>Import method: GitClone (full history), GitSnapshot (fresh commit), or ZipUpload.</summary>
+        /// <summary>Import method: GitSnapshot (fresh commit) or ZipUpload. GitClone is deprecated.</summary>
         public ImportMethod Method { get; set; } = ImportMethod.GitSnapshot;
         
         /// <summary>For ZipUpload: the uploaded file ID returned from the upload endpoint.</summary>
@@ -817,17 +821,6 @@ public partial class DataObjects
         
         /// <summary>Optional commit message for snapshot imports. Defaults to "Initial import from {source}".</summary>
         public string? CommitMessage { get; set; }
-
-        // === Conflict Resolution Fields ===
-        
-        /// <summary>How to handle conflicts (default: CreateNew = always safe).</summary>
-        public ImportConflictMode ConflictMode { get; set; } = ImportConflictMode.CreateNew;
-        
-        /// <summary>Branch name for ImportToBranch mode (e.g., "imported/github-2024-01-15").</summary>
-        public string? ImportBranchName { get; set; }
-        
-        /// <summary>Must be true to proceed with ReplaceMain mode. Safety check.</summary>
-        public bool ConfirmDestructiveAction { get; set; }
     }
 
     /// <summary>
@@ -865,11 +858,14 @@ public partial class DataObjects
         /// <summary>Detailed status message from Azure DevOps.</summary>
         public string? DetailedStatus { get; set; }
         
-        /// <summary>The branch that was created (for ImportToBranch mode).</summary>
-        public string? ImportedBranchName { get; set; }
+        /// <summary>The branch that was imported to.</summary>
+        public string? ImportedBranch { get; set; }
         
-        /// <summary>Conflict information (populated by CheckImportConflicts).</summary>
-        public ImportConflictInfo? ConflictInfo { get; set; }
+        /// <summary>Whether the project already existed (vs created new).</summary>
+        public bool ProjectExisted { get; set; }
+        
+        /// <summary>Whether the repo already existed (vs created new).</summary>
+        public bool RepoExisted { get; set; }
     }
 
     /// <summary>
