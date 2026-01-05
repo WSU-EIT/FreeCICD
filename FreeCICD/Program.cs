@@ -1,4 +1,4 @@
-using FreeCICD.Client.Pages;
+﻿using FreeCICD.Client.Pages;
 using FreeCICD.Components;
 using FreeCICD.Server.Hubs;
 using System.Reflection;
@@ -44,6 +44,18 @@ namespace FreeCICD
                 // Include the parameter to tell Azure SignalR what endpoint to use.
                 builder.Services.AddSignalR().AddAzureSignalR("Endpoint=" + azureSignalRUrl);
             }
+
+            // Add CORS policy for SignalR when running with different origins (e.g., Aspire AppHost)
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("SignalRPolicy", policy =>
+                {
+                    policy.SetIsOriginAllowed(_ => true) // Allow any origin in development
+                          .AllowAnyHeader()
+                          .AllowAnyMethod()
+                          .AllowCredentials();
+                });
+            });
 
             builder.Services.AddRazorComponents()
                 .AddInteractiveWebAssemblyComponents();
@@ -195,6 +207,9 @@ namespace FreeCICD
             app.MapStaticAssets();
 
             app.UseRouting();
+
+            // Enable CORS for SignalR (must be before UseAuthentication/UseAuthorization for preflight requests)
+            app.UseCors("SignalRPolicy");
 
             app.UseAuthentication();
             app.UseAuthorization();

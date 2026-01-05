@@ -245,7 +245,7 @@ public partial class DataAccess
                     }
 
                     // Fallback: If no variable groups from YAML parsing, try from definition
-                    if (item.VariableGroups.Count == 0) {
+                    if ( item.VariableGroups.Count == 0) {
                         try {
                             if (fullDef.VariableGroups?.Any() == true) {
                                 foreach (var vg in fullDef.VariableGroups) {
@@ -260,8 +260,11 @@ public partial class DataAccess
                                     if (!string.IsNullOrWhiteSpace(vg.Name) && variableGroupsDict.TryGetValue(vg.Name, out var fullVg)) {
                                         vgRef.ResourceUrl = fullVg.ResourceUrl;
                                         vgRef.VariableCount = fullVg.Variables?.Count ?? 0;
+                                    } else if (vg.Id > 0) {
+                                        // Use the variable group ID from definition to build deep link
+                                        vgRef.ResourceUrl = $"{projectUrl}/_library?itemType=VariableGroups&view=VariableGroupView&variableGroupId={vg.Id}";
                                     } else {
-                                        // Fallback: Link to Library page if no match
+                                        // Fallback: Link to Library page if no match and no ID
                                         vgRef.ResourceUrl = $"{projectUrl}/_library?itemType=VariableGroups";
                                     }
                                     
