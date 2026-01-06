@@ -140,7 +140,7 @@
     @* Card Footer with Actions - ALL proper anchor tags *@
     <div class="card-footer bg-white border-top-0 pt-0">
         <div class="d-flex gap-2">
-            <a href="@Pipeline?.EditWizardUrl" 
+            <a href="@(Helpers.BuildUrl(Pipeline?.EditWizardUrl))" 
                class="btn btn-sm btn-outline-primary flex-grow-1" 
                title="Edit in Wizard">
                 <i class="fa fa-pencil me-1"></i>

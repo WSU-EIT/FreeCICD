@@ -154,7 +154,7 @@ public partial class DataAccess
                     item.PipelineConfigUrl = $"{baseUrl}/_apps/hub/ms.vss-build-web.ci-designer-hub?pipelineId={item.Id}&branch={Uri.EscapeDataString(configBranch)}";
                     
                     // Edit Wizard URL (internal Blazor navigation)
-                    item.EditWizardUrl = $"/Wizard?import={item.Id}";
+                    item.EditWizardUrl = $"Wizard?import={item.Id}";
 
                     // Parse YAML to extract variable groups and code repo info
                     if (!string.IsNullOrWhiteSpace(yamlFilename) && fullDef?.Repository != null) {
