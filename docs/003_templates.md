@@ -1,4 +1,4 @@
-# 003 — Templates: Ready-to-Use Document Templates
+﻿# 003 — Templates: Ready-to-Use Document Templates
 
 > **Document ID:** 003  
 > **Category:** Templates  
@@ -437,9 +437,15 @@ Use when: Speccing out a new feature before building.
 
 ## Changes
 
-### Components Affected
-- {Component 1}
-- {Component 2}
+### Files to Create/Modify
+
+**New files** (must use `{ProjectName}.App.{Feature}` pattern):
+- `FreeManager.App.{Feature}.razor` — {description}
+- `FreeManager.App.{Feature}.cs` — {description}
+- `FreeManager.App.DataObjects.{Feature}.cs` — {DTOs}
+
+**Modified files**:
+- `{existing file}` — {what changes}
 
 ### Data/Schema Changes
 - {Change 1}
@@ -500,7 +506,10 @@ Use when: Preparing to implement a change.
 
 ## Approach
 
-- **Changes:** {Files/modules touched}
+- **New files:** (use `{ProjectName}.App.{Feature}` pattern)
+  - {file 1}
+  - {file 2}
+- **Modified files:** {existing files to change}
 - **Data impact:** {Schema changes, migrations}
 - **Compat notes:** {Breaking changes, versioning}
 
@@ -522,6 +531,12 @@ Use when: Preparing to implement a change.
 - [ ] New config documented  
 - [ ] ADR needed? (Y/N)
 - [ ] Other docs to update: {list}
+
+## File Naming Checklist
+
+- [ ] All new files use `{ProjectName}.App.{Feature}.{Extension}` pattern
+- [ ] Blazor components reference class names correctly (dots → underscores)
+- [ ] No `FM` prefix on new files (use full project name)
 ```
 
 ---

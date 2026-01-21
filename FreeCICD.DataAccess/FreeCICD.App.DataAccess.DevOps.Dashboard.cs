@@ -9,17 +9,22 @@ namespace FreeCICD;
 
 public partial class DataAccess
 {
+    /// <summary>
+    /// Gets the pipeline dashboard with progressive loading via SignalR.
+    /// Sends skeleton data immediately, then enriches with details in batches.
+    /// </summary>
     public async Task<DataObjects.PipelineDashboardResponse> GetPipelineDashboardAsync(string pat, string orgName, string projectId, string? connectionId = null)
     {
         var response = new DataObjects.PipelineDashboardResponse();
 
         try {
+            // === IMMEDIATE: Signal that loading has started (before any API calls) ===
             if (!string.IsNullOrWhiteSpace(connectionId)) {
                 await SignalRUpdate(new DataObjects.SignalRUpdate {
-                    UpdateType = DataObjects.SignalRUpdateType.LoadingDevOpsInfoStatusUpdate,
+                    UpdateType = DataObjects.SignalRUpdateType.DashboardPipelinesSkeleton,
                     ConnectionId = connectionId,
-                    ItemId = Guid.NewGuid(),
-                    Message = "Loading pipeline dashboard..."
+                    Message = "Connecting to Azure DevOps...",
+                    Object = new List<DataObjects.PipelineListItem>() // Empty list to trigger UI
                 });
             }
 
@@ -33,8 +38,44 @@ public partial class DataAccess
             var project = await projectClient.GetProject(projectId);
             dynamic projectResource = project.Links.Links["web"];
             var projectUrl = Uri.EscapeUriString(string.Empty + projectResource.Href);
+            var baseUrl = $"https://dev.azure.com/{orgName}/{project.Name}";
 
-            // Fetch all variable groups for the project
+            // === PHASE 1: Get pipeline definitions quickly (skeleton) ===
+            if (!string.IsNullOrWhiteSpace(connectionId)) {
+                await SignalRUpdate(new DataObjects.SignalRUpdate {
+                    UpdateType = DataObjects.SignalRUpdateType.LoadingDevOpsInfoStatusUpdate,
+                    ConnectionId = connectionId,
+                    Message = "Fetching pipeline list..."
+                });
+            }
+
+            var definitions = await buildClient.GetDefinitionsAsync(project: projectId);
+            var pipelineItems = new List<DataObjects.PipelineListItem>();
+
+            // Create skeleton items with just basic info (fast)
+            foreach (var defRef in definitions) {
+                var item = new DataObjects.PipelineListItem {
+                    Id = defRef.Id,
+                    Name = defRef?.Name ?? string.Empty,
+                    Path = defRef?.Path ?? string.Empty,
+                    PipelineRunsUrl = $"{baseUrl}/_build?definitionId={defRef?.Id}",
+                    EditWizardUrl = $"Wizard?import={defRef?.Id}",
+                    VariableGroups = []
+                };
+                pipelineItems.Add(item);
+            }
+
+            // Send skeleton with names immediately via SignalR
+            if (!string.IsNullOrWhiteSpace(connectionId)) {
+                await SignalRUpdate(new DataObjects.SignalRUpdate {
+                    UpdateType = DataObjects.SignalRUpdateType.DashboardPipelinesSkeleton,
+                    ConnectionId = connectionId,
+                    Message = $"Found {pipelineItems.Count} pipelines",
+                    Object = pipelineItems
+                });
+            }
+
+            // === PHASE 2: Fetch variable groups (needed for enrichment) ===
             var variableGroupsDict = new Dictionary<string, DataObjects.DevopsVariableGroup>(StringComparer.OrdinalIgnoreCase);
             try {
                 var devopsVariableGroups = await taskAgentClient.GetVariableGroupsAsync(project.Id);
@@ -58,237 +99,43 @@ public partial class DataAccess
                 // Error getting variable groups, continue without them
             }
 
-            // Get all pipeline definitions
-            var definitions = await buildClient.GetDefinitionsAsync(project: projectId);
+            // === PHASE 3: Enrich each pipeline with details (send in batches) ===
+            const int batchSize = 3;
+            var enrichedBatch = new List<DataObjects.PipelineListItem>();
+            int processedCount = 0;
 
-            var pipelineItems = new List<DataObjects.PipelineListItem>();
-
-            foreach (var defRef in definitions) {
+            for (int i = 0; i < pipelineItems.Count; i++) {
+                var item = pipelineItems[i];
                 try {
-                    var fullDef = await buildClient.GetDefinitionAsync(projectId, defRef.Id);
-                    dynamic pipelineReferenceLink = fullDef.Links.Links["web"];
-                    var pipelineUrl = Uri.EscapeUriString(string.Empty + pipelineReferenceLink.Href);
+                    await EnrichPipelineItemAsync(item, buildClient, gitClient, projectId, project, projectUrl, baseUrl, orgName, variableGroupsDict);
+                } catch {
+                    // Error enriching pipeline, leave it with skeleton data
+                }
 
-                    string yamlFilename = string.Empty;
-                    if (fullDef.Process is YamlProcess yamlProcess) {
-                        yamlFilename = yamlProcess.YamlFilename;
-                    }
+                enrichedBatch.Add(item);
+                processedCount++;
 
-                    var item = new DataObjects.PipelineListItem {
-                        Id = defRef.Id,
-                        Name = defRef?.Name ?? string.Empty,
-                        Path = defRef?.Path ?? string.Empty,
-                        RepositoryName = fullDef?.Repository?.Name ?? string.Empty,
-                        DefaultBranch = fullDef?.Repository?.DefaultBranch ?? string.Empty,
-                        ResourceUrl = pipelineUrl,
-                        YamlFileName = yamlFilename,
-                        VariableGroups = []
-                    };
-
-                    // Get the latest build for this pipeline
-                    try {
-                        var builds = await buildClient.GetBuildsAsync(projectId, definitions: [defRef.Id], top: 1);
-                        if (builds.Count > 0) {
-                            var latestBuild = builds[0];
-                            item.LastRunStatus = latestBuild.Status?.ToString() ?? string.Empty;
-                            item.LastRunResult = latestBuild.Result?.ToString() ?? string.Empty;
-                            item.LastRunTime = latestBuild.FinishTime ?? latestBuild.StartTime ?? latestBuild.QueueTime;
-                            // Get the actual branch that triggered the build (more accurate than repo default)
-                            item.TriggerBranch = latestBuild.SourceBranch;
-
-                            // === Phase 1 Dashboard Enhancement Fields ===
-                            
-                            // Build ID and number (e.g., "20241219.3")
-                            item.LastRunBuildId = latestBuild.Id;
-                            item.LastRunBuildNumber = latestBuild.BuildNumber;
-                            
-                            // Duration calculation
-                            if (latestBuild.StartTime.HasValue && latestBuild.FinishTime.HasValue) {
-                                item.Duration = latestBuild.FinishTime.Value - latestBuild.StartTime.Value;
-                            }
-                            
-                            // Commit hash (short and full versions)
-                            if (!string.IsNullOrWhiteSpace(latestBuild.SourceVersion)) {
-                                item.LastCommitIdFull = latestBuild.SourceVersion;
-                                item.LastCommitId = latestBuild.SourceVersion.Length > 7 
-                                    ? latestBuild.SourceVersion[..7] 
-                                    : latestBuild.SourceVersion;
-                            }
-
-                            // Map trigger information
-                            MapBuildTriggerInfo(latestBuild, item);
-                        }
-                    } catch {
-                        // Could not get latest build, leave status fields empty
-                    }
-
-                    // === Phase 2 Clickability Enhancement: Build URLs ===
-                    // Base URL pattern: https://dev.azure.com/{org}/{project}
-                    var baseUrl = $"https://dev.azure.com/{orgName}/{project.Name}";
-                    
-                    // Repository URL: https://dev.azure.com/{org}/{project}/_git/{repo}
-                    if (!string.IsNullOrWhiteSpace(item.RepositoryName)) {
-                        item.RepositoryUrl = $"{baseUrl}/_git/{Uri.EscapeDataString(item.RepositoryName)}";
-                    }
-                    
-                    // Commit URL: https://dev.azure.com/{org}/{project}/_git/{repo}/commit/{hash}
-                    if (!string.IsNullOrWhiteSpace(item.LastCommitIdFull) && !string.IsNullOrWhiteSpace(item.RepositoryName)) {
-                        item.CommitUrl = $"{baseUrl}/_git/{Uri.EscapeDataString(item.RepositoryName)}/commit/{item.LastCommitIdFull}";
-                    }
-                    
-                    // Pipeline runs URL: https://dev.azure.com/{org}/{project}/_build?definitionId={id}
-                    item.PipelineRunsUrl = $"{baseUrl}/_build?definitionId={item.Id}";
-                    
-                    // === Phase 3 Clickability Enhancement: Build-specific URLs ===
-                    
-                    // Last run results URL: https://dev.azure.com/{org}/{project}/_build/results?buildId={id}&view=results
-                    if (item.LastRunBuildId.HasValue) {
-                        item.LastRunResultsUrl = $"{baseUrl}/_build/results?buildId={item.LastRunBuildId}&view=results";
-                        item.LastRunLogsUrl = $"{baseUrl}/_build/results?buildId={item.LastRunBuildId}&view=logs";
-                    }
-                    
-                    // Pipeline config URL: https://dev.azure.com/{org}/{project}/_apps/hub/ms.vss-build-web.ci-designer-hub?pipelineId={id}&branch={branch}
-                    var configBranch = !string.IsNullOrWhiteSpace(item.TriggerBranch) 
-                        ? item.TriggerBranch.Replace("refs/heads/", "") 
-                        : item.DefaultBranch?.Replace("refs/heads/", "") ?? "main";
-                    item.PipelineConfigUrl = $"{baseUrl}/_apps/hub/ms.vss-build-web.ci-designer-hub?pipelineId={item.Id}&branch={Uri.EscapeDataString(configBranch)}";
-                    
-                    // Edit Wizard URL (internal Blazor navigation)
-                    item.EditWizardUrl = $"Wizard?import={item.Id}";
-
-                    // Parse YAML to extract variable groups and code repo info
-                    if (!string.IsNullOrWhiteSpace(yamlFilename) && fullDef?.Repository != null) {
-                        try {
-                            var repoId = fullDef.Repository.Id;
-                            var branch = fullDef.Repository.DefaultBranch?.Replace("refs/heads/", "") ?? "main";
-                            
-                            var versionDescriptor = new GitVersionDescriptor {
-                                Version = branch,
-                                VersionType = GitVersionType.Branch
-                            };
-
-                            var yamlItem = await gitClient.GetItemAsync(
-                                project: projectId,
-                                repositoryId: repoId,
-                                path: yamlFilename,
-                                scopePath: null,
-                                recursionLevel: VersionControlRecursionType.None,
-                                includeContent: true,
-                                versionDescriptor: versionDescriptor);
-
-                            if (!string.IsNullOrWhiteSpace(yamlItem?.Content)) {
-                                // Parse the YAML to extract variable groups and code repo info
-                                var parsedSettings = ParsePipelineYaml(yamlItem.Content, defRef.Id, defRef.Name, defRef.Path);
-                                
-                                // Populate Code Repo Info from YAML BuildRepo
-                                if (!string.IsNullOrWhiteSpace(parsedSettings.CodeRepoName)) {
-                                    item.CodeProjectName = parsedSettings.CodeProjectName;
-                                    item.CodeRepoName = parsedSettings.CodeRepoName;
-                                    item.CodeBranch = parsedSettings.CodeBranch;
-                                    var codeProject = !string.IsNullOrWhiteSpace(parsedSettings.CodeProjectName) ? parsedSettings.CodeProjectName : project.Name;
-                                    item.CodeRepoUrl = $"https://dev.azure.com/{orgName}/{Uri.EscapeDataString(codeProject)}/_git/{Uri.EscapeDataString(parsedSettings.CodeRepoName)}";
-                                    
-                                    // Build branch URL: ?version=GB{branch} format
-                                    if (!string.IsNullOrWhiteSpace(parsedSettings.CodeBranch)) {
-                                        item.CodeBranchUrl = $"https://dev.azure.com/{orgName}/{Uri.EscapeDataString(codeProject)}/_git/{Uri.EscapeDataString(parsedSettings.CodeRepoName)}?version=GB{Uri.EscapeDataString(parsedSettings.CodeBranch)}";
-                                    }
-                                    
-                                    if (!string.IsNullOrWhiteSpace(item.LastCommitIdFull)) {
-                                        item.CommitUrl = $"https://dev.azure.com/{orgName}/{Uri.EscapeDataString(codeProject)}/_git/{Uri.EscapeDataString(parsedSettings.CodeRepoName)}/commit/{item.LastCommitIdFull}";
-                                    }
-                                }
-                                
-                                // Extract variable groups from parsed environments
-                                foreach (var env in parsedSettings.Environments) {
-                                    if (!string.IsNullOrWhiteSpace(env.VariableGroupName)) {
-                                        var vgRef = new DataObjects.PipelineVariableGroupRef {
-                                            Name = env.VariableGroupName,
-                                            Environment = env.EnvironmentName,
-                                            Id = null,
-                                            VariableCount = 0,
-                                            ResourceUrl = null
-                                        };
-
-                                        // Match to actual variable group for URL and count (try exact match first)
-                                        var vgName = env.VariableGroupName.Trim();
-                                        DataObjects.DevopsVariableGroup? matchedGroup = null;
-                                        
-                                        // Try exact case-insensitive match
-                                        if (variableGroupsDict.TryGetValue(vgName, out matchedGroup)) {
-                                            // Found exact match
-                                        } else {
-                                            // Try fuzzy match - find by contains (useful for prefixed/suffixed names)
-                                            matchedGroup = variableGroupsDict.Values
-                                                .FirstOrDefault(vg => vg.Name != null && 
-                                                    (vg.Name.Equals(vgName, StringComparison.OrdinalIgnoreCase) ||
-                                                     vg.Name.Contains(vgName, StringComparison.OrdinalIgnoreCase) ||
-                                                     vgName.Contains(vg.Name, StringComparison.OrdinalIgnoreCase)));
-                                        }
-                                        
-                                        if (matchedGroup != null) {
-                                            vgRef.Id = matchedGroup.Id;
-                                            vgRef.VariableCount = matchedGroup.Variables?.Count ?? 0;
-                                            vgRef.ResourceUrl = matchedGroup.ResourceUrl;
-                                        } else {
-                                            // No match found - construct a fallback URL to Library search
-                                            // This links to the Library page (user can search for the variable group)
-                                            vgRef.ResourceUrl = $"{projectUrl}/_library?itemType=VariableGroups";
-                                        }
-
-                                        item.VariableGroups.Add(vgRef);
-                                    }
-                                }
-                            }
-                        } catch {
-                            // Could not fetch/parse YAML, fall back to definition variable groups
-                        }
-                    }
-
-                    // Fallback: If no variable groups from YAML parsing, try from definition
-                    if ( item.VariableGroups.Count == 0) {
-                        try {
-                            if (fullDef.VariableGroups?.Any() == true) {
-                                foreach (var vg in fullDef.VariableGroups) {
-                                    var vgRef = new DataObjects.PipelineVariableGroupRef {
-                                        Name = vg.Name ?? "",
-                                        Id = vg.Id,
-                                        VariableCount = 0,
-                                        Environment = null
-                                    };
-                                    
-                                    // Look up in our fetched variable groups to get URL and count
-                                    if (!string.IsNullOrWhiteSpace(vg.Name) && variableGroupsDict.TryGetValue(vg.Name, out var fullVg)) {
-                                        vgRef.ResourceUrl = fullVg.ResourceUrl;
-                                        vgRef.VariableCount = fullVg.Variables?.Count ?? 0;
-                                    } else if (vg.Id > 0) {
-                                        // Use the variable group ID from definition to build deep link
-                                        vgRef.ResourceUrl = $"{projectUrl}/_library?itemType=VariableGroups&view=VariableGroupView&variableGroupId={vg.Id}";
-                                    } else {
-                                        // Fallback: Link to Library page if no match and no ID
-                                        vgRef.ResourceUrl = $"{projectUrl}/_library?itemType=VariableGroups";
-                                    }
-                                    
-                                    item.VariableGroups.Add(vgRef);
-                                }
-                            }
-                        } catch {
-                            // Ignore errors getting variable groups for individual pipelines
-                        }
-                    }
-
-                    pipelineItems.Add(item);
-
+                // Send batch update via SignalR
+                if (enrichedBatch.Count >= batchSize || i == pipelineItems.Count - 1) {
                     if (!string.IsNullOrWhiteSpace(connectionId)) {
                         await SignalRUpdate(new DataObjects.SignalRUpdate {
-                            UpdateType = DataObjects.SignalRUpdateType.LoadingDevOpsInfoStatusUpdate,
+                            UpdateType = DataObjects.SignalRUpdateType.DashboardPipelineBatch,
                             ConnectionId = connectionId,
-                            ItemId = Guid.NewGuid(),
-                            Message = $"Loaded pipeline: {item.Name}"
+                            Message = $"Loaded {processedCount} of {pipelineItems.Count} pipelines",
+                            Object = enrichedBatch.ToList() // Send copy of batch
                         });
                     }
-                } catch {
-                    // Error loading individual pipeline, skip it
+                    enrichedBatch.Clear();
                 }
+            }
+
+            // === PHASE 4: Signal completion ===
+            if (!string.IsNullOrWhiteSpace(connectionId)) {
+                await SignalRUpdate(new DataObjects.SignalRUpdate {
+                    UpdateType = DataObjects.SignalRUpdateType.DashboardLoadComplete,
+                    ConnectionId = connectionId,
+                    Message = $"Loaded {pipelineItems.Count} pipelines"
+                });
             }
 
             response.Pipelines = pipelineItems;
@@ -300,6 +147,196 @@ public partial class DataAccess
         }
 
         return response;
+    }
+
+    /// <summary>
+    /// Enriches a pipeline item with detailed information (builds, YAML, variable groups).
+    /// </summary>
+    private async Task EnrichPipelineItemAsync(
+        DataObjects.PipelineListItem item,
+        BuildHttpClient buildClient,
+        GitHttpClient gitClient,
+        string projectId,
+        TeamProject project,
+        string projectUrl,
+        string baseUrl,
+        string orgName,
+        Dictionary<string, DataObjects.DevopsVariableGroup> variableGroupsDict)
+    {
+        var fullDef = await buildClient.GetDefinitionAsync(projectId, item.Id);
+        dynamic pipelineReferenceLink = fullDef.Links.Links["web"];
+        var pipelineUrl = Uri.EscapeUriString(string.Empty + pipelineReferenceLink.Href);
+
+        string yamlFilename = string.Empty;
+        if (fullDef.Process is YamlProcess yamlProcess) {
+            yamlFilename = yamlProcess.YamlFilename;
+        }
+
+        item.RepositoryName = fullDef?.Repository?.Name ?? string.Empty;
+        item.DefaultBranch = fullDef?.Repository?.DefaultBranch ?? string.Empty;
+        item.ResourceUrl = pipelineUrl;
+        item.YamlFileName = yamlFilename;
+
+        // Get the latest build for this pipeline
+        try {
+            var builds = await buildClient.GetBuildsAsync(projectId, definitions: [item.Id], top: 1);
+            if (builds.Count > 0) {
+                var latestBuild = builds[0];
+                item.LastRunStatus = latestBuild.Status?.ToString() ?? string.Empty;
+                item.LastRunResult = latestBuild.Result?.ToString() ?? string.Empty;
+                item.LastRunTime = latestBuild.FinishTime ?? latestBuild.StartTime ?? latestBuild.QueueTime;
+                item.TriggerBranch = latestBuild.SourceBranch;
+
+                // Build ID and number
+                item.LastRunBuildId = latestBuild.Id;
+                item.LastRunBuildNumber = latestBuild.BuildNumber;
+                
+                // Duration calculation
+                if (latestBuild.StartTime.HasValue && latestBuild.FinishTime.HasValue) {
+                    item.Duration = latestBuild.FinishTime.Value - latestBuild.StartTime.Value;
+                }
+                
+                // Commit hash (short and full versions)
+                if (!string.IsNullOrWhiteSpace(latestBuild.SourceVersion)) {
+                    item.LastCommitIdFull = latestBuild.SourceVersion;
+                    item.LastCommitId = latestBuild.SourceVersion.Length > 7 
+                        ? latestBuild.SourceVersion[..7] 
+                        : latestBuild.SourceVersion;
+                }
+
+                // Map trigger information
+                MapBuildTriggerInfo(latestBuild, item);
+            }
+        } catch {
+            // Could not get latest build, leave status fields empty
+        }
+
+        // Build URLs
+        if (!string.IsNullOrWhiteSpace(item.RepositoryName)) {
+            item.RepositoryUrl = $"{baseUrl}/_git/{Uri.EscapeDataString(item.RepositoryName)}";
+        }
+        
+        if (!string.IsNullOrWhiteSpace(item.LastCommitIdFull) && !string.IsNullOrWhiteSpace(item.RepositoryName)) {
+            item.CommitUrl = $"{baseUrl}/_git/{Uri.EscapeDataString(item.RepositoryName)}/commit/{item.LastCommitIdFull}";
+        }
+        
+        if (item.LastRunBuildId.HasValue) {
+            item.LastRunResultsUrl = $"{baseUrl}/_build/results?buildId={item.LastRunBuildId}&view=results";
+            item.LastRunLogsUrl = $"{baseUrl}/_build/results?buildId={item.LastRunBuildId}&view=logs";
+        }
+        
+        var configBranch = !string.IsNullOrWhiteSpace(item.TriggerBranch) 
+            ? item.TriggerBranch.Replace("refs/heads/", "") 
+            : item.DefaultBranch?.Replace("refs/heads/", "") ?? "main";
+        item.PipelineConfigUrl = $"{baseUrl}/_apps/hub/ms.vss-build-web.ci-designer-hub?pipelineId={item.Id}&branch={Uri.EscapeDataString(configBranch)}";
+
+        // Parse YAML to extract variable groups and code repo info
+        if (!string.IsNullOrWhiteSpace(yamlFilename) && fullDef?.Repository != null) {
+            try {
+                var repoId = fullDef.Repository.Id;
+                var branch = fullDef.Repository.DefaultBranch?.Replace("refs/heads/", "") ?? "main";
+                
+                var versionDescriptor = new GitVersionDescriptor {
+                    Version = branch,
+                    VersionType = GitVersionType.Branch
+                };
+
+                var yamlItem = await gitClient.GetItemAsync(
+                    project: projectId,
+                    repositoryId: repoId,
+                    path: yamlFilename,
+                    scopePath: null,
+                    recursionLevel: VersionControlRecursionType.None,
+                    includeContent: true,
+                    versionDescriptor: versionDescriptor);
+
+                if (!string.IsNullOrWhiteSpace(yamlItem?.Content)) {
+                    var parsedSettings = ParsePipelineYaml(yamlItem.Content, item.Id, item.Name, item.Path);
+                    
+                    // Populate Code Repo Info from YAML BuildRepo
+                    if (!string.IsNullOrWhiteSpace(parsedSettings.CodeRepoName)) {
+                        item.CodeProjectName = parsedSettings.CodeProjectName;
+                        item.CodeRepoName = parsedSettings.CodeRepoName;
+                        item.CodeBranch = parsedSettings.CodeBranch;
+                        var codeProject = !string.IsNullOrWhiteSpace(parsedSettings.CodeProjectName) ? parsedSettings.CodeProjectName : project.Name;
+                        item.CodeRepoUrl = $"https://dev.azure.com/{orgName}/{Uri.EscapeDataString(codeProject)}/_git/{Uri.EscapeDataString(parsedSettings.CodeRepoName)}";
+                        
+                        if (!string.IsNullOrWhiteSpace(parsedSettings.CodeBranch)) {
+                            item.CodeBranchUrl = $"https://dev.azure.com/{orgName}/{Uri.EscapeDataString(codeProject)}/_git/{Uri.EscapeDataString(parsedSettings.CodeRepoName)}?version=GB{Uri.EscapeDataString(parsedSettings.CodeBranch)}";
+                        }
+                        
+                        if (!string.IsNullOrWhiteSpace(item.LastCommitIdFull)) {
+                            item.CommitUrl = $"https://dev.azure.com/{orgName}/{Uri.EscapeDataString(codeProject)}/_git/{Uri.EscapeDataString(parsedSettings.CodeRepoName)}/commit/{item.LastCommitIdFull}";
+                        }
+                    }
+                    
+                    // Extract variable groups from parsed environments
+                    foreach (var env in parsedSettings.Environments) {
+                        if (!string.IsNullOrWhiteSpace(env.VariableGroupName)) {
+                            var vgRef = new DataObjects.PipelineVariableGroupRef {
+                                Name = env.VariableGroupName,
+                                Environment = env.EnvironmentName,
+                                Id = null,
+                                VariableCount = 0,
+                                ResourceUrl = null
+                            };
+
+                            var vgName = env.VariableGroupName.Trim();
+                            DataObjects.DevopsVariableGroup? matchedGroup = null;
+                            
+                            if (variableGroupsDict.TryGetValue(vgName, out matchedGroup)) {
+                                // Found exact match
+                            } else {
+                                matchedGroup = variableGroupsDict.Values
+                                    .FirstOrDefault(vg => vg.Name != null && 
+                                        (vg.Name.Equals(vgName, StringComparison.OrdinalIgnoreCase) ||
+                                         vg.Name.Contains(vgName, StringComparison.OrdinalIgnoreCase) ||
+                                         vgName.Contains(vg.Name, StringComparison.OrdinalIgnoreCase)));
+                            }
+                            
+                            if (matchedGroup != null) {
+                                vgRef.Id = matchedGroup.Id;
+                                vgRef.VariableCount = matchedGroup.Variables?.Count ?? 0;
+                                vgRef.ResourceUrl = matchedGroup.ResourceUrl;
+                            } else {
+                                vgRef.ResourceUrl = $"{projectUrl}/_library?itemType=VariableGroups";
+                            }
+
+                            item.VariableGroups.Add(vgRef);
+                        }
+                    }
+                }
+            } catch {
+                // Could not fetch/parse YAML
+            }
+        }
+
+        // Fallback: If no variable groups from YAML parsing, try from definition
+        if (item.VariableGroups.Count == 0 && fullDef.VariableGroups?.Any() == true) {
+            try {
+                foreach (var vg in fullDef.VariableGroups) {
+                    var vgRef = new DataObjects.PipelineVariableGroupRef {
+                        Name = vg.Name ?? "",
+                        Id = vg.Id,
+                        VariableCount = 0,
+                        Environment = null
+                    };
+                    
+                    if (!string.IsNullOrWhiteSpace(vg.Name) && variableGroupsDict.TryGetValue(vg.Name, out var fullVg)) {
+                        vgRef.ResourceUrl = fullVg.ResourceUrl;
+                        vgRef.VariableCount = fullVg.Variables?.Count ?? 0;
+                    } else if (vg.Id > 0) {
+                        vgRef.ResourceUrl = $"{projectUrl}/_library?itemType=VariableGroups&view=VariableGroupView&variableGroupId={vg.Id}";
+                    } else {
+                        vgRef.ResourceUrl = $"{projectUrl}/_library?itemType=VariableGroups";
+                    }
+                    
+                    item.VariableGroups.Add(vgRef);
+                }
+            } catch {
+                // Ignore errors
+            }
+        }
     }
 
     public async Task<DataObjects.PipelineRunsResponse> GetPipelineRunsForDashboardAsync(string pat, string orgName, string projectId, int pipelineId, int top = 5, string? connectionId = null)
@@ -403,47 +440,162 @@ public partial class DataAccess
         }
 
         try {
-            // Parse YAML to extract environment variable groups (CI_{ENV}_VariableGroup pattern)
             var lines = yamlContent.Split('\n');
             var envNames = new HashSet<string> { "DEV", "PROD", "CMS", "STAGING", "QA", "UAT", "TEST" };
+            
+            // Dictionary to collect environment settings (so we can merge multiple passes)
+            var envDict = new Dictionary<string, DataObjects.ParsedEnvironmentSettings>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var line in lines) {
-                var trimmed = line.Trim();
+            // Parse BuildRepo information from resources.repositories section
+            ExtractBuildRepoInfo(lines, result);
+            
+            // Copy code repo info to wizard fields for import
+            if (!string.IsNullOrWhiteSpace(result.CodeProjectName)) {
+                result.ProjectName = result.CodeProjectName;
+            }
+            if (!string.IsNullOrWhiteSpace(result.CodeRepoName)) {
+                result.RepoName = result.CodeRepoName;
+            }
+            if (!string.IsNullOrWhiteSpace(result.CodeBranch)) {
+                result.SelectedBranch = result.CodeBranch;
+            }
+
+            // Parse line by line, looking for name/value pairs
+            // YAML format: 
+            //   - name: CI_BUILD_CsProjectPath
+            //     value: "path/to/project.csproj"
+            for (int i = 0; i < lines.Length; i++) {
+                var trimmed = lines[i].Trim();
                 
-                // Look for variable group references: CI_{ENV}_VariableGroup
-                foreach (var env in envNames) {
-                    var pattern = $"CI_{env}_VariableGroup";
-                    if (trimmed.Contains(pattern, StringComparison.OrdinalIgnoreCase)) {
-                        // Extract the value after the colon
-                        var colonIndex = trimmed.IndexOf(':');
-                        if (colonIndex > 0 && colonIndex < trimmed.Length - 1) {
-                            var value = trimmed[(colonIndex + 1)..].Trim().Trim('"', '\'').Replace("refs/heads/", "");
-                            if (!string.IsNullOrWhiteSpace(value) && !value.StartsWith("$")) {
-                                result.Environments.Add(new DataObjects.ParsedEnvironmentSettings {
-                                    EnvironmentName = env,
-                                    VariableGroupName = value,
-                                    Confidence = DataObjects.ParseConfidence.High
-                                });
+                // Skip comments and empty lines
+                if (trimmed.StartsWith("#") || string.IsNullOrWhiteSpace(trimmed)) {
+                    continue;
+                }
+                
+                // Look for "- name: VARNAME" pattern and get value from next line
+                if (trimmed.StartsWith("- name:") || trimmed.StartsWith("name:")) {
+                    var varName = ExtractYamlValue(trimmed);
+                    string varValue = string.Empty;
+                    
+                    // Look at next line for "value:"
+                    if (i + 1 < lines.Length) {
+                        var nextLine = lines[i + 1].Trim();
+                        if (nextLine.StartsWith("value:")) {
+                            varValue = ExtractYamlValue(nextLine);
+                        }
+                    }
+                    
+                    // Skip if value is a variable reference
+                    if (varValue.StartsWith("$")) {
+                        continue;
+                    }
+                    
+                    // Extract CI_BUILD_CsProjectPath
+                    if (varName.Equals("CI_BUILD_CsProjectPath", StringComparison.OrdinalIgnoreCase)) {
+                        if (!string.IsNullOrWhiteSpace(varValue)) {
+                            // Remove leading slash if present
+                            result.SelectedCsprojPath = varValue.TrimStart('/', '\\');
+                        }
+                    }
+                    
+                    // Extract CI_ProjectName
+                    if (varName.Equals("CI_ProjectName", StringComparison.OrdinalIgnoreCase)) {
+                        if (!string.IsNullOrWhiteSpace(varValue) && string.IsNullOrWhiteSpace(result.ProjectName)) {
+                            result.ProjectName = varValue;
+                        }
+                    }
+                    
+                    // Look for environment-specific variables: CI_{ENV}_{Property}
+                    foreach (var env in envNames) {
+                        // Ensure the environment entry exists
+                        if (!envDict.ContainsKey(env)) {
+                            envDict[env] = new DataObjects.ParsedEnvironmentSettings {
+                                EnvironmentName = env,
+                                Confidence = DataObjects.ParseConfidence.Medium
+                            };
+                        }
+                        
+                        var envSettings = envDict[env];
+                        
+                        // Variable group reference: CI_{ENV}_VariableGroup
+                        if (varName.Equals($"CI_{env}_VariableGroup", StringComparison.OrdinalIgnoreCase)) {
+                            if (!string.IsNullOrWhiteSpace(varValue)) {
+                                envSettings.VariableGroupName = varValue;
+                                envSettings.Confidence = DataObjects.ParseConfidence.High;
+                            }
+                        }
+                        
+                        // IIS Deployment Type: CI_{ENV}_IISDeploymentType
+                        if (varName.Equals($"CI_{env}_IISDeploymentType", StringComparison.OrdinalIgnoreCase)) {
+                            if (!string.IsNullOrWhiteSpace(varValue)) {
+                                envSettings.IISDeploymentType = varValue;
+                            }
+                        }
+                        
+                        // Website Name: CI_{ENV}_WebsiteName
+                        if (varName.Equals($"CI_{env}_WebsiteName", StringComparison.OrdinalIgnoreCase)) {
+                            if (!string.IsNullOrWhiteSpace(varValue)) {
+                                envSettings.WebsiteName = varValue;
+                            }
+                        }
+                        
+                        // Virtual Path: CI_{ENV}_VirtualPath
+                        if (varName.Equals($"CI_{env}_VirtualPath", StringComparison.OrdinalIgnoreCase)) {
+                            if (!string.IsNullOrWhiteSpace(varValue)) {
+                                envSettings.VirtualPath = varValue;
+                            }
+                        }
+                        
+                        // App Pool Name: CI_{ENV}_AppPoolName
+                        if (varName.Equals($"CI_{env}_AppPoolName", StringComparison.OrdinalIgnoreCase)) {
+                            if (!string.IsNullOrWhiteSpace(varValue)) {
+                                envSettings.AppPoolName = varValue;
+                            }
+                        }
+                        
+                        // Binding Info: CI_{ENV}_BindingInfo
+                        if (varName.Equals($"CI_{env}_BindingInfo", StringComparison.OrdinalIgnoreCase)) {
+                            if (!string.IsNullOrWhiteSpace(varValue)) {
+                                envSettings.BindingInfo = varValue;
                             }
                         }
                     }
                 }
-                
-                // Parse BuildRepo information from resources.repositories section
-                ExtractBuildRepoInfo(lines, result);
             }
             
-            // Trim repo and branch names for all environments to a sensible default
-            foreach (var env in result.Environments) {
-                if (!string.IsNullOrWhiteSpace(env.VariableGroupName)) {
-                    env.VariableGroupName = env.VariableGroupName.Trim();
+            // Only include environments that have actual data (at minimum a variable group or other setting)
+            foreach (var kvp in envDict) {
+                var env = kvp.Value;
+                if (!string.IsNullOrWhiteSpace(env.VariableGroupName) ||
+                    !string.IsNullOrWhiteSpace(env.WebsiteName) ||
+                    !string.IsNullOrWhiteSpace(env.VirtualPath) ||
+                    !string.IsNullOrWhiteSpace(env.AppPoolName)) {
+                    result.Environments.Add(env);
                 }
             }
+            
+            // Detect if this is a FreeCICD-generated pipeline
+            result.IsFreeCICDGenerated = yamlContent.Contains("CI_BUILD_CsProjectPath", StringComparison.OrdinalIgnoreCase) ||
+                                          yamlContent.Contains("TemplateRepo", StringComparison.OrdinalIgnoreCase);
+            
         } catch {
-            // If parsing fails, return empty result
+            // If parsing fails, return partial result
         }
 
         return result;
+    }
+    
+    /// <summary>
+    /// Extracts the value from a YAML line like "- name: SomeValue" or "value: something"
+    /// </summary>
+    private string ExtractYamlValue(string line)
+    {
+        var trimmed = line.Trim();
+        var colonIndex = trimmed.IndexOf(':');
+        if (colonIndex > 0 && colonIndex < trimmed.Length - 1) {
+            return trimmed[(colonIndex + 1)..].Trim().Trim('"', '\'');
+        }
+        return string.Empty;
     }
     
     /// <summary>
@@ -489,10 +641,40 @@ public partial class DataAccess
 
     public async Task<Dictionary<string, DataObjects.IISInfo?>> GetDevOpsIISInfoAsync()
     {
-        // Stub implementation - IIS info would come from deployment agents
-        // This is used for environment configuration in the wizard
-        await Task.CompletedTask;
-        return new Dictionary<string, DataObjects.IISInfo?>();
+        var result = new Dictionary<string, DataObjects.IISInfo?>();
+        
+        // IIS info JSON files are generated by deployment pipelines and placed in the app root
+        // File naming convention: IISInfo_Azure{Environment}.json
+        // Maps to: DEV → AzureDev, PROD → AzureProd, CMS → AzureCMS
+        var envMappings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+            { "DEV", "AzureDev" },
+            { "PROD", "AzureProd" },
+            { "CMS", "AzureCMS" }
+        };
+        
+        var basePath = AppDomain.CurrentDomain.BaseDirectory;
+        
+        foreach (var mapping in envMappings) {
+            var fileName = $"IISInfo_{mapping.Value}.json";
+            var filePath = Path.Combine(basePath, fileName);
+            
+            try {
+                if (File.Exists(filePath)) {
+                    var jsonContent = await File.ReadAllTextAsync(filePath);
+                    var iisInfo = System.Text.Json.JsonSerializer.Deserialize<DataObjects.IISInfo>(
+                        jsonContent,
+                        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    
+                    if (iisInfo != null) {
+                        result[mapping.Key] = iisInfo;
+                    }
+                }
+            } catch {
+                // If file doesn't exist or can't be parsed, skip this environment
+            }
+        }
+        
+        return result;
     }
 
     /// <summary>

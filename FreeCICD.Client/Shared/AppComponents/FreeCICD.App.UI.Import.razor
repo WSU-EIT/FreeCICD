@@ -398,6 +398,18 @@
                 {
                     <p class="text-muted">Branch: <code>@_importResult.ImportedBranch</code></p>
                 }
+                
+                @* === Phase 1: GitHub Sync - Show PR creation option for existing repos === *@
+                @if (_importResult.RepoExisted && !string.IsNullOrWhiteSpace(_importResult.PullRequestCreateUrl))
+                {
+                    <div class="alert alert-info text-start mt-3">
+                        <i class="fa fa-code-branch me-2"></i>
+                        <strong>Next Step:</strong> Create a pull request to merge 
+                        <code>@_importResult.ImportedBranch</code> into 
+                        <code>@_importResult.DefaultBranch</code>
+                    </div>
+                }
+                
                 @if (!string.IsNullOrWhiteSpace(_importResult.RepoUrl))
                 {
                     <p>
@@ -412,10 +424,28 @@
 
         <div class="d-flex justify-content-center gap-2 mt-4">
             <button class="btn btn-secondary" @onclick="Close">Close</button>
-            <button class="btn btn-primary" @onclick="LaunchWizard">
-                <i class="fa fa-magic me-1"></i>
-                Set up CI/CD Pipeline
-            </button>
+            
+            @* === Phase 1: Show different primary actions based on new vs existing repo === *@
+            @if (_importResult?.RepoExisted == true && !string.IsNullOrWhiteSpace(_importResult.PullRequestCreateUrl))
+            {
+                @* Existing repo: Primary action is Create PR *@
+                <a href="@_importResult.PullRequestCreateUrl" target="_blank" class="btn btn-success">
+                    <i class="fa fa-code-branch me-1"></i>
+                    Create Pull Request
+                </a>
+                <button class="btn btn-outline-primary" @onclick="LaunchWizard">
+                    <i class="fa fa-magic me-1"></i>
+                    Set up CI/CD Pipeline
+                </button>
+            }
+            else
+            {
+                @* New repo: Primary action is Set up CI/CD *@
+                <button class="btn btn-primary" @onclick="LaunchWizard">
+                    <i class="fa fa-magic me-1"></i>
+                    Set up CI/CD Pipeline
+                </button>
+            }
         </div>
     };
 

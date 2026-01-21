@@ -226,11 +226,25 @@
                                    title="View pipeline runs">
                                     <i class="fa fa-list"></i>
                                 </a>
-                                <a href="@pipeline.ResourceUrl" target="_blank" 
-                                   class="btn btn-outline-secondary" 
-                                   title="View in Azure DevOps">
-                                    <i class="fa fa-external-link"></i>
-                                </a>
+                                @* More actions dropdown *@
+                                <div class="btn-group btn-group-sm">
+                                    <button type="button" class="btn btn-outline-secondary dropdown-toggle" 
+                                            data-bs-toggle="dropdown" aria-expanded="false" title="More actions">
+                                        <i class="fa fa-ellipsis-v"></i>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end">
+                                        <li>
+                                            <a class="dropdown-item" href="@pipeline.ResourceUrl" target="_blank">
+                                                <i class="fa fa-external-link me-2"></i>View in Azure DevOps
+                                            </a>
+                                        </li>
+                                        <li>
+                                            <button class="dropdown-item" @onclick="@(() => OnCopyYamlClick(pipeline))" @onclick:stopPropagation="true">
+                                                <i class="fa fa-clipboard me-2"></i>Copy YAML
+                                            </button>
+                                        </li>
+                                    </ul>
+                                </div>
                             </div>
                         </td>
                     </tr>
@@ -248,25 +262,33 @@
 </div>
 
 @code {
-    // Column name constants to avoid escaping issues in Razor
-    private const string ColName = "name";
-    private const string ColBranch = "branch";
-    private const string ColRepository = "repository";
-    private const string ColStatus = "status";
-    private const string ColTrigger = "trigger";
-    private const string ColLastRun = "lastrun";
-    private const string ColDuration = "duration";
+// Column name constants to avoid escaping issues in Razor
+private const string ColName = "name";
+private const string ColBranch = "branch";
+private const string ColRepository = "repository";
+private const string ColStatus = "status";
+private const string ColTrigger = "trigger";
+private const string ColLastRun = "lastrun";
+private const string ColDuration = "duration";
 
-    [Parameter] public List<DataObjects.PipelineListItem>? Pipelines { get; set; }
-    [Parameter] public EventCallback<DataObjects.PipelineListItem> OnEdit { get; set; }
-    [Parameter] public EventCallback<DataObjects.PipelineListItem> OnView { get; set; }
+[Parameter] public List<DataObjects.PipelineListItem>? Pipelines { get; set; }
+[Parameter] public EventCallback<DataObjects.PipelineListItem> OnEdit { get; set; }
+[Parameter] public EventCallback<DataObjects.PipelineListItem> OnView { get; set; }
+[Parameter] public EventCallback<DataObjects.PipelineListItem> OnCopyYaml { get; set; }
 
-    // Sort state from parent (unified sort)
-    [Parameter] public string SortColumn { get; set; } = ColLastRun;
-    [Parameter] public bool SortAscending { get; set; } = false;
-    [Parameter] public EventCallback<(string Column, bool Ascending)> OnSortChanged { get; set; }
+// Sort state from parent (unified sort)
+[Parameter] public string SortColumn { get; set; } = ColLastRun;
+[Parameter] public bool SortAscending { get; set; } = false;
+[Parameter] public EventCallback<(string Column, bool Ascending)> OnSortChanged { get; set; }
 
-    private async Task OnColumnClick(string column)
+private async Task OnCopyYamlClick(DataObjects.PipelineListItem pipeline)
+{
+    if (OnCopyYaml.HasDelegate) {
+        await OnCopyYaml.InvokeAsync(pipeline);
+    }
+}
+
+private async Task OnColumnClick(string column)
     {
         bool newAscending;
         if (SortColumn == column) {

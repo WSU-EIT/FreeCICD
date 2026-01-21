@@ -242,14 +242,22 @@
         }
     }
 
+    // Progressive loading state
+    protected int _loadedCount = 0;
+    protected int _totalCount = 0;
+    protected bool _isProgressiveLoading = false;
+    protected string _loadingMessage = "Loading pipelines...";
+
     public void Dispose()
     {
         Model.OnChange -= OnDataModelUpdated;
+        Model.OnSignalRUpdate -= OnSignalRUpdate;
     }
 
     protected override void OnInitialized()
     {
         Model.OnChange += OnDataModelUpdated;
+        Model.OnSignalRUpdate += OnSignalRUpdate;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -263,6 +271,113 @@
                 _loadedData = true;
                 await LoadDashboardData();
             }
+        }
+    }
+
+    /// <summary>
+    /// Handles SignalR updates for progressive dashboard loading.
+    /// </summary>
+    protected void OnSignalRUpdate(DataObjects.SignalRUpdate update)
+    {
+        if (update == null) return;
+
+        switch (update.UpdateType) {
+            case DataObjects.SignalRUpdateType.DashboardPipelinesSkeleton:
+                // Received skeleton - show placeholder cards immediately
+                HandleSkeletonUpdate(update);
+                break;
+
+            case DataObjects.SignalRUpdateType.DashboardPipelineBatch:
+                // Received enriched batch - update existing items
+                HandleBatchUpdate(update);
+                break;
+
+            case DataObjects.SignalRUpdateType.DashboardLoadComplete:
+                // Loading complete
+                _isProgressiveLoading = false;
+                _loading = false;
+                _loadingMessage = "";
+                InvokeAsync(StateHasChanged);
+                break;
+
+            case DataObjects.SignalRUpdateType.LoadingDevOpsInfoStatusUpdate:
+                // Status message update
+                if (!string.IsNullOrWhiteSpace(update.Message)) {
+                    _loadingMessage = update.Message;
+                    InvokeAsync(StateHasChanged);
+                }
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Handles skeleton update - shows pipeline cards with minimal info.
+    /// </summary>
+    private void HandleSkeletonUpdate(DataObjects.SignalRUpdate update)
+    {
+        try {
+            if (update.Object is System.Text.Json.JsonElement jsonElement) {
+                var skeletonItems = System.Text.Json.JsonSerializer.Deserialize<List<DataObjects.PipelineListItem>>(
+                    jsonElement.GetRawText(),
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                
+                if (skeletonItems != null) {
+                    _dashboardResponse ??= new DataObjects.PipelineDashboardResponse();
+                    
+                    // Handle "connecting" state (empty list) vs actual skeleton
+                    if (skeletonItems.Count == 0) {
+                        // First signal - just show we're connecting
+                        _isProgressiveLoading = true;
+                        _loading = false;
+                        _loadingMessage = update.Message ?? "Connecting to Azure DevOps...";
+                        _totalCount = 0;
+                        _loadedCount = 0;
+                    } else {
+                        // Actual skeleton with pipeline names
+                        _dashboardResponse.Pipelines = skeletonItems;
+                        _dashboardResponse.TotalCount = skeletonItems.Count;
+                        _totalCount = skeletonItems.Count;
+                        _loadedCount = 0;
+                        _isProgressiveLoading = true;
+                        _loading = false;
+                        _loadingMessage = update.Message ?? $"Found {skeletonItems.Count} pipelines";
+                        InitializeExpandedGroups();
+                    }
+                    InvokeAsync(StateHasChanged);
+                }
+            }
+        } catch {
+            // Ignore deserialization errors
+        }
+    }
+
+    /// <summary>
+    /// Handles batch update - updates existing pipeline items with enriched data.
+    /// </summary>
+    private void HandleBatchUpdate(DataObjects.SignalRUpdate update)
+    {
+        try {
+            if (update.Object is System.Text.Json.JsonElement jsonElement) {
+                var batchItems = System.Text.Json.JsonSerializer.Deserialize<List<DataObjects.PipelineListItem>>(
+                    jsonElement.GetRawText(),
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                
+                if (batchItems != null && _dashboardResponse?.Pipelines != null) {
+                    foreach (var enrichedItem in batchItems) {
+                        var existingItem = _dashboardResponse.Pipelines.FirstOrDefault(p => p.Id == enrichedItem.Id);
+                        if (existingItem != null) {
+                            // Update existing item with enriched data
+                            var index = _dashboardResponse.Pipelines.IndexOf(existingItem);
+                            _dashboardResponse.Pipelines[index] = enrichedItem;
+                        }
+                    }
+                    _loadedCount += batchItems.Count;
+                    _loadingMessage = update.Message ?? $"Loaded {_loadedCount} of {_totalCount} pipelines";
+                    InvokeAsync(StateHasChanged);
+                }
+            }
+        } catch {
+            // Ignore deserialization errors
         }
     }
 
@@ -320,6 +435,10 @@
     protected async Task RefreshDashboard()
     {
         _loadedData = false;
+        _isProgressiveLoading = false;
+        _loadedCount = 0;
+        _totalCount = 0;
+        _loadingMessage = "Loading pipelines...";
         await LoadDashboardData();
     }
 
@@ -348,6 +467,31 @@
     protected void OnViewPipeline(DataObjects.PipelineListItem pipeline)
     {
         OpenInAzureDevOps(pipeline.ResourceUrl);
+    }
+
+    /// <summary>
+    /// Copies pipeline YAML to clipboard.
+    /// </summary>
+    protected async Task OnCopyYaml(DataObjects.PipelineListItem pipeline)
+    {
+        try {
+            // Fetch the YAML content
+            var request = new DataObjects.PipelineYamlRequest {
+                PipelineId = pipeline.Id
+            };
+            
+            var response = await Helpers.GetOrPost<DataObjects.PipelineYamlResponse>(
+                DataObjects.Endpoints.PipelineDashboard.GetPipelineYaml.Replace("{id}", pipeline.Id.ToString()));
+            
+            if (response?.Success == true && !string.IsNullOrWhiteSpace(response.Yaml)) {
+                await Helpers.CopyToClipboard(response.Yaml);
+                Model.AddMessage($"YAML for '{pipeline.Name}' copied to clipboard!", MessageType.Success);
+            } else {
+                Model.AddMessage(response?.ErrorMessage ?? "Failed to fetch YAML content.", MessageType.Danger);
+            }
+        } catch (Exception ex) {
+            Model.AddMessage($"Error copying YAML: {ex.Message}", MessageType.Danger);
+        }
     }
 
     // Filter/Sort/View handlers
@@ -556,8 +700,8 @@
                 Pipeline Dashboard
             </h1>
             <div class="d-flex gap-2">
-                <button class="btn btn-outline-secondary" @onclick="RefreshDashboard" disabled="@_loading">
-                    <i class="fa fa-refresh @(_loading ? "fa-spin" : "")"></i>
+                <button class="btn btn-outline-secondary" @onclick="RefreshDashboard" disabled="@(_loading || _isProgressiveLoading)">
+                    <i class="fa fa-refresh @((_loading || _isProgressiveLoading) ? "fa-spin" : "")"></i>
                     Refresh
                 </button>
                 <button class="btn btn-primary" @onclick="NavigateToWizard">
@@ -567,17 +711,42 @@
             </div>
         </div>
 
-        @* Loading State *@
-        @if (_loading) {
+        @* Progressive Loading Banner *@
+        @if (_isProgressiveLoading) {
+            <div class="alert alert-info d-flex align-items-center mb-3" role="alert">
+                <div class="spinner-border spinner-border-sm me-2" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <div class="flex-grow-1">
+                    @_loadingMessage
+                </div>
+                @if (_totalCount > 0) {
+                    <div class="ms-3">
+                        <div class="progress" style="width: 150px; height: 8px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                 role="progressbar" 
+                                 style="width: @((_loadedCount * 100 / _totalCount))%"
+                                 aria-valuenow="@_loadedCount" 
+                                 aria-valuemin="0" 
+                                 aria-valuemax="@_totalCount">
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        @* Loading State (only when no progressive updates yet) *@
+        @if (_loading && !_isProgressiveLoading) {
             <div class="d-flex flex-column justify-content-center align-items-center my-5">
                 <div class="spinner-border text-primary" role="status">
                     <span class="visually-hidden">Loading...</span>
                 </div>
-                <div class="mt-3 text-muted">Loading pipelines...</div>
+                <div class="mt-3 text-muted">@_loadingMessage</div>
             </div>
         }
         @* Error State *@
-        else if (!string.IsNullOrWhiteSpace(_errorMessage)) {
+        else if (!string.IsNullOrWhiteSpace(_errorMessage) && !_isProgressiveLoading) {
             <div class="alert alert-danger" role="alert">
                 <i class="fa fa-exclamation-triangle me-2"></i>
                 @_errorMessage
@@ -586,8 +755,8 @@
                 </button>
             </div>
         }
-        @* Content *@
-        else {
+        @* Content - show when we have pipelines OR during progressive loading with pipelines *@
+        @if ((_dashboardResponse?.Pipelines?.Any() == true) || (!_loading && !_isProgressiveLoading && string.IsNullOrWhiteSpace(_errorMessage))) {
             @* Filter Bar *@
             <FreeCICD_App_UI_Dashboard_FilterBar
                 SearchTerm="@_searchTerm"
@@ -650,7 +819,8 @@
                             <div class="col">
                                 <FreeCICD_App_UI_Dashboard_PipelineCard Pipeline="@pipeline"
                                     OnEdit="@(() => OnEditPipeline(pipeline))"
-                                    OnView="@(() => OnViewPipeline(pipeline))" />
+                                    OnView="@(() => OnViewPipeline(pipeline))"
+                                    OnCopyYaml="@OnCopyYaml" />
                             </div>
                         }
                     </div>
@@ -663,7 +833,8 @@
                                 SortAscending="@GetCurrentSortAscending()"
                                 OnSortChanged="@OnTableSortChanged"
                                 OnEdit="@OnEditPipeline"
-                                OnView="@OnViewPipeline" />
+                                OnView="@OnViewPipeline"
+                                OnCopyYaml="@OnCopyYaml" />
                         </div>
                     </div>
                 }
@@ -737,7 +908,8 @@
                             <div class="col">
                                 <FreeCICD_App_UI_Dashboard_PipelineCard Pipeline="@pipeline"
                                     OnEdit="@(() => OnEditPipeline(pipeline))"
-                                    OnView="@(() => OnViewPipeline(pipeline))" />
+                                    OnView="@(() => OnViewPipeline(pipeline))"
+                                    OnCopyYaml="@OnCopyYaml" />
                             </div>
                         }
                     </div>
@@ -749,7 +921,8 @@
                             SortAscending="@GetCurrentSortAscending()"
                             OnSortChanged="@OnTableSortChanged"
                             OnEdit="@OnEditPipeline"
-                            OnView="@OnViewPipeline" />
+                            OnView="@OnViewPipeline"
+                            OnCopyYaml="@OnCopyYaml" />
                     </div>
                 }
             }

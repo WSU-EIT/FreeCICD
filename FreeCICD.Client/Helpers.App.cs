@@ -1,4 +1,4 @@
-using System.Net.NetworkInformation;
+﻿using System.Net.NetworkInformation;
 
 namespace FreeCICD.Client;
 
@@ -10,6 +10,7 @@ public static partial class Helpers
                 { "fa:fa-solid fa-home", new List<string> { "IconName1", "IconName2" }},
                 { "fa:fa-rocket", new List<string> { "Pipelines", "PipelineDashboard" }},
                 { "fa:fa-magic", new List<string> { "PipelineWizard", "Wizard" }},
+                { "fa:fa-plug", new List<string> { "Plug", "SignalR" }},
             };
 
             return icons;
@@ -120,6 +121,16 @@ public static partial class Helpers
             // Add any app-specific admin menu items here.
             var output = new List<DataObjects.MenuItem>();
 
+            // SignalR Connections viewer (App Admin only)
+            output.Add(new DataObjects.MenuItem {
+                Title = "SignalR Connections",
+                Icon = "Plug",
+                PageNames = new List<string> { "signalr-connections" },
+                SortOrder = 9000,
+                url = Helpers.BuildUrl("Admin/SignalRConnections"),
+                AppAdminOnly = true,
+            });
+
             return output;
         }
     }
@@ -134,6 +145,48 @@ public static partial class Helpers
             var userId = update.UserId;
 
             switch (update.UpdateType) {
+                case DataObjects.SignalRUpdateType.AdminAlert:
+                    // Admin sent an alert message - show it as a toast
+                    var alertMessage = update.Message;
+                    var senderName = update.UserDisplayName ?? "Admin";
+                    
+                    // Parse message type from ObjectAsString
+                    var messageType = MessageType.Info;
+                    if (!string.IsNullOrWhiteSpace(update.ObjectAsString)) {
+                        messageType = update.ObjectAsString.ToLower() switch {
+                            "primary" => MessageType.Primary,
+                            "secondary" => MessageType.Secondary,
+                            "success" => MessageType.Success,
+                            "danger" => MessageType.Danger,
+                            "warning" => MessageType.Warning,
+                            "info" => MessageType.Info,
+                            "light" => MessageType.Light,
+                            "dark" => MessageType.Dark,
+                            _ => MessageType.Info
+                        };
+                    }
+                    
+                    // Determine auto-hide (default true)
+                    bool autoHide = true;
+                    if (update.Object != null) {
+                        try {
+                            var objJson = System.Text.Json.JsonSerializer.Serialize(update.Object);
+                            var obj = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(objJson);
+                            if (obj != null && obj.TryGetValue("AutoHide", out var autoHideVal)) {
+                                if (autoHideVal is System.Text.Json.JsonElement jsonEl) {
+                                    autoHide = jsonEl.GetBoolean();
+                                } else if (autoHideVal is bool boolVal) {
+                                    autoHide = boolVal;
+                                }
+                            }
+                        } catch { }
+                    }
+                    
+                    // Show the message with sender info
+                    var displayMessage = $"<strong>📢 {senderName}:</strong> {alertMessage}";
+                    Model.AddMessage(displayMessage, messageType, autoHide);
+                    break;
+                    
                 default:
                     // Since this is called only from the default method in the main handler here,
                     // we can assume that the update type is not recognized by this app.

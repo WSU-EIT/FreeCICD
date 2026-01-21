@@ -29,6 +29,7 @@ public partial interface IDataAccess
 
     // Git File Methods
     Task<DataObjects.GitUpdateResult> CreateOrUpdateGitFile(string projectId, string repoId, string branch, string filePath, string fileContent, string pat, string orgName, string? connectionId = null);
+    Task<DataObjects.GitUpdateResult> CreateOrUpdateGitFileWithMessage(string projectId, string repoId, string branch, string filePath, string fileContent, string commitMessage, string pat, string orgName, string? connectionId = null);
     Task<string> GetGitFile(string filePath, string projectId, string repoId, string branch, string pat, string orgName, string? connectionId = null);
 
     // Pipeline Methods

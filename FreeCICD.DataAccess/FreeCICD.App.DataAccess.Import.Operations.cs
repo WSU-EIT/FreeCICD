@@ -498,6 +498,29 @@ public partial class DataAccess
             result.Success = true;
             result.DetailedStatus = $"Pushed {filesToPush.Count} files to branch '{targetBranchName}'.";
 
+            // === Phase 1: GitHub Sync - Populate PR URL for existing repos ===
+            // If we imported to an existing repo, get the default branch and build the PR URL
+            if (result.RepoExisted) {
+                try {
+                    var repo = await gitClient.GetRepositoryAsync(projectId, result.RepoId);
+                    result.DefaultBranch = repo.DefaultBranch?.Replace("refs/heads/", "") ?? "main";
+                    
+                    // Only generate PR URL if we imported to a different branch than default
+                    if (!string.Equals(targetBranchName, result.DefaultBranch, StringComparison.OrdinalIgnoreCase)) {
+                        // Build the PR creation URL
+                        // Format: https://dev.azure.com/{org}/{project}/_git/{repo}/pullrequestcreate?sourceRef={branch}&targetRef={default}
+                        result.PullRequestCreateUrl = $"https://dev.azure.com/{orgName}/" +
+                            $"{Uri.EscapeDataString(result.ProjectName!)}/_git/" +
+                            $"{Uri.EscapeDataString(result.RepoName!)}/pullrequestcreate" +
+                            $"?sourceRef={Uri.EscapeDataString(targetBranchName)}" +
+                            $"&targetRef={Uri.EscapeDataString(result.DefaultBranch)}";
+                    }
+                } catch {
+                    // Fallback - still successful import, just no PR URL
+                    result.DefaultBranch = "main";
+                }
+            }
+
             return result;
 
         } catch (Exception ex) {

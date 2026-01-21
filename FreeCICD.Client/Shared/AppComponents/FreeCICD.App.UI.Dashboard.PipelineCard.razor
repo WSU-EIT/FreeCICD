@@ -152,12 +152,25 @@
                 <i class="fa fa-list me-1"></i>
                 Runs
             </a>
-            <a href="@Pipeline?.ResourceUrl" target="_blank" 
-               class="btn btn-sm btn-outline-secondary flex-grow-1" 
-               title="View in Azure DevOps">
-                <i class="fa fa-external-link me-1"></i>
-                View
-            </a>
+            @* More actions dropdown *@
+            <div class="dropdown">
+                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" 
+                        data-bs-toggle="dropdown" aria-expanded="false" title="More actions">
+                    <i class="fa fa-ellipsis-v"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li>
+                        <a class="dropdown-item" href="@Pipeline?.ResourceUrl" target="_blank">
+                            <i class="fa fa-external-link me-2"></i>View in Azure DevOps
+                        </a>
+                    </li>
+                    <li>
+                        <button class="dropdown-item" @onclick="OnCopyYamlClick" @onclick:stopPropagation="true">
+                            <i class="fa fa-clipboard me-2"></i>Copy YAML
+                        </button>
+                    </li>
+                </ul>
+            </div>
         </div>
     </div>
 </div>
@@ -166,11 +179,19 @@
     [Parameter] public DataObjects.PipelineListItem? Pipeline { get; set; }
     [Parameter] public EventCallback OnEdit { get; set; }
     [Parameter] public EventCallback OnView { get; set; }
+    [Parameter] public EventCallback<DataObjects.PipelineListItem> OnCopyYaml { get; set; }
 
     private async Task OnEditClick()
     {
         if (OnEdit.HasDelegate) {
             await OnEdit.InvokeAsync();
+        }
+    }
+
+    private async Task OnCopyYamlClick()
+    {
+        if (OnCopyYaml.HasDelegate && Pipeline != null) {
+            await OnCopyYaml.InvokeAsync(Pipeline);
         }
     }
 

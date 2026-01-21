@@ -1,4 +1,4 @@
-# 001 — Roleplay: Discussions and Planning
+﻿# 001 — Roleplay: Discussions and Planning
 
 > **Document ID:** 001  
 > **Category:** Guide  
@@ -144,7 +144,7 @@ Use Planning mode to **execute** — when you know what to do and want to not mi
 | **Implementer** | Turn into tasks | What modules touched? Smallest slice? Risks? |
 | **Skeptic** | Break it early | Edge cases? Failure modes? Regressions? |
 | **Operator** | Deployability | Config needed? Logs/metrics? Rollback? |
-| **Doc Keeper** | Keep docs aligned | What docs update? ADR needed? |
+| **Doc Keeper** | Keep docs aligned | What docs update? ADR needed? (Y/N) |
 
 ---
 
@@ -224,6 +224,28 @@ These apply to docs AND code:
 | Target | ≤300 | Ideal |
 | Soft max | 500 | Consider splitting |
 | Hard max | 600 | Must split or justify |
+
+---
+
+## File Naming Rules
+
+**MANDATORY for all new files:** `{ProjectName}.App.{Feature}.{Extension}`
+
+| Creating... | Name it... |
+|-------------|-----------|
+| New page | `FreeManager.App.EntityWizard.razor` |
+| Code partial | `FreeManager.App.EntityWizard.State.cs` |
+| New entity | `FreeManager.App.FMProject.cs` |
+| New DTOs | `FreeManager.App.DataObjects.Projects.cs` |
+| Base class extension | `DataController.App.FreeManager.cs` |
+
+**Blazor component references:**
+```razor
+@* File: FreeManager.App.EntityWizard.razor → Class: FreeManager_App_EntityWizard *@
+<FreeManager_App_EntityWizard />
+```
+
+**Full rules:** See `docs/004_styleguide.md` → "File Organization"
 
 ---
 

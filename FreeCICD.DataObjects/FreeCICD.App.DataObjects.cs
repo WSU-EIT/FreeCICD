@@ -326,6 +326,148 @@ public partial class DataObjects
         public string? ConnectionId { get; set; }
     }
 
+    // ========================================================
+    // SignalR Connection Tracking Data Models
+    // ========================================================
+
+    /// <summary>
+    /// Represents an active SignalR connection with metadata.
+    /// </summary>
+    public class SignalRConnectionInfo
+    {
+        public string ConnectionId { get; set; } = string.Empty;
+        public string? UserId { get; set; }
+        public string? UserIdentifier { get; set; }
+        public string HubName { get; set; } = string.Empty;
+        public DateTime ConnectedAt { get; set; }
+        public DateTime? LastActivityAt { get; set; }
+        public List<string> Groups { get; set; } = new();
+        public int MessageCount { get; set; }
+        
+        // Extended connection info (from HTTP context)
+        public string? IpAddress { get; set; }
+        public string? UserAgent { get; set; }
+        public string? TransportType { get; set; }
+        
+        /// <summary>
+        /// Browser fingerprint for linking multiple connections from the same browser.
+        /// </summary>
+        public string? Fingerprint { get; set; }
+        
+        // Client-reported state (sent periodically from browser)
+        
+        /// <summary>
+        /// Current page/route the user is viewing (e.g., "/Wizard", "/Pipelines").
+        /// </summary>
+        public string? CurrentPage { get; set; }
+        
+        /// <summary>
+        /// Whether the browser window/tab has focus.
+        /// </summary>
+        public bool HasFocus { get; set; } = true;
+        
+        /// <summary>
+        /// Whether the document is visible (not minimized/hidden tab).
+        /// </summary>
+        public bool IsVisible { get; set; } = true;
+        
+        /// <summary>
+        /// Screen width in pixels.
+        /// </summary>
+        public int? ScreenWidth { get; set; }
+        
+        /// <summary>
+        /// Screen height in pixels.
+        /// </summary>
+        public int? ScreenHeight { get; set; }
+        
+        /// <summary>
+        /// Browser timezone (e.g., "America/Los_Angeles").
+        /// </summary>
+        public string? Timezone { get; set; }
+        
+        /// <summary>
+        /// Browser language preference (e.g., "en-US").
+        /// </summary>
+        public string? Language { get; set; }
+        
+        /// <summary>
+        /// Device type detected from user agent.
+        /// </summary>
+        public string? DeviceType { get; set; }
+        
+        /// <summary>
+        /// Browser name parsed from user agent.
+        /// </summary>
+        public string? BrowserName { get; set; }
+        
+        /// <summary>
+        /// Last time client state was updated.
+        /// </summary>
+        public DateTime? LastStateUpdate { get; set; }
+        
+        /// <summary>
+        /// Duration since connection was established.
+        /// </summary>
+        public TimeSpan? ConnectionDuration => DateTime.UtcNow - ConnectedAt;
+    }
+
+    /// <summary>
+    /// Client state update sent from browser to hub.
+    /// </summary>
+    public class SignalRClientState
+    {
+        public string? CurrentPage { get; set; }
+        public bool HasFocus { get; set; }
+        public bool IsVisible { get; set; }
+        public int? ScreenWidth { get; set; }
+        public int? ScreenHeight { get; set; }
+        public string? Timezone { get; set; }
+        public string? Language { get; set; }
+    }
+
+    /// <summary>
+    /// Request to send an alert message to a specific SignalR connection.
+    /// </summary>
+    public class SendAlertRequest
+    {
+        public string ConnectionId { get; set; } = string.Empty;
+        public string Message { get; set; } = string.Empty;
+        public string MessageType { get; set; } = "Info"; // Primary, Secondary, Success, Danger, Warning, Info, Light, Dark
+        public bool AutoHide { get; set; } = true;
+    }
+
+    /// <summary>
+    /// Response from sending an alert message.
+    /// </summary>
+    public class SendAlertResponse
+    {
+        public bool Success { get; set; }
+        public string? ErrorMessage { get; set; }
+        public string? ConnectionId { get; set; }
+    }
+
+    /// <summary>
+    /// Response containing all active SignalR connections grouped by hub.
+    /// </summary>
+    public class SignalRConnectionsResponse
+    {
+        public bool Success { get; set; }
+        public string? ErrorMessage { get; set; }
+        public List<SignalRHubInfo> Hubs { get; set; } = new();
+        public int TotalConnectionCount { get; set; }
+    }
+
+    /// <summary>
+    /// Information about a SignalR hub and its connections.
+    /// </summary>
+    public class SignalRHubInfo
+    {
+        public string HubName { get; set; } = string.Empty;
+        public List<SignalRConnectionInfo> Connections { get; set; } = new();
+        public int ConnectionCount => Connections.Count;
+    }
+
     public class TestThing
     {
         public Guid TestThingId { get; set; } = Guid.NewGuid();
@@ -891,6 +1033,21 @@ public partial class DataObjects
         
         /// <summary>Whether the repo already existed (vs created new).</summary>
         public bool RepoExisted { get; set; }
+        
+        // === Phase 1: GitHub Sync - PR Creation Link ===
+        
+        /// <summary>
+        /// Default branch of the target repository (e.g., "main" or "master").
+        /// Used as the target branch for pull requests.
+        /// </summary>
+        public string? DefaultBranch { get; set; }
+        
+        /// <summary>
+        /// URL to create a pull request in Azure DevOps from ImportedBranch to DefaultBranch.
+        /// Only populated when RepoExisted=true and import was successful.
+        /// Format: https://dev.azure.com/{org}/{project}/_git/{repo}/pullrequestcreate?sourceRef={branch}&amp;targetRef={default}
+        /// </summary>
+        public string? PullRequestCreateUrl { get; set; }
     }
 
     /// <summary>

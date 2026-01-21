@@ -361,3 +361,6 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+/FreeCICD/IISInfo_AzureCMS.json
+/FreeCICD/IISInfo_AzureDev.json
+/FreeCICD/IISInfo_AzureProd.json

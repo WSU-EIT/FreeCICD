@@ -1,50 +1,12 @@
-﻿@page "/Wizard"
-@page "/{TenantCode}/Wizard"
+﻿@* 
+    This file was originally used for the /Wizard route.
+    Routing has been moved to: Pages/App/FreeCICD.App.Pages.Wizard.razor
+    
+    This file can be repurposed for other uses or kept as a placeholder.
+    See docs/300_dashboard_deep_dive.md for page architecture documentation.
+*@
+
+@page "/LegacyIndex"
 @inject BlazorDataModel Model
-@implements IDisposable
 
-@if (Model.Loaded && Model.LoggedIn && Model.View == _pageName) {
-    <FreeCICD_App_UI_Wizard />
-}
-
-@code {
-    [Parameter] public string? TenantCode { get; set; }
-
-    protected bool _loadedData = false;
-    protected string _pageName = "home";
-
-    public void Dispose()
-    {
-        Model.OnChange -= OnDataModelUpdated;
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender) {
-            Model.TenantCodeFromUrl = TenantCode;
-        }
-
-        if (Model.Loaded) {
-            if (Model.LoggedIn) {
-                if (!_loadedData) {
-                    _loadedData = true;
-                    await Helpers.ValidateUrl(TenantCode, true);
-                }
-            } else {
-                Helpers.NavigateToLogin();
-            }
-        }
-    }
-
-    protected void OnDataModelUpdated() {
-        if (Model.View == _pageName) {
-            StateHasChanged();
-        }
-    }
-
-    protected override void OnInitialized()
-    {
-        Model.View = _pageName;
-        Model.OnChange += StateHasChanged;
-    }
-}
+@* Placeholder - no content *@

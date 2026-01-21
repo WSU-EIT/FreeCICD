@@ -1,4 +1,4 @@
-@* FreeCICD Pipeline Wizard Component *@
+ï»¿@* FreeCICD Pipeline Wizard Component *@
 @* This component contains all FreeCICD-specific UI logic *@
 @* It is referenced from Index.App.razor to keep base files clean for upgrades *@
 
@@ -490,7 +490,7 @@
             PipelineId = SelectedPipelineId.GetValueOrDefault(0),
             PipelineName = SelectedPipelineId > 0 ? string.Empty : NewPipelineName ?? "",
             EnvironmentSettings = EnvSettings.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
-            CsProjectFile = SelectedCsprojPath ?? "",
+            CsProjectFile = (SelectedCsprojPath ?? "").TrimStart('/', '\\'),
             ConnectionId = Model.SignalrClientRegistration?.ConnectionId
         };
 
@@ -550,7 +550,7 @@
                     } else { SelectedPipelineId = 0; ExistingYamlContent = ""; }
                     NewYamlContent = string.Empty;
                     StateHasChanged();
-                    _loadingMessages.Insert(0, new LoadingMessage { Message = "Generating YAML preview…", Created = DateTime.UtcNow });
+                    _loadingMessages.Insert(0, new LoadingMessage { Message = "Generating YAML previewâ€¦", Created = DateTime.UtcNow });
                     StateHasChanged();
                     try {
                         var response = await Helpers.GetOrPost<string>($"{DataObjects.Endpoints.DevOps.PreviewDevOpsYmlFileContents}", DevOpsPipelineRequest);
@@ -570,7 +570,7 @@
                 StateHasChanged();
                 
                 try {
-                    _loadingMessages.Insert(0, new LoadingMessage { Message = "Saving pipeline… please don't navigate away.", Created = DateTime.UtcNow });
+                    _loadingMessages.Insert(0, new LoadingMessage { Message = "Saving pipelineâ€¦ please don't navigate away.", Created = DateTime.UtcNow });
                     StateHasChanged();
                     
                     var createOrUpdateResult = await Helpers.GetOrPost<DataObjects.BuildDefinition>($"{DataObjects.Endpoints.DevOps.CreateOrUpdateDevOpsPipeline}", DevOpsPipelineRequest);
@@ -1124,10 +1124,31 @@
             _importedFields.Add("SelectedBranch");
         }
 
-        // Apply csproj file if found
+        // Apply csproj file if found - try to match against loaded file list
         if (!string.IsNullOrWhiteSpace(settings.SelectedCsprojPath))
         {
-            SelectedCsprojPath = settings.SelectedCsprojPath;
+            var parsedPath = settings.SelectedCsprojPath.TrimStart('/', '\\');
+            
+            // If files are loaded, find the actual path from the file list
+            if (SelectedBranchInfo?.Files != null)
+            {
+                var matchingFile = SelectedBranchInfo.Files.FirstOrDefault(f =>
+                    f.FileType.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) &&
+                    f.Path.TrimStart('/', '\\').Equals(parsedPath, StringComparison.OrdinalIgnoreCase));
+                
+                if (matchingFile != null)
+                {
+                    SelectedCsprojPath = matchingFile.Path; // Use the actual path from the file list
+                }
+                else
+                {
+                    SelectedCsprojPath = settings.SelectedCsprojPath; // Fallback to parsed path
+                }
+            }
+            else
+            {
+                SelectedCsprojPath = settings.SelectedCsprojPath;
+            }
             _importedFields.Add("SelectedCsprojPath");
         }
 

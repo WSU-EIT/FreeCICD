@@ -1,4 +1,4 @@
-namespace FreeCICD;
+﻿namespace FreeCICD;
 
 public partial class DataObjects
 {
@@ -25,6 +25,15 @@ public partial class DataObjects
         // FreeCICD-specific SignalR update types
         public const string RegisterSignalR = "RegisterSignalR";
         public const string LoadingDevOpsInfoStatusUpdate = "LoadingDevOpsInfoStatusUpdate";
+        
+        // Admin alert message sent to specific connection
+        public const string AdminAlert = "AdminAlert";
+        
+        // Progressive Dashboard Loading - Pipeline data updates
+        public const string DashboardPipelinesSkeleton = "DashboardPipelinesSkeleton";
+        public const string DashboardPipelineUpdate = "DashboardPipelineUpdate";
+        public const string DashboardPipelineBatch = "DashboardPipelineBatch";
+        public const string DashboardLoadComplete = "DashboardLoadComplete";
     }
 
     //public enum SignalRUpdateType

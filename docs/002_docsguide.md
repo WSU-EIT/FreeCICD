@@ -1,10 +1,12 @@
 # 002 — Docs Guide: Writing and Organizing Documentation
 
-> **Document ID:** 002  
-> **Category:** Guide  
-> **Purpose:** How we name, number, format, and maintain docs.  
-> **Audience:** Anyone writing docs.  
+> **Document ID:** 002
+> **Category:** Guide
+> **Purpose:** How we name, number, format, and maintain docs.
+> **Audience:** Anyone writing docs.
 > **Outcome:** 📖 Consistent, discoverable, maintainable documentation.
+
+**Scope:** This documentation covers FreeCRM patterns and conventions. While housed in FreeManager, these docs serve the entire FreeCRM ecosystem.
 
 ---
 

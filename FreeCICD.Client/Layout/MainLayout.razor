@@ -1,4 +1,4 @@
-@using Blazored.LocalStorage
+﻿@using Blazored.LocalStorage
 @using System.Globalization
 @using Microsoft.AspNetCore.SignalR.Client
 @implements IAsyncDisposable
@@ -182,21 +182,24 @@
 <RadzenTooltip />
 
 @code {
-    private bool hubConfigured = false;
-    private HubConnection? hubConnection;
+private bool hubConfigured = false;
+private HubConnection? hubConnection;
 
-    protected bool DeletedRecordCountsLoaded = false;
-    protected bool FirstRun = true;
-    protected string LastUserPreferencesJson = String.Empty;
-    protected bool Loading = true;
-    protected bool StartupValidated = false;
-    protected System.Threading.Timer? timer;
-    protected System.Threading.Timer? updateTimer;
-    protected bool Validating = false;
-    protected DataObjects.VersionInfo versionInfo = new DataObjects.VersionInfo();
-    protected bool versionInfoLoaded = false;
+protected bool DeletedRecordCountsLoaded = false;
+protected bool FirstRun = true;
+protected string LastUserPreferencesJson = String.Empty;
+protected bool Loading = true;
+protected bool StartupValidated = false;
+protected System.Threading.Timer? timer;
+protected System.Threading.Timer? updateTimer;
+protected System.Threading.Timer? clientStateTimer;
+protected string? lastClientStateView;
+protected bool? lastClientStateFocus;
+protected bool Validating = false;
+protected DataObjects.VersionInfo versionInfo = new DataObjects.VersionInfo();
+protected bool versionInfoLoaded = false;
 
-    protected DotNetObjectReference<MainLayout>? dotNetHelper;
+protected DotNetObjectReference<MainLayout>? dotNetHelper;
 
     public void Dispose() {
         dotNetHelper?.Dispose();
@@ -242,6 +245,11 @@
         updateTimer = new System.Threading.Timer(async (object? stateInfo) => {
             await CheckForUpdates();
         }, new System.Threading.AutoResetEvent(false), 0, 10000);
+
+        // Timer to send SignalR client state updates (every 5 seconds)
+        clientStateTimer = new System.Threading.Timer(async (object? stateInfo) => {
+            await SendClientStateIfChanged();
+        }, new System.Threading.AutoResetEvent(false), 5000, 5000);
     }
 
     protected async override Task OnAfterRenderAsync(bool firstRender) {
@@ -278,6 +286,7 @@
 
         Loading = false;
 
+
         if (Model.Loaded) {
             if (Model.LoggedIn && !hubConfigured) {
                 hubConfigured = true;
@@ -293,8 +302,23 @@
                 });
 
                 await hubConnection.StartAsync();
+                
+                // Store connection ID for display in SignalR admin page
+                if (hubConnection.ConnectionId != null) {
+                    Model.SignalrClientRegistration = new DataObjects.SignalrClientRegistration {
+                        ConnectionId = hubConnection.ConnectionId
+                    };
+                }
 
                 await hubConnection.InvokeAsync("JoinTenantId", Model.TenantId);
+                
+                // Register browser fingerprint to link connections from same browser
+                if (!string.IsNullOrWhiteSpace(Model.Fingerprint)) {
+                    await hubConnection.InvokeAsync("RegisterFingerprint", Model.Fingerprint);
+                }
+                
+                // Send initial client state
+                await SendClientState();
             }
 
             if (!versionInfoLoaded) {
@@ -304,6 +328,52 @@
                     versionInfoLoaded = true;
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Sends current client state to the SignalR hub.
+    /// </summary>
+    protected async Task SendClientState()
+    {
+        if (hubConnection?.State == HubConnectionState.Connected) {
+            try {
+                var state = new DataObjects.SignalRClientState {
+                    CurrentPage = Model.View ?? NavManager.ToBaseRelativePath(NavManager.Uri),
+                    HasFocus = await jsRuntime.InvokeAsync<bool>("eval", "document.hasFocus()"),
+                    IsVisible = await jsRuntime.InvokeAsync<bool>("eval", "document.visibilityState === 'visible'"),
+                    ScreenWidth = await jsRuntime.InvokeAsync<int>("eval", "window.screen.width"),
+                    ScreenHeight = await jsRuntime.InvokeAsync<int>("eval", "window.screen.height"),
+                    Timezone = await jsRuntime.InvokeAsync<string>("eval", "Intl.DateTimeFormat().resolvedOptions().timeZone"),
+                    Language = await jsRuntime.InvokeAsync<string>("eval", "navigator.language")
+                };
+                
+                await hubConnection.InvokeAsync("UpdateClientState", state);
+            } catch {
+                // Ignore errors - best effort
+            }
+        }
+    }
+
+    /// <summary>
+    /// Sends client state only when it has changed (debounced).
+    /// </summary>
+    protected async Task SendClientStateIfChanged()
+    {
+        if (hubConnection?.State != HubConnectionState.Connected) return;
+        
+        try {
+            var currentView = Model.View;
+            var currentFocus = await jsRuntime.InvokeAsync<bool>("eval", "document.hasFocus()");
+            
+            // Only send if view or focus changed
+            if (currentView != lastClientStateView || currentFocus != lastClientStateFocus) {
+                lastClientStateView = currentView;
+                lastClientStateFocus = currentFocus;
+                await SendClientState();
+            }
+        } catch {
+            // Ignore errors
         }
     }
 

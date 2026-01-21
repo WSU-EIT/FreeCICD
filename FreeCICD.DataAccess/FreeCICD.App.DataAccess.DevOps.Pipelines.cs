@@ -198,10 +198,13 @@ public partial class DataAccess
     public async Task<string> GeneratePipelineVariableReplacementText(string projectName, string csProjectFile, Dictionary<GlobalSettings.EnvironmentType, DataObjects.EnvSetting> environmentSettings)
     {
         string output = string.Empty;
+        
+        // Trim leading slashes from csproj path to prevent path issues
+        var cleanCsProjectFile = (csProjectFile ?? "").TrimStart('/', '\\');
 
         var variableDictionary = new Dictionary<string, string>() {
             { "CI_ProjectName", projectName ?? "" },
-            { "CI_BUILD_CsProjectPath", csProjectFile ?? "" },
+            { "CI_BUILD_CsProjectPath", cleanCsProjectFile },
             { "CI_BUILD_Namespace", "" }
         };
         var sb = new System.Text.StringBuilder();

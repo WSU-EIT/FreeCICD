@@ -525,4 +525,150 @@ public partial class DataController
     );
 
     #endregion Import Request DTOs
+
+    #region SignalR Admin Endpoints
+
+    /// <summary>
+    /// Gets all active SignalR connections across all hubs.
+    /// Requires admin access.
+    /// </summary>
+    [HttpGet("~/api/Admin/SignalRConnections")]
+    [Authorize(Policy = Policies.Admin)]
+    public ActionResult<DataObjects.SignalRConnectionsResponse> GetSignalRConnections()
+    {
+        var response = new DataObjects.SignalRConnectionsResponse {
+            Success = true
+        };
+
+        try {
+            // Get connections from freecicdHub
+            var connections = Hubs.freecicdHub.GetActiveConnectionsList();
+            
+            var hubInfo = new DataObjects.SignalRHubInfo {
+                HubName = "freecicdHub",
+                Connections = connections
+            };
+            
+            response.Hubs.Add(hubInfo);
+            response.TotalConnectionCount = connections.Count;
+        } catch (Exception ex) {
+            response.Success = false;
+            response.ErrorMessage = $"Error retrieving connections: {ex.Message}";
+        }
+
+        return Ok(response);
+    }
+
+    /// <summary>
+    /// Sends an alert message to a specific SignalR connection.
+    /// Requires admin access.
+    /// </summary>
+    [HttpPost("~/api/Admin/SendAlert")]
+    [Authorize(Policy = Policies.Admin)]
+    public async Task<ActionResult<DataObjects.SendAlertResponse>> SendAlertToConnection([FromBody] DataObjects.SendAlertRequest request)
+    {
+        var response = new DataObjects.SendAlertResponse {
+            ConnectionId = request.ConnectionId
+        };
+
+        if (string.IsNullOrWhiteSpace(request.ConnectionId)) {
+            response.Success = false;
+            response.ErrorMessage = "Connection ID is required.";
+            return BadRequest(response);
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Message)) {
+            response.Success = false;
+            response.ErrorMessage = "Message is required.";
+            return BadRequest(response);
+        }
+
+        try {
+            // Check if connection exists
+            if (!Hubs.freecicdHub.ConnectionExists(request.ConnectionId)) {
+                response.Success = false;
+                response.ErrorMessage = "Connection not found. The user may have disconnected.";
+                return NotFound(response);
+            }
+
+            // Create the SignalR update
+            var update = new DataObjects.SignalRUpdate {
+                UpdateType = DataObjects.SignalRUpdateType.AdminAlert,
+                Message = request.Message,
+                UserId = CurrentUser.UserId,
+                UserDisplayName = CurrentUser.DisplayName ?? "Admin",
+                ObjectAsString = request.MessageType,
+                Object = new {
+                    AutoHide = request.AutoHide,
+                    MessageType = request.MessageType,
+                    SenderName = CurrentUser.DisplayName ?? "Admin"
+                }
+            };
+
+            // Send to specific connection using injected hub context
+            if (_signalR != null) {
+                await _signalR.Clients.Client(request.ConnectionId).SignalRUpdate(update);
+                response.Success = true;
+            } else {
+                response.Success = false;
+                response.ErrorMessage = "SignalR hub context not available.";
+            }
+        } catch (Exception ex) {
+            response.Success = false;
+            response.ErrorMessage = $"Error sending alert: {ex.Message}";
+            return StatusCode(500, response);
+        }
+
+        return Ok(response);
+    }
+
+    /// <summary>
+    /// Sends an alert message to all connected clients.
+    /// Requires admin access.
+    /// </summary>
+    [HttpPost("~/api/Admin/BroadcastAlert")]
+    [Authorize(Policy = Policies.Admin)]
+    public async Task<ActionResult<DataObjects.SendAlertResponse>> BroadcastAlert([FromBody] DataObjects.SendAlertRequest request)
+    {
+        var response = new DataObjects.SendAlertResponse();
+
+        if (string.IsNullOrWhiteSpace(request.Message)) {
+            response.Success = false;
+            response.ErrorMessage = "Message is required.";
+            return BadRequest(response);
+        }
+
+        try {
+            // Create the SignalR update
+            var update = new DataObjects.SignalRUpdate {
+                UpdateType = DataObjects.SignalRUpdateType.AdminAlert,
+                Message = request.Message,
+                UserId = CurrentUser.UserId,
+                UserDisplayName = CurrentUser.DisplayName ?? "Admin",
+                ObjectAsString = request.MessageType,
+                Object = new {
+                    AutoHide = request.AutoHide,
+                    MessageType = request.MessageType,
+                    SenderName = CurrentUser.DisplayName ?? "Admin"
+                }
+            };
+
+            // Send to all clients using injected hub context
+            if (_signalR != null) {
+                await _signalR.Clients.All.SignalRUpdate(update);
+                response.Success = true;
+            } else {
+                response.Success = false;
+                response.ErrorMessage = "SignalR hub context not available.";
+            }
+        } catch (Exception ex) {
+            response.Success = false;
+            response.ErrorMessage = $"Error broadcasting alert: {ex.Message}";
+            return StatusCode(500, response);
+        }
+
+        return Ok(response);
+    }
+
+    #endregion SignalR Admin Endpoints
 }

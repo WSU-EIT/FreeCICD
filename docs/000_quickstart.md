@@ -32,16 +32,14 @@
 2. **READ IN FULL:** `docs/001_roleplay.md` (discussion + planning)
 3. **READ IN FULL:** `docs/002_docsguide.md` (standards)
 4. **SKIM:** `docs/003_templates.md` (grab templates as needed)
-5. **SCAN:** `docs/dashboard/` folder for dashboard docs
-6. **SCAN:** `docs/wizard/` folder for wizard docs
-7. **SCAN:** Any other docs — read headers to understand purpose
+5. **SCAN:** Any other docs — read headers to understand purpose
 
 **Confirm:**
 ```
 ✓ Startup complete. 
   Read: 000, 001, 002
   Skimmed: 003 (templates)
-  Scanned: dashboard/, wizard/
+  Scanned: [X] other docs
   Ready to: [user's request]
 ```
 
@@ -60,10 +58,10 @@
 When user says "sitrep" / "status":
 
 ```
-## Sitrep: FreeCICD
+## Sitrep: <PROJECT_NAME>
 
 **As of:** [date]
-**Purpose:** Azure DevOps CI/CD Pipeline Wizard & Dashboard
+**Purpose:** [one-liner from project]
 
 **Current:** [from tracker doc or "no active sprint"]
 - Task 1: status
@@ -81,13 +79,10 @@ Commands: `build` · `test` · `explore` · `plan [thing]`
 
 When user says "explore" / "deep dive":
 
-1. **READ IN FULL:** All docs in `docs/dashboard/` and `docs/wizard/` folders
-2. **SCAN:** Project files (`.csproj` files in each project)
-3. **READ:** Main entry points:
-   - `FreeCICD/Program.cs` (server)
-   - `FreeCICD.Client/Pages/App/PipelinesPage.App.FreeCICD.razor` (dashboard)
-   - `FreeCICD.Client/Shared/AppComponents/Index.App.FreeCICD.razor` (wizard)
-4. **SAMPLE:** Key components in `FreeCICD.Client/Shared/Wizard/` folder
+1. **READ IN FULL:** All docs in `docs/` folder
+2. **SCAN:** Project files (`.csproj`, `package.json`, etc.)
+3. **READ:** Main entry point (`Program.cs`, `main.py`, etc.)
+4. **SAMPLE:** One model, one endpoint, one UI component
 5. **OUTPUT:** Summary of architecture, tech, and current state
 
 ---
@@ -98,18 +93,55 @@ When user says "explore" / "deep dive":
 
 ## What is This Project?
 
-**Name:** FreeCICD  
-**One-liner:** Azure DevOps CI/CD Pipeline Wizard and Dashboard for automated IIS deployments  
-**Stack:** Blazor WebAssembly + ASP.NET Core + .NET 10  
-**Organization:** Washington State University
+**Name:** FreeManager (FreeCRM Example Extension)
+**One-liner:** Example project extending FreeCRM + comprehensive FreeCRM documentation
+**Stack:** Blazor + C# + .NET 10
+**Fork-friendly:** Keep doc structure, swap toolchain commands.
 
-### Key Features
+---
 
-- **Pipeline Dashboard**: View all Azure DevOps pipelines with filtering, sorting, grouping
-- **Pipeline Wizard**: Step-by-step wizard to create/update YAML pipelines for IIS deployments
-- **Import Existing**: Parse existing pipelines and pre-fill wizard settings
-- **IIS Integration**: Fetch IIS site/app pool info from deployment servers
-- **Real-time Updates**: SignalR for live progress during API operations
+## FreeCRM Ecosystem
+
+This project is part of the FreeCRM ecosystem:
+
+| Project | Status | Description |
+|---------|--------|-------------|
+| **FreeCRM-main** | Public | Base template — authoritative source for all patterns |
+| **FreeCICD** | Public | Example extension — community-contributed CI/CD tooling |
+| **FreeManager** | Public | Example extension — demonstrates extending FreeCRM + houses docs |
+| nForm, Helpdesk4, etc. | Private | Production implementations — referenced but not accessible |
+
+**Namespace Note:** FreeManager uses the original FreeCRM namespace. This is intentional — demonstrates you can fork and extend without renaming. Only rename if you need multiple FreeCRM projects in one solution.
+
+---
+
+## ⚠️ MANDATORY: File Naming Convention
+
+**All new/custom files MUST use this pattern:**
+
+```
+{ProjectName}.App.{Feature}.{OptionalSubFeature}.{Extension}
+```
+
+| Type | Example |
+|------|---------|
+| New page | `FreeManager.App.EntityWizard.razor` |
+| Partial file | `FreeManager.App.EntityWizard.State.cs` |
+| New entity | `FreeManager.App.FMProject.cs` |
+| New DTOs | `FreeManager.App.DataObjects.Projects.cs` |
+| Base extension | `DataController.App.FreeManager.cs` |
+
+**Why this matters:**
+- Find all your code instantly: `find . -name "FreeManager.App.*"`
+- Safe during FreeCRM framework updates
+- Clear separation of base vs custom
+
+**Blazor components:** Dots become underscores in class names:
+- File: `FreeManager.App.EntityWizard.razor`
+- Class: `FreeManager_App_EntityWizard`
+- Usage: `<FreeManager_App_EntityWizard />`
+
+**Full details:** See `docs/004_styleguide.md` → "File Organization"
 
 ---
 
@@ -118,54 +150,57 @@ When user says "explore" / "deep dive":
 | Required | Notes |
 |----------|-------|
 | Git | Latest |
-| .NET SDK | 10.0+ (check `global.json`) |
-| Visual Studio 2022 | Or Rider / VS Code with C# extensions |
-| Azure DevOps Access | PAT with appropriate permissions |
+| SDK | Version in `global.json` or repo config |
+| IDE | VS / Rider / VS Code |
 
 | Optional | When Needed |
 |----------|-------------|
 | Docker | Running dependencies locally |
-| SQL Server | If using local database instead of in-memory |
+| Node.js | Building web assets |
+| `<OTHER>` | `<REASON>` |
 
 ---
 
 ## Setup
 
 ```bash
-git clone https://wsueit.visualstudio.com/FreeCICD/_git/FreeCICD
-cd FreeCICD
-dotnet restore
-dotnet build
+git clone <REPO_URL>
+cd <REPO_FOLDER>
+dotnet restore   # or: npm install, pip install -r requirements.txt
+dotnet build     # or: npm run build, etc.
 ```
 
 ### Run Tests First
 
 ```bash
-dotnet test
+dotnet test      # or: npm test, pytest, etc.
 ```
 
 ---
 
 ## Running Locally
 
-### Visual Studio
-1. Open `FreeCICD.sln`
-2. Set `FreeCICD` (server project) as startup project
-3. Press F5 to run
-
-### Command Line
+### Single App
 
 ```bash
-# Run the server (hosts both API and Blazor WASM client)
-dotnet run --project FreeCICD/FreeCICD.csproj
+dotnet run --project src/<AppProject>
+```
+
+### Web + API (Two Terminals)
+
+```bash
+# Terminal 1 - API
+dotnet run --project src/<ApiProject>
+
+# Terminal 2 - Web
+dotnet run --project src/<WebProject>
 ```
 
 ### Smoke Check
 
-- [ ] App loads at `https://localhost:7271` (or check `Properties/launchSettings.json` for port)
-- [ ] Login page appears (or redirects to login)
-- [ ] After login, Pipeline Dashboard (`/`) or Wizard (`/Wizard`) loads
-- [ ] DevOps data fetches successfully (if configured)
+- [ ] App loads in browser
+- [ ] Health endpoint responds
+- [ ] Basic flow works
 
 ---
 
@@ -174,50 +209,17 @@ dotnet run --project FreeCICD/FreeCICD.csproj
 ### Local Dev (User Secrets)
 
 ```bash
-cd FreeCICD
-dotnet user-secrets init
-dotnet user-secrets set "AzureDevOps:OrgName" "your-org-name"
-dotnet user-secrets set "AzureDevOps:PAT" "your-personal-access-token"
-dotnet user-secrets set "AzureDevOps:ProjectId" "project-guid"
-dotnet user-secrets set "AzureDevOps:RepoId" "repo-guid"
-dotnet user-secrets set "AzureDevOps:Branch" "main"
-```
-
-### appsettings.json Structure
-
-```json
-{
-  "AzureDevOps": {
-    "OrgName": "your-org",
-    "PAT": "your-pat-token",
-    "ProjectId": "project-guid",
-    "RepoId": "repo-guid", 
-    "Branch": "main"
-  }
-}
+dotnet user-secrets set "ConnectionStrings:Default" "<VALUE>"
+dotnet user-secrets set "Auth:Key" "<VALUE>"
+dotnet user-secrets set "<KEY>" "<VALUE>"
 ```
 
 ### Production (Environment Variables)
 
 ```
-AzureDevOps__OrgName=your-org
-AzureDevOps__PAT=your-pat-token
-AzureDevOps__ProjectId=project-guid
+ConnectionStrings__Default=...
+Auth__Key=...
 ```
-
----
-
-## Project Structure Overview
-
-| Project | Purpose |
-|---------|---------|
-| `FreeCICD` | ASP.NET Core server (API, SignalR hub, hosts Blazor) |
-| `FreeCICD.Client` | Blazor WebAssembly client (UI components, pages) |
-| `FreeCICD.DataAccess` | Data access layer (Azure DevOps SDK integration) |
-| `FreeCICD.DataObjects` | Shared data models, DTOs, settings |
-| `FreeCICD.EFModels` | Entity Framework models (database) |
-| `FreeCICD.Plugins` | Plugin/extensibility interfaces |
-| `docs` | Documentation (you are here!) |
 
 ---
 
@@ -227,20 +229,9 @@ AzureDevOps__ProjectId=project-guid
 |------|---------|
 | Build | `dotnet build` |
 | Test | `dotnet test` |
-| Run | `dotnet run --project FreeCICD/FreeCICD.csproj` |
 | Format | `dotnet format` |
-| Clean + Build | `dotnet clean && dotnet build` |
-
----
-
-## Key URLs (when running locally)
-
-| Page | Route | Description |
-|------|-------|-------------|
-| Pipeline Dashboard | `/` or `/Pipelines` | List view of all pipelines |
-| Pipeline Wizard | `/Wizard` | Create/edit pipeline wizard |
-| Login | `/Login` | Authentication |
-| About | `/About` | App info and version |
+| Add Migration | `dotnet ef migrations add <Name> --project src/<DataProject>` |
+| Update DB | `dotnet ef database update --project src/<DataProject>` |
 
 ---
 
@@ -250,14 +241,17 @@ AzureDevOps__ProjectId=project-guid
 |---------|-----|
 | Won't build | Check SDK version matches `global.json`; run `dotnet clean && dotnet build` |
 | Config missing | Re-check user-secrets naming; verify `appsettings.Development.json` |
-| Port in use | Change in `Properties/launchSettings.json` or kill process |
-| Azure DevOps API errors | Verify PAT has correct permissions (Code read, Build read/write) |
-| SignalR connection fails | Check browser console; ensure CORS is configured |
+| Port in use | Change in `launchSettings.json` or kill process |
 
 ---
 
 ## Next Steps
 
-- 📖 Read `docs/dashboard-wizard/README.md` for deep technical documentation
-- 🔧 Check `GlobalSettings.App.FreeCICD.cs` for environment configuration
-- 🧪 Explore the Wizard components in `FreeCICD.Client/Shared/Wizard/`
+1. **Read** docs 001-002 for team patterns and standards
+2. **Run** `sitrep` to see current state
+3. **Use** `plan [feature]` before starting work
+
+---
+
+*Created: `<DATE>`*  
+*Maintained by: [Quality]*

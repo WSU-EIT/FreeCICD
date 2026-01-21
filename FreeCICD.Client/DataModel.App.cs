@@ -1,4 +1,4 @@
-namespace FreeCICD.Client;
+﻿namespace FreeCICD.Client;
 
 public partial class BlazorDataModel
 {
