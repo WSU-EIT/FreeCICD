@@ -163,6 +163,9 @@ namespace FreeCICD
 
             builder.Services.AddTransient<IConfigurationHelper>(x => ActivatorUtilities.CreateInstance<ConfigurationHelper>(x, configurationHelperLoader));
 
+            // Register the background pipeline monitor service
+            builder.Services.AddHostedService<PipelineMonitorService>();
+
             var policies = new List<string> {
                 "AppAdmin",
                 "Admin",

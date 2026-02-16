@@ -108,6 +108,14 @@
 
         @* Trigger Info - Clickable link to pipeline config *@
         <div class="small text-muted d-flex align-items-center gap-2 flex-wrap">
+            @if (!string.IsNullOrWhiteSpace(Pipeline?.TriggeredByAvatarUrl)) {
+                <img src="@Pipeline.TriggeredByAvatarUrl" 
+                     alt="@Pipeline.TriggeredByUser" 
+                     title="@Pipeline.TriggeredByUser" 
+                     class="rounded-circle" 
+                     style="width: 18px; height: 18px; object-fit: cover;" 
+                     onerror="this.style.display='none'" />
+            }
             @if (!string.IsNullOrWhiteSpace(Pipeline?.TriggerReason)) {
                 @if (!string.IsNullOrWhiteSpace(Pipeline?.PipelineConfigUrl)) {
                     <a href="@Pipeline.PipelineConfigUrl" target="_blank"
@@ -120,6 +128,16 @@
                 }
             }
         </div>
+
+        @* Stage Bubbles *@
+        @if (Pipeline?.Stages?.Any() == true) {
+            <div class="small mt-1 d-flex align-items-center gap-0 flex-wrap" style="gap: 2px !important;">
+                <span class="text-muted me-1" style="font-size: 0.8em;">Stages:</span>
+                @foreach (var stage in Pipeline.Stages.OrderBy(s => s.Order)) {
+                    @GetCardStageBubble(stage)
+                }
+            </div>
+        }
 
         @* YAML File *@
         @if (!string.IsNullOrWhiteSpace(Pipeline?.YamlFileName)) {
@@ -160,6 +178,12 @@
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end">
                     <li>
+                        <button class="dropdown-item" @onclick="OnRunPipelineClick" @onclick:stopPropagation="true">
+                            <i class="fa fa-play text-success me-2"></i>Run Pipeline
+                        </button>
+                    </li>
+                    <li><hr class="dropdown-divider" /></li>
+                    <li>
                         <a class="dropdown-item" href="@Pipeline?.ResourceUrl" target="_blank">
                             <i class="fa fa-external-link me-2"></i>View in Azure DevOps
                         </a>
@@ -180,6 +204,7 @@
     [Parameter] public EventCallback OnEdit { get; set; }
     [Parameter] public EventCallback OnView { get; set; }
     [Parameter] public EventCallback<DataObjects.PipelineListItem> OnCopyYaml { get; set; }
+    [Parameter] public EventCallback<DataObjects.PipelineListItem> OnRunPipeline { get; set; }
 
     private async Task OnEditClick()
     {
@@ -192,6 +217,13 @@
     {
         if (OnCopyYaml.HasDelegate && Pipeline != null) {
             await OnCopyYaml.InvokeAsync(Pipeline);
+        }
+    }
+
+    private async Task OnRunPipelineClick()
+    {
+        if (OnRunPipeline.HasDelegate && Pipeline != null) {
+            await OnRunPipeline.InvokeAsync(Pipeline);
         }
     }
 
@@ -430,6 +462,21 @@
             return dateTime.ToString("g");
         }
     }
+
+    private RenderFragment GetCardStageBubble(DataObjects.StageBubble stage) => __builder =>
+    {
+        var (icon, colorClass, tooltip) = (stage.State, stage.Result) switch {
+            ("completed", "succeeded") => ("fa-check-circle", "text-success", $"{stage.Name}: Succeeded"),
+            ("completed", "failed") => ("fa-times-circle", "text-danger", $"{stage.Name}: Failed"),
+            ("completed", "canceled") => ("fa-minus-circle", "text-secondary", $"{stage.Name}: Canceled"),
+            ("completed", "skipped") => ("fa-minus-circle", "text-secondary", $"{stage.Name}: Skipped"),
+            ("inprogress", _) => ("fa-spinner fa-spin", "text-info", $"{stage.Name}: Running..."),
+            ("pending", _) => ("fa-circle-o", "text-muted", $"{stage.Name}: Pending"),
+            _ => ("fa-circle-o", "text-muted", $"{stage.Name}: Not started")
+        };
+
+        <i class="fa @icon @colorClass" style="font-size: 0.8em; margin: 0 1px;" title="@tooltip"></i>
+    };
 }
 
 <style>

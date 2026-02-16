@@ -508,6 +508,156 @@ public partial class DataObjects
         Other
     }
 
+    // ========================================================
+    // Build Stage / Timeline Models
+    // ========================================================
+
+    /// <summary>
+    /// Represents a single stage in a build pipeline (e.g., "Pre-Build Stage", "Build Stage", "Deploy to DEV").
+    /// </summary>
+    public class BuildStageInfo
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public int Order { get; set; }
+        /// <summary>State: completed, inProgress, pending, notStarted, canceling</summary>
+        public string State { get; set; } = "";
+        /// <summary>Result: succeeded, failed, canceled, skipped, abandoned (only set when completed)</summary>
+        public string? Result { get; set; }
+        public DateTime? StartTime { get; set; }
+        public DateTime? FinishTime { get; set; }
+        /// <summary>
+        /// Computed column position for the flow graph. Stages with the same column run in parallel.
+        /// Determined by start time proximity (parallel stages start within seconds of each other).
+        /// </summary>
+        public int Column { get; set; }
+        /// <summary>Jobs within this stage.</summary>
+        public List<BuildJobInfo> Jobs { get; set; } = [];
+    }
+
+    /// <summary>
+    /// Represents a single job within a stage (e.g., "Gather IIS Info for DEV", "Build Solution").
+    /// </summary>
+    public class BuildJobInfo
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public int Order { get; set; }
+        public string State { get; set; } = "";
+        public string? Result { get; set; }
+        public DateTime? StartTime { get; set; }
+        public DateTime? FinishTime { get; set; }
+        /// <summary>Number of task steps within this job.</summary>
+        public int TaskCount { get; set; }
+        /// <summary>Number of completed task steps.</summary>
+        public int TasksCompleted { get; set; }
+        /// <summary>URL to the job log in Azure DevOps.</summary>
+        public string? LogUrl { get; set; }
+    }
+
+    /// <summary>
+    /// Lightweight stage status for compact bubble display on dashboard rows.
+    /// </summary>
+    public class StageBubble
+    {
+        public string Name { get; set; } = "";
+        /// <summary>State: completed, inProgress, pending, notStarted</summary>
+        public string State { get; set; } = "";
+        /// <summary>Result: succeeded, failed, canceled, skipped (only when completed)</summary>
+        public string? Result { get; set; }
+        public int Order { get; set; }
+    }
+
+    /// <summary>
+    /// Full build timeline detail response for expanded row view.
+    /// </summary>
+    public class BuildTimelineResponse
+    {
+        public bool Success { get; set; }
+        public string? ErrorMessage { get; set; }
+        public int BuildId { get; set; }
+        public string? BuildNumber { get; set; }
+        public string? BuildStatus { get; set; }
+        public string? BuildResult { get; set; }
+        public List<BuildStageInfo> Stages { get; set; } = [];
+    }
+
+    // ========================================================
+    // Build Log Models
+    // ========================================================
+
+    /// <summary>
+    /// Response containing log lines for a specific build job.
+    /// </summary>
+    public class BuildLogResponse
+    {
+        public bool Success { get; set; }
+        public string? ErrorMessage { get; set; }
+        public int BuildId { get; set; }
+        public string JobName { get; set; } = "";
+        /// <summary>Log content as a list of lines.</summary>
+        public List<BuildLogLine> Lines { get; set; } = [];
+    }
+
+    /// <summary>
+    /// A single log line with optional metadata.
+    /// </summary>
+    public class BuildLogLine
+    {
+        public int LineNumber { get; set; }
+        public string Text { get; set; } = "";
+        /// <summary>Severity: info, warning, error, section (##[section], ##[warning], ##[error])</summary>
+        public string Severity { get; set; } = "info";
+    }
+
+    // ========================================================
+    // Org Health Trend Models
+    // ========================================================
+
+    /// <summary>
+    /// Organization-wide pipeline health summary.
+    /// </summary>
+    public class OrgHealthResponse
+    {
+        public bool Success { get; set; }
+        public string? ErrorMessage { get; set; }
+        /// <summary>Per-pipeline health trends (last N builds).</summary>
+        public List<PipelineHealthTrend> Pipelines { get; set; } = [];
+        /// <summary>Aggregate stats across all pipelines.</summary>
+        public OrgHealthSummary Summary { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Health trend for a single pipeline (last N builds).
+    /// </summary>
+    public class PipelineHealthTrend
+    {
+        public int PipelineId { get; set; }
+        public string Name { get; set; } = "";
+        /// <summary>Recent build results as compact dots: succeeded, failed, partiallysucceeded, canceled, inprogress</summary>
+        public List<string> RecentResults { get; set; } = [];
+        /// <summary>Success rate (0-100) from the recent results.</summary>
+        public int SuccessRate { get; set; }
+        /// <summary>Number of consecutive successes (positive) or failures (negative) from the most recent build.</summary>
+        public int Streak { get; set; }
+    }
+
+    /// <summary>
+    /// Aggregate health summary for the org.
+    /// </summary>
+    public class OrgHealthSummary
+    {
+        public int TotalPipelines { get; set; }
+        public int HealthyPipelines { get; set; }
+        public int FailingPipelines { get; set; }
+        public int UnstablePipelines { get; set; }
+        /// <summary>Overall health percentage (0-100).</summary>
+        public int OverallHealthPercent { get; set; }
+        public int TotalBuildsAnalyzed { get; set; }
+        public int TotalSucceeded { get; set; }
+        public int TotalFailed { get; set; }
+    }
+
     /// <summary>
     /// Reference to a variable group used by a pipeline, with link to Azure DevOps.
     /// </summary>
@@ -640,6 +790,10 @@ public partial class DataObjects
         /// </summary>
         public string? TriggeredByUser { get; set; }
         /// <summary>
+        /// Avatar URL for the user who triggered the build (from Azure DevOps identity).
+        /// </summary>
+        public string? TriggeredByAvatarUrl { get; set; }
+        /// <summary>
         /// If triggered by another pipeline, the name of that pipeline.
         /// </summary>
         public string? TriggeredByPipeline { get; set; }
@@ -678,6 +832,75 @@ public partial class DataObjects
         /// Format: https://dev.azure.com/{org}/{codeProject}/_git/{codeRepo}?version=GB{branch}
         /// </summary>
         public string? CodeBranchUrl { get; set; }
+
+        // === Build Stage Bubbles (from Timeline API) ===
+
+        /// <summary>
+        /// Compact stage status bubbles for the last build (lightweight, no job detail).
+        /// </summary>
+        public List<StageBubble> Stages { get; set; } = [];
+    }
+
+    // ========================================================
+    // Live Pipeline Monitoring Cache Models
+    // ========================================================
+
+    /// <summary>
+    /// Lightweight snapshot of a pipeline's current status used by the background monitor
+    /// for change detection. Only tracks the fields that can change between polls.
+    /// </summary>
+    public class PipelineStatusSnapshot
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public string? LastRunStatus { get; set; }
+        public string? LastRunResult { get; set; }
+        public DateTime? LastRunTime { get; set; }
+        public int? LastRunBuildId { get; set; }
+        public string? LastRunBuildNumber { get; set; }
+        public string? TriggerBranch { get; set; }
+        public string? TriggeredByUser { get; set; }
+        public string? TriggeredByAvatarUrl { get; set; }
+        public string? TriggerReason { get; set; }
+
+        /// <summary>
+        /// Compact stage status bubbles for change detection and live updates.
+        /// </summary>
+        public List<StageBubble> Stages { get; set; } = [];
+
+        /// <summary>
+        /// Returns a change-detection key. If this value differs between two snapshots, something changed.
+        /// </summary>
+        public string ChangeKey =>
+            $"{LastRunStatus}|{LastRunResult}|{LastRunBuildId}|{LastRunTime?.Ticks}|{string.Join(",", Stages.Select(s => $"{s.Name}:{s.State}:{s.Result}"))}";
+    }
+
+    /// <summary>
+    /// Payload sent to clients when the background monitor polls.
+    /// Sent every poll cycle — even when nothing changed — so clients know the service is alive.
+    /// </summary>
+    public class PipelineLiveUpdate
+    {
+        /// <summary>
+        /// Only the pipelines whose status changed since the last poll.
+        /// Empty list means the service checked but nothing changed.
+        /// </summary>
+        public List<PipelineStatusSnapshot> ChangedPipelines { get; set; } = [];
+
+        /// <summary>
+        /// Server timestamp when this poll occurred.
+        /// </summary>
+        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+
+        /// <summary>
+        /// Number of pipelines checked in this poll cycle.
+        /// </summary>
+        public int PipelinesChecked { get; set; }
+
+        /// <summary>
+        /// How many pipelines are currently running (InProgress/NotStarted).
+        /// </summary>
+        public int RunningCount { get; set; }
     }
 
     /// <summary>

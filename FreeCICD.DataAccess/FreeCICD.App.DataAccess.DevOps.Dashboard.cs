@@ -106,6 +106,16 @@ public partial class DataAccess
 
             for (int i = 0; i < pipelineItems.Count; i++) {
                 var item = pipelineItems[i];
+
+                // Send per-pipeline status update so the UI shows what's being loaded
+                if (!string.IsNullOrWhiteSpace(connectionId)) {
+                    await SignalRUpdate(new DataObjects.SignalRUpdate {
+                        UpdateType = DataObjects.SignalRUpdateType.LoadingDevOpsInfoStatusUpdate,
+                        ConnectionId = connectionId,
+                        Message = $"Loading {item.Name}..."
+                    });
+                }
+
                 try {
                     await EnrichPipelineItemAsync(item, buildClient, gitClient, projectId, project, projectUrl, baseUrl, orgName, variableGroupsDict);
                 } catch {
@@ -117,11 +127,14 @@ public partial class DataAccess
 
                 // Send batch update via SignalR
                 if (enrichedBatch.Count >= batchSize || i == pipelineItems.Count - 1) {
+                    // Build a names summary for the batch
+                    var batchNames = string.Join(", ", enrichedBatch.Select(b => b.Name));
+
                     if (!string.IsNullOrWhiteSpace(connectionId)) {
                         await SignalRUpdate(new DataObjects.SignalRUpdate {
                             UpdateType = DataObjects.SignalRUpdateType.DashboardPipelineBatch,
                             ConnectionId = connectionId,
-                            Message = $"Loaded {processedCount} of {pipelineItems.Count} pipelines",
+                            Message = $"Loaded {processedCount} of {pipelineItems.Count} pipelines|{batchNames}",
                             Object = enrichedBatch.ToList() // Send copy of batch
                         });
                     }
@@ -177,9 +190,9 @@ public partial class DataAccess
         item.ResourceUrl = pipelineUrl;
         item.YamlFileName = yamlFilename;
 
-        // Get the latest build for this pipeline
+        // Get the latest build for this pipeline (ordered by queue time to catch in-progress builds)
         try {
-            var builds = await buildClient.GetBuildsAsync(projectId, definitions: [item.Id], top: 1);
+            var builds = await buildClient.GetBuildsAsync(projectId, definitions: [item.Id], top: 1, queryOrder: BuildQueryOrder.QueueTimeDescending);
             if (builds.Count > 0) {
                 var latestBuild = builds[0];
                 item.LastRunStatus = latestBuild.Status?.ToString() ?? string.Empty;
@@ -206,6 +219,11 @@ public partial class DataAccess
 
                 // Map trigger information
                 MapBuildTriggerInfo(latestBuild, item);
+
+                // Get stage bubbles from build timeline
+                if (item.LastRunBuildId.HasValue) {
+                    item.Stages = await GetBuildStageBubblesAsync(buildClient, projectId, item.LastRunBuildId.Value);
+                }
             }
         } catch {
             // Could not get latest build, leave status fields empty
@@ -727,8 +745,10 @@ public partial class DataAccess
 
         if (build.RequestedFor != null) {
             item.TriggeredByUser = build.RequestedFor.DisplayName;
+            item.TriggeredByAvatarUrl = build.RequestedFor.ImageUrl;
         } else if (build.RequestedBy != null) {
             item.TriggeredByUser = build.RequestedBy.DisplayName;
+            item.TriggeredByAvatarUrl = build.RequestedBy.ImageUrl;
         }
 
         if (reason == BuildReason.BuildCompletion && build.TriggerInfo != null) {
@@ -793,5 +813,382 @@ public partial class DataAccess
         } else if (build.RequestedBy != null) {
             runInfo.TriggeredByUser = build.RequestedBy.DisplayName;
         }
+    }
+
+    /// <summary>
+    /// Queues a new build run for a pipeline definition (equivalent to "Run pipeline" in Azure DevOps).
+    /// </summary>
+    public async Task<DataObjects.BooleanResponse> RunPipelineAsync(string pat, string orgName, string projectId, int pipelineId)
+    {
+        var output = new DataObjects.BooleanResponse();
+
+        try {
+            using var connection = CreateConnection(pat, orgName);
+            var buildClient = connection.GetClient<BuildHttpClient>();
+
+            var definition = await buildClient.GetDefinitionAsync(projectId, pipelineId);
+
+            var build = new Build {
+                Definition = new DefinitionReference { Id = definition.Id },
+                Project = definition.Project
+            };
+
+            var queuedBuild = await buildClient.QueueBuildAsync(build);
+            output.Result = true;
+            output.Messages.Add($"Pipeline '{definition.Name}' queued successfully (Build #{queuedBuild.BuildNumber}).");
+        } catch (Exception ex) {
+            output.Result = false;
+            output.Messages.Add($"Failed to run pipeline: {ex.Message}");
+        }
+
+        return output;
+    }
+
+    /// <summary>
+    /// Gets stage bubbles (lightweight stage status) for a specific build from the Timeline API.
+    /// </summary>
+    public async Task<List<DataObjects.StageBubble>> GetBuildStageBubblesAsync(BuildHttpClient buildClient, string projectId, int buildId)
+    {
+        var output = new List<DataObjects.StageBubble>();
+
+        try {
+            var timeline = await buildClient.GetBuildTimelineAsync(projectId, buildId);
+            if (timeline?.Records != null) {
+                var stages = timeline.Records
+                    .Where(r => r.RecordType == "Stage")
+                    .OrderBy(r => r.Order)
+                    .ToList();
+
+                foreach (var stage in stages) {
+                    // Skip internal checkpoint stages
+                    if (stage.Name?.StartsWith("__") == true) continue;
+
+                    output.Add(new DataObjects.StageBubble {
+                        Name = stage.Name ?? "",
+                        State = stage.State?.ToString()?.ToLower() ?? "pending",
+                        Result = stage.Result?.ToString()?.ToLower(),
+                        Order = stage.Order ?? 0
+                    });
+                }
+            }
+        } catch {
+            // Timeline not available yet (build queued but not started)
+        }
+
+        return output;
+    }
+
+    /// <summary>
+    /// Gets detailed build timeline (stages + jobs) for the expanded row view.
+    /// </summary>
+    public async Task<DataObjects.BuildTimelineResponse> GetBuildTimelineAsync(string pat, string orgName, string projectId, int buildId)
+    {
+        var response = new DataObjects.BuildTimelineResponse { BuildId = buildId };
+
+        try {
+            using var connection = CreateConnection(pat, orgName);
+            var buildClient = connection.GetClient<BuildHttpClient>();
+
+            var build = await buildClient.GetBuildAsync(projectId, buildId);
+            response.BuildNumber = build.BuildNumber;
+            response.BuildStatus = build.Status?.ToString();
+            response.BuildResult = build.Result?.ToString();
+
+            var timeline = await buildClient.GetBuildTimelineAsync(projectId, buildId);
+            if (timeline?.Records != null) {
+                var stageRecords = timeline.Records
+                    .Where(r => r.RecordType == "Stage" && r.Name?.StartsWith("__") != true)
+                    .OrderBy(r => r.Order)
+                    .ToList();
+
+                var jobRecords = timeline.Records
+                    .Where(r => r.RecordType == "Job")
+                    .ToList();
+
+                var taskRecords = timeline.Records
+                    .Where(r => r.RecordType == "Task")
+                    .ToList();
+
+                var baseUrl = $"https://dev.azure.com/{orgName}";
+
+                foreach (var stage in stageRecords) {
+                    var stageInfo = new DataObjects.BuildStageInfo {
+                        Id = stage.Id.ToString(),
+                        Name = stage.Name ?? "",
+                        Order = stage.Order ?? 0,
+                        State = stage.State?.ToString()?.ToLower() ?? "pending",
+                        Result = stage.Result?.ToString()?.ToLower(),
+                        StartTime = stage.StartTime,
+                        FinishTime = stage.FinishTime
+                    };
+
+                    // Find jobs belonging to this stage
+                    var stageJobs = jobRecords
+                        .Where(j => j.ParentId == stage.Id)
+                        .OrderBy(j => j.Order)
+                        .ToList();
+
+                    foreach (var job in stageJobs) {
+                        var jobTasks = taskRecords.Where(t => t.ParentId == job.Id).ToList();
+
+                        stageInfo.Jobs.Add(new DataObjects.BuildJobInfo {
+                            Id = job.Id.ToString(),
+                            Name = job.Name ?? "",
+                            Order = job.Order ?? 0,
+                            State = job.State?.ToString()?.ToLower() ?? "pending",
+                            Result = job.Result?.ToString()?.ToLower(),
+                            StartTime = job.StartTime,
+                            FinishTime = job.FinishTime,
+                            TaskCount = jobTasks.Count,
+                            TasksCompleted = jobTasks.Count(t => t.State?.ToString()?.ToLower() == "completed"),
+                            LogUrl = job.Log?.Url
+                        });
+                    }
+
+                    response.Stages.Add(stageInfo);
+                }
+
+                // Compute dependency columns from timing
+                ComputeStageColumns(response.Stages);
+            }
+
+            response.Success = true;
+        } catch (Exception ex) {
+            response.Success = false;
+            response.ErrorMessage = $"Error loading build timeline: {ex.Message}";
+        }
+
+        return response;
+    }
+
+    /// <summary>
+    /// Computes dependency column assignments for stages based on start time proximity.
+    /// Stages that start within 5 seconds of each other are parallel (same column).
+    /// For stages without start times (pending/not started), each gets its own column after the last timed column.
+    /// </summary>
+    private static void ComputeStageColumns(List<DataObjects.BuildStageInfo> stages)
+    {
+        if (stages.Count == 0) return;
+
+        // Separate stages with timing data from those without
+        var timedStages = stages
+            .Where(s => s.StartTime.HasValue)
+            .OrderBy(s => s.StartTime!.Value)
+            .ToList();
+
+        var untimedStages = stages
+            .Where(s => !s.StartTime.HasValue)
+            .OrderBy(s => s.Order)
+            .ToList();
+
+        int currentColumn = 0;
+
+        if (timedStages.Count > 0) {
+            // First timed stage gets column 0
+            timedStages[0].Column = 0;
+            var columnStartTime = timedStages[0].StartTime!.Value;
+
+            for (int i = 1; i < timedStages.Count; i++) {
+                var stage = timedStages[i];
+                var timeDiff = (stage.StartTime!.Value - columnStartTime).TotalSeconds;
+
+                if (timeDiff <= 5) {
+                    // Within 5 seconds → same column (parallel)
+                    stage.Column = currentColumn;
+                } else {
+                    // New column
+                    currentColumn++;
+                    stage.Column = currentColumn;
+                    columnStartTime = stage.StartTime!.Value;
+                }
+            }
+
+            currentColumn++;
+        }
+
+        // Untimed stages each get their own column after the timed ones
+        foreach (var stage in untimedStages) {
+            stage.Column = currentColumn++;
+        }
+    }
+
+    /// <summary>
+    /// Gets log content for a specific build job from the Timeline API.
+    /// </summary>
+    public async Task<DataObjects.BuildLogResponse> GetBuildJobLogsAsync(string pat, string orgName, string projectId, int buildId, string jobId)
+    {
+        var response = new DataObjects.BuildLogResponse { BuildId = buildId };
+
+        try {
+            using var connection = CreateConnection(pat, orgName);
+            var buildClient = connection.GetClient<BuildHttpClient>();
+
+            // Get the timeline to find the log ID for this job
+            var timeline = await buildClient.GetBuildTimelineAsync(projectId, buildId);
+            if (timeline?.Records == null) {
+                response.ErrorMessage = "Timeline not available";
+                return response;
+            }
+
+            // Find the job record
+            var jobRecord = timeline.Records.FirstOrDefault(r =>
+                r.Id.ToString() == jobId && r.RecordType == "Job");
+
+            if (jobRecord == null) {
+                response.ErrorMessage = "Job not found in timeline";
+                return response;
+            }
+
+            response.JobName = jobRecord.Name ?? "";
+
+            // Get task records (children of this job) that have logs
+            var taskRecords = timeline.Records
+                .Where(r => r.ParentId == jobRecord.Id && r.Log != null)
+                .OrderBy(r => r.Order)
+                .ToList();
+
+            int lineNumber = 1;
+
+            foreach (var task in taskRecords) {
+                if (task.Log?.Id == null) continue;
+
+                try {
+                    var logLines = await buildClient.GetBuildLogLinesAsync(projectId, buildId, task.Log.Id);
+                    if (logLines != null) {
+                        // Add a section header for each task
+                        response.Lines.Add(new DataObjects.BuildLogLine {
+                            LineNumber = lineNumber++,
+                            Text = $"══════ {task.Name} ══════",
+                            Severity = "section"
+                        });
+
+                        foreach (var line in logLines) {
+                            var severity = "info";
+                            if (line.Contains("##[error]")) severity = "error";
+                            else if (line.Contains("##[warning]")) severity = "warning";
+                            else if (line.Contains("##[section]")) severity = "section";
+
+                            response.Lines.Add(new DataObjects.BuildLogLine {
+                                LineNumber = lineNumber++,
+                                Text = line
+                                    .Replace("##[error]", "")
+                                    .Replace("##[warning]", "")
+                                    .Replace("##[section]", "")
+                                    .TrimStart(),
+                                Severity = severity
+                            });
+                        }
+                    }
+                } catch {
+                    response.Lines.Add(new DataObjects.BuildLogLine {
+                        LineNumber = lineNumber++,
+                        Text = $"(Could not load logs for {task.Name})",
+                        Severity = "warning"
+                    });
+                }
+            }
+
+            response.Success = true;
+        } catch (Exception ex) {
+            response.ErrorMessage = $"Error loading build logs: {ex.Message}";
+        }
+
+        return response;
+    }
+
+    /// <summary>
+    /// Gets org-wide pipeline health trends by fetching recent builds for all pipelines.
+    /// </summary>
+    public async Task<DataObjects.OrgHealthResponse> GetOrgHealthAsync(string pat, string orgName, string projectId, int buildsPerPipeline = 10)
+    {
+        var response = new DataObjects.OrgHealthResponse();
+
+        try {
+            using var connection = CreateConnection(pat, orgName);
+            var buildClient = connection.GetClient<BuildHttpClient>();
+
+            // Get all pipeline definitions
+            var definitions = await buildClient.GetDefinitionsAsync(projectId);
+
+            int totalSucceeded = 0;
+            int totalFailed = 0;
+            int totalBuilds = 0;
+
+            var semaphore = new SemaphoreSlim(5, 5);
+            var tasks = definitions.Select(async def => {
+                await semaphore.WaitAsync();
+                try {
+                    var builds = await buildClient.GetBuildsAsync(projectId,
+                        definitions: [def.Id],
+                        top: buildsPerPipeline);
+
+                    var results = builds
+                        .Where(b => b.Status?.ToString()?.ToLower() != "inprogress")
+                        .Select(b => b.Result?.ToString()?.ToLower() ?? "unknown")
+                        .ToList();
+
+                    // Also include in-progress builds
+                    var inProgress = builds
+                        .Where(b => b.Status?.ToString()?.ToLower() == "inprogress")
+                        .Select(_ => "inprogress")
+                        .ToList();
+
+                    var allResults = inProgress.Concat(results).Take(buildsPerPipeline).ToList();
+
+                    int succeeded = results.Count(r => r == "succeeded");
+                    int failed = results.Count(r => r == "failed");
+                    int total = results.Count;
+                    int successRate = total > 0 ? (int)Math.Round(succeeded * 100.0 / total) : 0;
+
+                    // Calculate streak
+                    int streak = 0;
+                    if (results.Count > 0) {
+                        var first = results.FirstOrDefault() ?? "";
+                        if (first == "succeeded") {
+                            streak = results.TakeWhile(r => r == "succeeded").Count();
+                        } else if (first == "failed") {
+                            streak = -results.TakeWhile(r => r == "failed").Count();
+                        }
+                    }
+
+                    return new DataObjects.PipelineHealthTrend {
+                        PipelineId = def.Id,
+                        Name = def.Name ?? "",
+                        RecentResults = allResults,
+                        SuccessRate = successRate,
+                        Streak = streak
+                    };
+                } finally {
+                    semaphore.Release();
+                }
+            }).ToList();
+
+            var trends = await Task.WhenAll(tasks);
+            response.Pipelines = trends.OrderBy(t => t.SuccessRate).ThenBy(t => t.Name).ToList();
+
+            foreach (var t in trends) {
+                var completedResults = t.RecentResults.Where(r => r != "inprogress").ToList();
+                totalSucceeded += completedResults.Count(r => r == "succeeded");
+                totalFailed += completedResults.Count(r => r == "failed");
+                totalBuilds += completedResults.Count;
+            }
+
+            response.Summary = new DataObjects.OrgHealthSummary {
+                TotalPipelines = trends.Length,
+                HealthyPipelines = trends.Count(t => t.SuccessRate >= 80),
+                FailingPipelines = trends.Count(t => t.SuccessRate < 50 && t.RecentResults.Any()),
+                UnstablePipelines = trends.Count(t => t.SuccessRate >= 50 && t.SuccessRate < 80),
+                OverallHealthPercent = totalBuilds > 0 ? (int)Math.Round(totalSucceeded * 100.0 / totalBuilds) : 0,
+                TotalBuildsAnalyzed = totalBuilds,
+                TotalSucceeded = totalSucceeded,
+                TotalFailed = totalFailed
+            };
+
+            response.Success = true;
+        } catch (Exception ex) {
+            response.ErrorMessage = $"Error loading org health: {ex.Message}";
+        }
+
+        return response;
     }
 }

@@ -47,6 +47,10 @@ public partial interface IDataAccess
     Task<DataObjects.PipelineYamlResponse> GetPipelineYamlContentAsync(string pat, string orgName, string projectId, int pipelineId, string? connectionId = null);
     DataObjects.ParsedPipelineSettings ParsePipelineYaml(string yamlContent, int? pipelineId = null, string? pipelineName = null, string? pipelinePath = null);
     Task<Dictionary<string, DataObjects.IISInfo?>> GetDevOpsIISInfoAsync();
+    Task<DataObjects.BooleanResponse> RunPipelineAsync(string pat, string orgName, string projectId, int pipelineId);
+    Task<DataObjects.BuildTimelineResponse> GetBuildTimelineAsync(string pat, string orgName, string projectId, int buildId);
+    Task<DataObjects.BuildLogResponse> GetBuildJobLogsAsync(string pat, string orgName, string projectId, int buildId, string jobId);
+    Task<DataObjects.OrgHealthResponse> GetOrgHealthAsync(string pat, string orgName, string projectId, int buildsPerPipeline = 10);
 
     // Public Git Repository Import Methods
     Task<DataObjects.PublicGitRepoInfo> ValidatePublicGitRepoAsync(string url);

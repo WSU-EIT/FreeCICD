@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using FreeCICD.Server.Hubs;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FreeCICD.Server.Controllers;
@@ -22,6 +23,163 @@ public partial class DataController
 
     #region Pipeline Dashboard Endpoints
 
+    /// <summary>
+    /// Joins the caller's SignalR connection to the live pipeline monitor group.
+    /// The background PipelineMonitorService broadcasts status changes to this group.
+    /// </summary>
+    [HttpPost("~/api/Pipelines/monitor/join")]
+    [AllowAnonymous]
+    public async Task<ActionResult<DataObjects.BooleanResponse>> JoinPipelineMonitor([FromQuery] string connectionId)
+    {
+        var output = new DataObjects.BooleanResponse();
+
+        if (string.IsNullOrWhiteSpace(connectionId)) {
+            output.Messages.Add("ConnectionId is required");
+            return Ok(output);
+        }
+
+        if (_signalR != null) {
+            await _signalR.Groups.AddToGroupAsync(connectionId, DataObjects.SignalRUpdateType.PipelineMonitorGroup);
+
+            // Update connection info tracking
+            var connInfo = freecicdHub.GetConnectionInfo(connectionId);
+            if (connInfo != null && !connInfo.Groups.Contains(DataObjects.SignalRUpdateType.PipelineMonitorGroup)) {
+                connInfo.Groups.Add(DataObjects.SignalRUpdateType.PipelineMonitorGroup);
+            }
+
+            output.Result = true;
+        }
+
+        return Ok(output);
+    }
+
+    /// <summary>
+    /// Removes the caller's SignalR connection from the live pipeline monitor group.
+    /// </summary>
+    [HttpPost("~/api/Pipelines/monitor/leave")]
+    [AllowAnonymous]
+    public async Task<ActionResult<DataObjects.BooleanResponse>> LeavePipelineMonitor([FromQuery] string connectionId)
+    {
+        var output = new DataObjects.BooleanResponse();
+
+        if (string.IsNullOrWhiteSpace(connectionId)) {
+            output.Messages.Add("ConnectionId is required");
+            return Ok(output);
+        }
+
+        if (_signalR != null) {
+            await _signalR.Groups.RemoveFromGroupAsync(connectionId, DataObjects.SignalRUpdateType.PipelineMonitorGroup);
+
+            // Update connection info tracking
+            var connInfo = freecicdHub.GetConnectionInfo(connectionId);
+            if (connInfo != null) {
+                connInfo.Groups.Remove(DataObjects.SignalRUpdateType.PipelineMonitorGroup);
+            }
+
+            output.Result = true;
+        }
+
+        return Ok(output);
+    }
+
+    /// <summary>
+    /// Queues a new run for a specific pipeline (equivalent to clicking "Run pipeline" in Azure DevOps).
+    /// </summary>
+    [HttpPost("~/api/Pipelines/{pipelineId}/run")]
+    [AllowAnonymous]
+    public async Task<ActionResult<DataObjects.BooleanResponse>> RunPipeline(int pipelineId, [FromQuery] string? projectId = null, [FromQuery] string? pat = null, [FromQuery] string? orgName = null)
+    {
+        var output = new DataObjects.BooleanResponse();
+
+        try {
+            if (CurrentUser.Enabled) {
+                var config = GetReleasePipelinesDevOpsConfig();
+                output = await da.RunPipelineAsync(config.pat, config.orgName, projectId ?? config.projectId, pipelineId);
+            } else if (!string.IsNullOrWhiteSpace(pat) && !string.IsNullOrWhiteSpace(orgName) && !string.IsNullOrWhiteSpace(projectId)) {
+                output = await da.RunPipelineAsync(pat, orgName, projectId, pipelineId);
+            } else {
+                return BadRequest("No PAT or OrgName provided and user is not logged in.");
+            }
+        } catch (Exception ex) {
+            output.Messages.Add($"Error running pipeline: {ex.Message}");
+        }
+
+        return Ok(output);
+    }
+    /// <summary>
+    /// Gets the detailed build timeline (stages + jobs) for a specific build.
+    /// Used by the expandable row detail view on the dashboard.
+    /// </summary>
+    [HttpGet("~/api/Pipelines/builds/{buildId}/timeline")]
+    [AllowAnonymous]
+    public async Task<ActionResult<DataObjects.BuildTimelineResponse>> GetBuildTimeline(int buildId, [FromQuery] string? projectId = null, [FromQuery] string? pat = null, [FromQuery] string? orgName = null)
+    {
+        DataObjects.BuildTimelineResponse output;
+
+        try {
+            if (CurrentUser.Enabled) {
+                var config = GetReleasePipelinesDevOpsConfig();
+                output = await da.GetBuildTimelineAsync(config.pat, config.orgName, projectId ?? config.projectId, buildId);
+            } else if (!string.IsNullOrWhiteSpace(pat) && !string.IsNullOrWhiteSpace(orgName) && !string.IsNullOrWhiteSpace(projectId)) {
+                output = await da.GetBuildTimelineAsync(pat, orgName, projectId, buildId);
+            } else {
+                return BadRequest("No PAT or OrgName provided and user is not logged in.");
+            }
+        } catch (Exception ex) {
+            output = new DataObjects.BuildTimelineResponse { Success = false, ErrorMessage = ex.Message };
+        }
+
+        return Ok(output);
+    }
+    /// <summary>
+    /// Gets log content for a specific build job.
+    /// </summary>
+    [HttpGet("~/api/Pipelines/builds/{buildId}/jobs/{jobId}/logs")]
+    [AllowAnonymous]
+    public async Task<ActionResult<DataObjects.BuildLogResponse>> GetBuildJobLogs(int buildId, string jobId, [FromQuery] string? projectId = null, [FromQuery] string? pat = null, [FromQuery] string? orgName = null)
+    {
+        DataObjects.BuildLogResponse output;
+
+        try {
+            if (CurrentUser.Enabled) {
+                var config = GetReleasePipelinesDevOpsConfig();
+                output = await da.GetBuildJobLogsAsync(config.pat, config.orgName, projectId ?? config.projectId, buildId, jobId);
+            } else if (!string.IsNullOrWhiteSpace(pat) && !string.IsNullOrWhiteSpace(orgName) && !string.IsNullOrWhiteSpace(projectId)) {
+                output = await da.GetBuildJobLogsAsync(pat, orgName, projectId, buildId, jobId);
+            } else {
+                return BadRequest("No PAT or OrgName provided and user is not logged in.");
+            }
+        } catch (Exception ex) {
+            output = new DataObjects.BuildLogResponse { Success = false, ErrorMessage = ex.Message };
+        }
+
+        return Ok(output);
+    }
+
+    /// <summary>
+    /// Gets organization-wide pipeline health trends (recent build results for all pipelines).
+    /// </summary>
+    [HttpGet("~/api/Pipelines/health")]
+    [AllowAnonymous]
+    public async Task<ActionResult<DataObjects.OrgHealthResponse>> GetOrgHealth([FromQuery] int top = 10, [FromQuery] string? projectId = null, [FromQuery] string? pat = null, [FromQuery] string? orgName = null)
+    {
+        DataObjects.OrgHealthResponse output;
+
+        try {
+            if (CurrentUser.Enabled) {
+                var config = GetReleasePipelinesDevOpsConfig();
+                output = await da.GetOrgHealthAsync(config.pat, config.orgName, projectId ?? config.projectId, top);
+            } else if (!string.IsNullOrWhiteSpace(pat) && !string.IsNullOrWhiteSpace(orgName) && !string.IsNullOrWhiteSpace(projectId)) {
+                output = await da.GetOrgHealthAsync(pat, orgName, projectId, top);
+            } else {
+                return BadRequest("No PAT or OrgName provided and user is not logged in.");
+            }
+        } catch (Exception ex) {
+            output = new DataObjects.OrgHealthResponse { Success = false, ErrorMessage = ex.Message };
+        }
+
+        return Ok(output);
+    }
     /// <summary>
     /// Gets all pipelines for the dashboard view with status information.
     /// </summary>

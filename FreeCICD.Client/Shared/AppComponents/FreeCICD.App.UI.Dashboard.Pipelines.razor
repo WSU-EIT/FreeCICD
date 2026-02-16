@@ -22,6 +22,11 @@
     protected string _selectedTrigger = "";
     protected bool _failedOnly = false;
 
+    // Health trends state
+    protected DataObjects.OrgHealthResponse? _healthData;
+    protected bool _healthLoading = false;
+    protected bool _healthExpanded = false;
+
     // View state
     protected string _viewMode = "table";      // Changed from "card" to "table"
     protected bool _groupByFolder = false;     // Changed from true to false
@@ -247,11 +252,32 @@
     protected int _totalCount = 0;
     protected bool _isProgressiveLoading = false;
     protected string _loadingMessage = "Loading pipelines...";
+    protected string _loadingDetail = "";
+
+    // Auto-refresh (live monitoring) state
+    protected bool _autoRefresh = false;
+    protected bool _autoRefreshJoining = false;
+    protected DateTime? _lastLiveUpdate = null;
+    protected DateTime? _lastLiveCheck = null;
+    protected int _liveChangedCount = 0;
+    protected int _livePipelinesChecked = 0;
+    protected int _liveRunningCount = 0;
+    protected bool _livePulse = false;
 
     public void Dispose()
     {
         Model.OnChange -= OnDataModelUpdated;
         Model.OnSignalRUpdate -= OnSignalRUpdate;
+
+        // Leave the live monitor group if active
+        if (_autoRefresh) {
+            _autoRefresh = false;
+            string connectionId = Model.SignalrClientRegistration?.ConnectionId ?? "";
+            if (!string.IsNullOrWhiteSpace(connectionId)) {
+                _ = Helpers.GetOrPost<DataObjects.BooleanResponse>(
+                    "api/Pipelines/monitor/leave?connectionId=" + Uri.EscapeDataString(connectionId));
+            }
+        }
     }
 
     protected override void OnInitialized()
@@ -297,15 +323,21 @@
                 _isProgressiveLoading = false;
                 _loading = false;
                 _loadingMessage = "";
+                _loadingDetail = "";
                 InvokeAsync(StateHasChanged);
                 break;
 
             case DataObjects.SignalRUpdateType.LoadingDevOpsInfoStatusUpdate:
-                // Status message update
+                // Status message update — shows current pipeline being loaded
                 if (!string.IsNullOrWhiteSpace(update.Message)) {
-                    _loadingMessage = update.Message;
+                    _loadingDetail = update.Message;
                     InvokeAsync(StateHasChanged);
                 }
+                break;
+
+            case DataObjects.SignalRUpdateType.PipelineLiveStatusUpdate:
+                // Live status update from background monitor service
+                HandleLiveStatusUpdate(update);
                 break;
         }
     }
@@ -372,7 +404,16 @@
                         }
                     }
                     _loadedCount += batchItems.Count;
-                    _loadingMessage = update.Message ?? $"Loaded {_loadedCount} of {_totalCount} pipelines";
+
+                    // Parse message — format is "Loaded X of Y pipelines|Name1, Name2, Name3"
+                    var msg = update.Message ?? "";
+                    var pipeIndex = msg.IndexOf('|');
+                    if (pipeIndex > 0) {
+                        _loadingMessage = msg[..pipeIndex];
+                        _loadingDetail = msg[(pipeIndex + 1)..];
+                    } else {
+                        _loadingMessage = !string.IsNullOrWhiteSpace(msg) ? msg : $"Loaded {_loadedCount} of {_totalCount} pipelines";
+                    }
                     InvokeAsync(StateHasChanged);
                 }
             }
@@ -384,6 +425,116 @@
     protected void OnDataModelUpdated()
     {
         if (Model.View == _pageName) {
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Handles live status updates from the background pipeline monitor service.
+    /// Called on every poll cycle — even when nothing changed (heartbeat).
+    /// </summary>
+    private void HandleLiveStatusUpdate(DataObjects.SignalRUpdate update)
+    {
+        try {
+            DataObjects.PipelineLiveUpdate? liveUpdate = null;
+
+            if (update.Object is System.Text.Json.JsonElement jsonElement) {
+                liveUpdate = System.Text.Json.JsonSerializer.Deserialize<DataObjects.PipelineLiveUpdate>(
+                    jsonElement.GetRawText(),
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+
+            if (liveUpdate == null) return;
+
+            // Always update heartbeat tracking
+            _lastLiveCheck = liveUpdate.Timestamp;
+            _livePipelinesChecked = liveUpdate.PipelinesChecked;
+            _liveRunningCount = liveUpdate.RunningCount;
+
+            // Trigger a brief pulse animation
+            _livePulse = true;
+            InvokeAsync(async () => {
+                StateHasChanged();
+                await Task.Delay(1500);
+                _livePulse = false;
+                StateHasChanged();
+            });
+
+            // Apply any actual changes to pipeline data
+            if (liveUpdate.ChangedPipelines?.Count > 0 && _dashboardResponse?.Pipelines != null) {
+                bool anyChanged = false;
+
+                foreach (var changed in liveUpdate.ChangedPipelines) {
+                    var existing = _dashboardResponse.Pipelines.FirstOrDefault(p => p.Id == changed.Id);
+                    if (existing != null) {
+                        // Detect if the build ID changed (new build started)
+                        bool buildChanged = existing.LastRunBuildId != changed.LastRunBuildId;
+
+                        existing.LastRunStatus = changed.LastRunStatus;
+                        existing.LastRunResult = changed.LastRunResult;
+                        existing.LastRunTime = changed.LastRunTime;
+                        existing.LastRunBuildId = changed.LastRunBuildId;
+                        existing.LastRunBuildNumber = changed.LastRunBuildNumber;
+                        existing.TriggerBranch = changed.TriggerBranch;
+                        existing.TriggeredByUser = changed.TriggeredByUser;
+                        existing.TriggeredByAvatarUrl = changed.TriggeredByAvatarUrl;
+                        if (!string.IsNullOrWhiteSpace(changed.TriggerReason)) {
+                            existing.TriggerReason = changed.TriggerReason;
+                        }
+                        if (changed.Stages?.Count > 0) {
+                            existing.Stages = changed.Stages;
+                        }
+
+                        // Clear stale data when build is in-progress or a new build started
+                        var statusLower = changed.LastRunStatus?.ToLower() ?? "";
+                        if (statusLower is "inprogress" or "notstarted" || buildChanged) {
+                            existing.Duration = null;
+                        }
+
+                        anyChanged = true;
+                    }
+                }
+
+                if (anyChanged) {
+                    _lastLiveUpdate = liveUpdate.Timestamp;
+                    _liveChangedCount = liveUpdate.ChangedPipelines.Count;
+                }
+            }
+        } catch {
+            // Ignore deserialization errors from live updates
+        }
+    }
+
+    /// <summary>
+    /// Toggles auto-refresh on/off. Joins or leaves the PipelineMonitor SignalR group.
+    /// </summary>
+    protected async Task ToggleAutoRefresh()
+    {
+        _autoRefresh = !_autoRefresh;
+        _autoRefreshJoining = true;
+        StateHasChanged();
+
+        try {
+            string connectionId = Model.SignalrClientRegistration?.ConnectionId ?? "";
+            if (!string.IsNullOrWhiteSpace(connectionId)) {
+                if (_autoRefresh) {
+                    await Helpers.GetOrPost<DataObjects.BooleanResponse>(
+                        "api/Pipelines/monitor/join?connectionId=" + Uri.EscapeDataString(connectionId));
+                } else {
+                    await Helpers.GetOrPost<DataObjects.BooleanResponse>(
+                        "api/Pipelines/monitor/leave?connectionId=" + Uri.EscapeDataString(connectionId));
+                    _lastLiveUpdate = null;
+                    _lastLiveCheck = null;
+                    _liveChangedCount = 0;
+                    _livePipelinesChecked = 0;
+                    _liveRunningCount = 0;
+                }
+            }
+        } catch {
+            // If join/leave fails, revert the toggle
+            _autoRefresh = !_autoRefresh;
+        } finally {
+            _autoRefreshJoining = false;
             StateHasChanged();
         }
     }
@@ -434,11 +585,11 @@
 
     protected async Task RefreshDashboard()
     {
-        _loadedData = false;
         _isProgressiveLoading = false;
         _loadedCount = 0;
         _totalCount = 0;
         _loadingMessage = "Loading pipelines...";
+        _loadingDetail = "";
         await LoadDashboardData();
     }
 
@@ -479,10 +630,10 @@
             var request = new DataObjects.PipelineYamlRequest {
                 PipelineId = pipeline.Id
             };
-            
+
             var response = await Helpers.GetOrPost<DataObjects.PipelineYamlResponse>(
                 DataObjects.Endpoints.PipelineDashboard.GetPipelineYaml.Replace("{id}", pipeline.Id.ToString()));
-            
+
             if (response?.Success == true && !string.IsNullOrWhiteSpace(response.Yaml)) {
                 await Helpers.CopyToClipboard(response.Yaml);
                 Model.AddMessage($"YAML for '{pipeline.Name}' copied to clipboard!", MessageType.Success);
@@ -491,6 +642,47 @@
             }
         } catch (Exception ex) {
             Model.AddMessage($"Error copying YAML: {ex.Message}", MessageType.Danger);
+        }
+    }
+
+    /// <summary>
+    /// Loads org-wide health trends (lazy, user-triggered).
+    /// </summary>
+    protected async Task ToggleHealthPanel()
+    {
+        _healthExpanded = !_healthExpanded;
+
+        if (_healthExpanded && _healthData == null) {
+            _healthLoading = true;
+            StateHasChanged();
+
+            try {
+                _healthData = await Helpers.GetOrPost<DataObjects.OrgHealthResponse>("api/Pipelines/health?top=10");
+            } catch {
+                _healthData = new DataObjects.OrgHealthResponse { ErrorMessage = "Failed to load health data" };
+            }
+
+            _healthLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Triggers a manual run of a pipeline via the Azure DevOps API.
+    /// </summary>
+    protected async Task OnRunPipeline(DataObjects.PipelineListItem pipeline)
+    {
+        try {
+            var response = await Helpers.GetOrPost<DataObjects.BooleanResponse>(
+                $"api/Pipelines/{pipeline.Id}/run", new { }, true);
+
+            if (response?.Result == true) {
+                Model.AddMessage(response.Messages.FirstOrDefault() ?? $"Pipeline '{pipeline.Name}' queued successfully!", MessageType.Success);
+            } else {
+                Model.AddMessage(response?.Messages.FirstOrDefault() ?? $"Failed to run pipeline '{pipeline.Name}'.", MessageType.Danger);
+            }
+        } catch (Exception ex) {
+            Model.AddMessage($"Error running pipeline: {ex.Message}", MessageType.Danger);
         }
     }
 
@@ -699,7 +891,39 @@
                 <i class="fa fa-rocket me-2"></i>
                 Pipeline Dashboard
             </h1>
-            <div class="d-flex gap-2">
+            <div class="d-flex gap-2 align-items-center">
+                @* Auto-Refresh Toggle *@
+                @if (!_loading && !_isProgressiveLoading && _dashboardResponse?.Pipelines?.Any() == true) {
+                    <div class="d-flex align-items-center me-2">
+                        <div class="form-check form-switch mb-0" title="@(_autoRefresh ? "Live updates active — polling every 5 seconds" : "Enable live updates to see pipeline status changes in real-time")">
+                            <input type="checkbox" role="switch" class="form-check-input"
+                                   id="autoRefreshToggle"
+                                   checked="@_autoRefresh"
+                                   disabled="@_autoRefreshJoining"
+                                   @onchange="ToggleAutoRefresh" />
+                            <label for="autoRefreshToggle" class="form-check-label small @(_autoRefresh ? "text-success" : "text-muted")">
+                                @if (_autoRefreshJoining) {
+                                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                } else if (_autoRefresh && _livePulse) {
+                                                    <i class="fa fa-circle text-success me-1" style="font-size: 0.6em; vertical-align: middle; opacity: 1;"></i>
+                                                } else if (_autoRefresh) {
+                                                    <i class="fa fa-circle text-success me-1" style="font-size: 0.5em; vertical-align: middle; opacity: 0.4;"></i>
+                                }
+                                Live
+                            </label>
+                        </div>
+                        @if (_autoRefresh && _lastLiveCheck.HasValue) {
+                            <span class="ms-2 small text-muted" style="white-space: nowrap;">
+                                @if (_liveRunningCount > 0) {
+                                    <span class="text-info me-1" title="@_liveRunningCount pipeline(s) currently running">
+                                        <i class="fa fa-spinner fa-spin" style="font-size: 0.7em;"></i> @_liveRunningCount
+                                    </span>
+                                }
+                            </span>
+                        }
+                    </div>
+                }
+
                 <button class="btn btn-outline-secondary" @onclick="RefreshDashboard" disabled="@(_loading || _isProgressiveLoading)">
                     <i class="fa fa-refresh @((_loading || _isProgressiveLoading) ? "fa-spin" : "")"></i>
                     Refresh
@@ -718,7 +942,10 @@
                     <span class="visually-hidden">Loading...</span>
                 </div>
                 <div class="flex-grow-1">
-                    @_loadingMessage
+                    <div>@_loadingMessage</div>
+                    @if (!string.IsNullOrWhiteSpace(_loadingDetail)) {
+                        <div class="small text-muted mt-0" style="opacity: 0.8;">@_loadingDetail</div>
+                    }
                 </div>
                 @if (_totalCount > 0) {
                     <div class="ms-3">
@@ -820,7 +1047,8 @@
                                 <FreeCICD_App_UI_Dashboard_PipelineCard Pipeline="@pipeline"
                                     OnEdit="@(() => OnEditPipeline(pipeline))"
                                     OnView="@(() => OnViewPipeline(pipeline))"
-                                    OnCopyYaml="@OnCopyYaml" />
+                                    OnCopyYaml="@OnCopyYaml"
+                                    OnRunPipeline="@OnRunPipeline" />
                             </div>
                         }
                     </div>
@@ -834,11 +1062,113 @@
                                 OnSortChanged="@OnTableSortChanged"
                                 OnEdit="@OnEditPipeline"
                                 OnView="@OnViewPipeline"
-                                OnCopyYaml="@OnCopyYaml" />
+                                OnCopyYaml="@OnCopyYaml"
+                                OnRunPipeline="@OnRunPipeline" />
                         </div>
                     </div>
                 }
             }
+
+            @* Health Trends Panel (collapsible, non-intrusive) *@
+            <div class="mt-3">
+                <button class="btn btn-sm @(_healthExpanded ? "btn-outline-primary" : "btn-outline-secondary") d-flex align-items-center gap-1"
+                        @onclick="ToggleHealthPanel" title="View organization pipeline health trends">
+                    <i class="fa fa-heartbeat me-1"></i>
+                    Health Trends
+                    <i class="fa @(_healthExpanded ? "fa-chevron-up" : "fa-chevron-down") ms-1" style="font-size: 0.7em;"></i>
+                </button>
+
+                @if (_healthExpanded) {
+                    @if (_healthLoading) {
+                        <div class="mt-2 p-3 text-center text-muted">
+                            <i class="fa fa-spinner fa-spin me-2"></i>Loading health data for all pipelines...
+                        </div>
+                    } else if (_healthData?.Success == true) {
+                        <div class="mt-2 card border-0 shadow-sm">
+                            <div class="card-body p-3">
+                                @* Summary Bar *@
+                                <div class="d-flex align-items-center gap-4 mb-3">
+                                    <div class="d-flex align-items-center gap-2">
+                                        @{
+                                            var healthColorClass = _healthData.Summary.OverallHealthPercent >= 80 ? "text-success" : _healthData.Summary.OverallHealthPercent >= 50 ? "text-warning" : "text-danger";
+                                        }
+                                        <div class="fw-bold @healthColorClass" style="font-size: 1.8em; line-height: 1;">
+                                            @(_healthData.Summary.OverallHealthPercent)%
+                                        </div>
+                                        <div class="small text-muted">
+                                            Overall<br/>Health
+                                        </div>
+                                    </div>
+                                    <div class="vr"></div>
+                                    <div class="small">
+                                        <span class="text-success me-3"><i class="fa fa-check-circle me-1"></i>@_healthData.Summary.HealthyPipelines healthy</span>
+                                        @if (_healthData.Summary.UnstablePipelines > 0) {
+                                            <span class="text-warning me-3"><i class="fa fa-exclamation-triangle me-1"></i>@_healthData.Summary.UnstablePipelines unstable</span>
+                                        }
+                                        @if (_healthData.Summary.FailingPipelines > 0) {
+                                            <span class="text-danger me-3"><i class="fa fa-times-circle me-1"></i>@_healthData.Summary.FailingPipelines failing</span>
+                                        }
+                                    </div>
+                                    <div class="vr"></div>
+                                    <div class="small text-muted">
+                                        @_healthData.Summary.TotalBuildsAnalyzed builds analyzed
+                                    </div>
+                                </div>
+
+                                @* Health Progress Bar *@
+                                <div class="progress mb-3" style="height: 6px;">
+                                    @if (_healthData.Summary.TotalBuildsAnalyzed > 0) {
+                                        var successPct = _healthData.Summary.TotalSucceeded * 100.0 / _healthData.Summary.TotalBuildsAnalyzed;
+                                        var failPct = _healthData.Summary.TotalFailed * 100.0 / _healthData.Summary.TotalBuildsAnalyzed;
+                                        var otherPct = 100 - successPct - failPct;
+                                        <div class="progress-bar bg-success" style="width: @(successPct.ToString("F1"))%"></div>
+                                        <div class="progress-bar bg-danger" style="width: @(failPct.ToString("F1"))%"></div>
+                                        <div class="progress-bar bg-secondary-subtle" style="width: @(otherPct.ToString("F1"))%"></div>
+                                    }
+                                </div>
+
+                                @* Per-Pipeline Sparklines — show worst performers first, limit to pipelines with builds *@
+                                <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-2">
+                                    @foreach (var trend in _healthData.Pipelines.Where(p => p.RecentResults.Any()).Take(18)) {
+                                        var nameColor = trend.SuccessRate >= 80 ? "" : trend.SuccessRate >= 50 ? "text-warning" : "text-danger";
+                                        var streakText = trend.Streak > 0 ? $"{trend.Streak} in a row ✅" : trend.Streak < 0 ? $"{Math.Abs(trend.Streak)} in a row ❌" : "";
+                                        <div class="col">
+                                            <div class="d-flex align-items-center gap-2 py-1 px-2 rounded" title="@trend.Name — @trend.SuccessRate% success rate @(string.IsNullOrWhiteSpace(streakText) ? "" : $"({streakText})")">
+                                                <span class="small @nameColor text-truncate" style="min-width: 100px; max-width: 140px;">
+                                                    @trend.Name
+                                                </span>
+                                                <div class="d-flex align-items-center gap-0" style="gap: 1px !important;">
+                                                    @foreach (var result in trend.RecentResults) {
+                                                        var dotColor = result switch {
+                                                            "succeeded" => "text-success",
+                                                            "failed" => "text-danger",
+                                                            "partiallysucceeded" => "text-warning",
+                                                            "inprogress" => "text-info",
+                                                            _ => "text-secondary"
+                                                        };
+                                                        var dotIcon = result switch {
+                                                            "succeeded" => "fa-circle",
+                                                            "failed" => "fa-circle",
+                                                            "inprogress" => "fa-spinner fa-spin",
+                                                            _ => "fa-circle"
+                                                        };
+                                                        <i class="fa @dotIcon @dotColor" style="font-size: 0.55em; margin: 0 1px;"></i>
+                                                    }
+                                                </div>
+                                                <span class="small text-muted ms-auto" style="min-width: 30px; text-align: right;">@(trend.SuccessRate)%</span>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    } else if (!string.IsNullOrWhiteSpace(_healthData?.ErrorMessage)) {
+                        <div class="mt-2 alert alert-warning small">
+                            <i class="fa fa-exclamation-triangle me-1"></i>@_healthData.ErrorMessage
+                        </div>
+                    }
+                }
+            </div>
 
             @* Summary Footer *@
             <div class="mt-4 d-flex justify-content-between align-items-center text-muted small">
@@ -850,6 +1180,16 @@
                     pipeline(s)
                     @if (_groupByFolder && RootFolders.Count > 1) {
                         <span>in @RootFolders.Count folders</span>
+                    }
+                    @if (_autoRefresh && _lastLiveCheck.HasValue) {
+                        @if (_lastLiveUpdate.HasValue) {
+                            <span class="ms-2 text-success" title="Last change detected at @_lastLiveUpdate.Value.ToLocalTime().ToString("T") — @_liveChangedCount pipeline(s) updated">
+                                <i class="fa fa-bolt me-1" style="font-size: 0.8em;"></i>@_liveChangedCount changed
+                            </span>
+                        }
+                        <span class="ms-2 text-muted" title="Checking @_livePipelinesChecked pipelines every 5 seconds">
+                            <i class="fa fa-eye me-1" style="font-size: 0.8em;"></i>Checked @_lastLiveCheck.Value.ToLocalTime().ToString("T")
+                        </span>
                     }
                 </div>
                 <div>
@@ -909,7 +1249,8 @@
                                 <FreeCICD_App_UI_Dashboard_PipelineCard Pipeline="@pipeline"
                                     OnEdit="@(() => OnEditPipeline(pipeline))"
                                     OnView="@(() => OnViewPipeline(pipeline))"
-                                    OnCopyYaml="@OnCopyYaml" />
+                                    OnCopyYaml="@OnCopyYaml"
+                                    OnRunPipeline="@OnRunPipeline" />
                             </div>
                         }
                     </div>
@@ -922,7 +1263,8 @@
                             OnSortChanged="@OnTableSortChanged"
                             OnEdit="@OnEditPipeline"
                             OnView="@OnViewPipeline"
-                            OnCopyYaml="@OnCopyYaml" />
+                            OnCopyYaml="@OnCopyYaml"
+                            OnRunPipeline="@OnRunPipeline" />
                     </div>
                 }
             }

@@ -34,6 +34,12 @@ public partial class DataObjects
         public const string DashboardPipelineUpdate = "DashboardPipelineUpdate";
         public const string DashboardPipelineBatch = "DashboardPipelineBatch";
         public const string DashboardLoadComplete = "DashboardLoadComplete";
+
+        // Live Pipeline Monitoring - Background service broadcasts
+        public const string PipelineLiveStatusUpdate = "PipelineLiveStatusUpdate";
+
+        // Well-known SignalR group name for live monitoring subscribers
+        public const string PipelineMonitorGroup = "PipelineMonitor";
     }
 
     //public enum SignalRUpdateType

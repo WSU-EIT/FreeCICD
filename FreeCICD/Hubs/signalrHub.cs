@@ -203,12 +203,41 @@ namespace FreeCICD.Server.Hubs
                 connectionInfo.LastActivityAt = DateTime.UtcNow;
                 connectionInfo.MessageCount++;
             }
-            
+
             if (update.TenantId.HasValue) {
                 await Clients.Group(update.TenantId.Value.ToString()).SignalRUpdate(update);
             } else {
                 // This is a non-tenant-specific update.
                 await Clients.All.SignalRUpdate(update);
+            }
+        }
+
+        /// <summary>
+        /// Joins the live pipeline monitoring group.
+        /// Clients in this group receive real-time status updates from the background polling service.
+        /// </summary>
+        public async Task JoinPipelineMonitor()
+        {
+            await Groups.AddToGroupAsync(Context.ConnectionId, DataObjects.SignalRUpdateType.PipelineMonitorGroup);
+
+            if (_connections.TryGetValue(Context.ConnectionId, out var connectionInfo)) {
+                if (!connectionInfo.Groups.Contains(DataObjects.SignalRUpdateType.PipelineMonitorGroup)) {
+                    connectionInfo.Groups.Add(DataObjects.SignalRUpdateType.PipelineMonitorGroup);
+                }
+                connectionInfo.LastActivityAt = DateTime.UtcNow;
+            }
+        }
+
+        /// <summary>
+        /// Leaves the live pipeline monitoring group.
+        /// </summary>
+        public async Task LeavePipelineMonitor()
+        {
+            await Groups.RemoveFromGroupAsync(Context.ConnectionId, DataObjects.SignalRUpdateType.PipelineMonitorGroup);
+
+            if (_connections.TryGetValue(Context.ConnectionId, out var connectionInfo)) {
+                connectionInfo.Groups.Remove(DataObjects.SignalRUpdateType.PipelineMonitorGroup);
+                connectionInfo.LastActivityAt = DateTime.UtcNow;
             }
         }
     }
