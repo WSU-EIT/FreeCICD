@@ -1,0 +1,20 @@
+{
+  "Route": "/Setup",
+  "Url": "https://localhost:7271/Setup",
+  "StatusCode": 200,
+  "FileSize": 15652,
+  "IsSuspiciouslySmall": false,
+  "RetryAttempted": false,
+  "ConsoleErrors": [],
+  "CapturedAt": "2026-02-13T20:01:21.9621511Z",
+  "IsSuccess": true,
+  "IsHttpError": false,
+  "IsError": false,
+  "ErrorMessage": null,
+  "RequiresAuth": false,
+  "AuthFlowCompleted": false,
+  "AuthStep1Path": null,
+  "AuthStep2Path": null,
+  "AuthStep3Path": null,
+  "AuthFlowNote": null
+}

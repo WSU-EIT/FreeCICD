@@ -1,0 +1,20 @@
+{
+  "Route": "/Settings/AddUserGroup",
+  "Url": "https://localhost:7271/Settings/AddUserGroup",
+  "StatusCode": 200,
+  "FileSize": 18198,
+  "IsSuspiciouslySmall": false,
+  "RetryAttempted": false,
+  "ConsoleErrors": [],
+  "CapturedAt": "2026-02-13T20:01:29.9796355Z",
+  "IsSuccess": true,
+  "IsHttpError": false,
+  "IsError": false,
+  "ErrorMessage": null,
+  "RequiresAuth": false,
+  "AuthFlowCompleted": false,
+  "AuthStep1Path": null,
+  "AuthStep2Path": null,
+  "AuthStep3Path": null,
+  "AuthFlowNote": null
+}

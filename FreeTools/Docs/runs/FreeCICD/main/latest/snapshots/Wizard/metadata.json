@@ -1,0 +1,20 @@
+{
+  "Route": "/Wizard",
+  "Url": "https://localhost:7271/Wizard",
+  "StatusCode": 200,
+  "FileSize": 18198,
+  "IsSuspiciouslySmall": false,
+  "RetryAttempted": false,
+  "ConsoleErrors": [],
+  "CapturedAt": "2026-02-13T20:01:01.4311643Z",
+  "IsSuccess": true,
+  "IsHttpError": false,
+  "IsError": false,
+  "ErrorMessage": null,
+  "RequiresAuth": false,
+  "AuthFlowCompleted": false,
+  "AuthStep1Path": null,
+  "AuthStep2Path": null,
+  "AuthStep3Path": null,
+  "AuthFlowNote": null
+}
