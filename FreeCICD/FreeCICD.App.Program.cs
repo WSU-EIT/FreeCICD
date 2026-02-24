@@ -6,7 +6,7 @@ public partial class Program
     /// Loads FreeCICD-specific configuration from appsettings.json
     /// Called from ConfigurationHelpersLoadApp in Program.App.cs
     /// </summary>
-    public static ConfigurationHelperLoader ConfigurationHelpersLoadFreeCICD(
+    public static ConfigurationHelperLoader MyConfigurationHelpersLoadApp(
         ConfigurationHelperLoader loader, 
         WebApplicationBuilder builder)
     {

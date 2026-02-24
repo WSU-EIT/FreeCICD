@@ -47,7 +47,7 @@ public partial class Program
         var output = loader;
 
         // Load FreeCICD-specific configuration
-        output = ConfigurationHelpersLoadFreeCICD(output, builder);
+        output = MyConfigurationHelpersLoadApp(output, builder);
 
         return output;
     }
