@@ -1,48 +1,57 @@
-# FreeCRM 
+﻿# FreeCICD
 
-An open-source CRM solution built in C# Blazor WebAssembly using .NET 10. You can use this project as-is,
-or customize it to fit your needs. Or, just grab code that you need to use in your project.
+Azure DevOps pipeline monitoring dashboard built on the FreeCRM framework with ASP.NET Core and Blazor WebAssembly (.NET 10). A background service polls Azure DevOps every 5 seconds, diffs pipeline statuses, and pushes live updates to all connected browsers via SignalR — giving operations teams a real-time view of build and release health without refreshing the Azure DevOps portal.
 
-If you want to rename things, you can use the "Rename FreeCRM.exe" console application.
-This will rename the project files, create new GUIDs for each project in the solution,
-and rename namespaces to match your project name.
+## What it does
 
-The rename tool now supports adding the rename value as a command-line argument. For example:
+- **Live pipeline dashboard** — `PipelineMonitorService` polls the Azure DevOps REST API on a 5-second interval, computes status diffs, and broadcasts changes to the `PipelineMonitor` SignalR group
+- **Real-time browser updates** — SignalR hub (`/freecicdHub`) pushes pipeline state to every connected client immediately on change
+- **Full FreeCRM scaffold** — multi-tenant auth (local, OpenID Connect, Google, Facebook, Microsoft, Apple), user/department/settings management, Roslyn plugin system, file storage
+- **Azure DevOps API integration** — dedicated `FreeCICD.App.API.cs` controller endpoints for querying pipelines, builds, and releases
 
-`"Rename FreeCRM.exe" MyNewProjectName`
+## Projects
 
-If you want to remove one or more of the optional components from the application
-(Appointments, EmailTemplates, Invoices, Locations, Payments, Services, or Tags)
-you can use the "Remove Modules from FreeCRM.exe" console application.
-This utility may still leave remnants of the removed modules in the code.
-If you find any items that are not removed that you believe should be,
-please open an issue on GitHub. Please include the name of the file and the line number
-where the item is located.
+| Project | Role |
+|---------|------|
+| `FreeCICD` | ASP.NET Core host; `PipelineMonitorService`, SignalR hub, REST API, auth, plugin loader |
+| `FreeCICD.Client` | Blazor WASM client; pipeline dashboard, standard admin pages |
+| `FreeCICD.DataAccess` | Business logic; Azure DevOps API calls, EF Core, auth helpers |
+| `FreeCICD.DataObjects` | Shared DTOs; pipeline models, endpoint constants |
+| `FreeCICD.EFModels` | EF Core DbContext; core framework tables |
+| `FreeCICD.Plugins` | Roslyn dynamic C# plugin runtime |
 
-The removal tool now supports two command-line options. They are:
+## Quick start
 
-`remove:Module1,Module2,etc.`
+```bash
+cd FreeCICD/FreeCICD
+dotnet run
+```
 
-This removes any named modules.
+Configure your Azure DevOps connection in `appsettings.json` or via .NET user secrets:
 
-`keep:Module1,Module2,etc.`
+```bash
+dotnet user-secrets set "AzureDevOps:Organization" "<org>"
+dotnet user-secrets set "AzureDevOps:PersonalAccessToken" "<pat>"
+```
 
-This removes any modules not named. For example, to remove all optional modules except
-the Tags module, you would use:
+Navigate to `https://localhost:5001`.
 
-`keep:Tags`
+## Build details
 
-You can also remove all optional modules without having to list them all by using:
+| Property | Value |
+|---|---|
+| Target framework | net10.0 |
+| Database backends | SQL Server, MySQL, PostgreSQL, SQLite, InMemory |
+| Auth providers | Cookie, OpenID Connect, Microsoft, Google, Facebook, Apple |
+| Real-time | SignalR (local) or Azure SignalR Service |
 
-`remove:all`
+## License
 
-Do not use any spaces in the command line options. The names of the modules that can be
-kept or removed are:
+Released under the [MIT License](https://opensource.org/licenses/MIT).
 
-- Appointments
-- EmailTemplates
-- Invoices
-- Locations
-- Payments
-- Services
-- Tags
+## About
+
+Designed, written, and implemented by **Washington State University - Enrollment Information Technology (WSU-EIT)**.
+
+- Website: https://em.wsu.edu/eit/
+- GitHub: https://github.com/WSU-EIT
