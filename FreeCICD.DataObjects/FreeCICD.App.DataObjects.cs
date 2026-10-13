@@ -263,6 +263,221 @@ public partial class DataObjects
         public bool Success { get; set; }
     }
 
+    // ========================================================
+    // Server Stats — Safe-to-publicize hardware & OS info
+    // Gathered alongside IIS info by the pipeline template.
+    // Explicitly excludes: env vars, IPs, secrets, user accounts.
+    // ========================================================
+
+    /// <summary>
+    /// CPU hardware summary (safe to display publicly).
+    /// </summary>
+    public class ServerCpuInfo
+    {
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonPropertyName("cores")]
+        public int Cores { get; set; }
+
+        [JsonPropertyName("logicalProcessors")]
+        public int LogicalProcessors { get; set; }
+
+        [JsonPropertyName("maxClockSpeedMHz")]
+        public int MaxClockSpeedMHz { get; set; }
+
+        [JsonPropertyName("usagePercent")]
+        public double UsagePercent { get; set; }
+    }
+
+    /// <summary>
+    /// Physical memory (RAM) summary (safe to display publicly).
+    /// </summary>
+    public class ServerMemoryInfo
+    {
+        [JsonPropertyName("totalGB")]
+        public double TotalGB { get; set; }
+
+        [JsonPropertyName("availableGB")]
+        public double AvailableGB { get; set; }
+
+        [JsonPropertyName("usedPercent")]
+        public double UsedPercent { get; set; }
+    }
+
+    /// <summary>
+    /// Disk drive summary (safe to display publicly).
+    /// </summary>
+    public class ServerDiskInfo
+    {
+        [JsonPropertyName("driveLetter")]
+        public string DriveLetter { get; set; } = string.Empty;
+
+        [JsonPropertyName("volumeLabel")]
+        public string VolumeLabel { get; set; } = string.Empty;
+
+        [JsonPropertyName("fileSystem")]
+        public string FileSystem { get; set; } = string.Empty;
+
+        [JsonPropertyName("totalGB")]
+        public double TotalGB { get; set; }
+
+        [JsonPropertyName("freeGB")]
+        public double FreeGB { get; set; }
+
+        [JsonPropertyName("usedPercent")]
+        public double UsedPercent { get; set; }
+    }
+
+    /// <summary>
+    /// Operating system summary (safe to display publicly).
+    /// </summary>
+    public class ServerOsInfo
+    {
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonPropertyName("version")]
+        public string Version { get; set; } = string.Empty;
+
+        [JsonPropertyName("build")]
+        public string Build { get; set; } = string.Empty;
+
+        [JsonPropertyName("architecture")]
+        public string Architecture { get; set; } = string.Empty;
+
+        [JsonPropertyName("lastBootTime")]
+        public DateTime? LastBootTime { get; set; }
+
+        [JsonPropertyName("uptimeDays")]
+        public double UptimeDays { get; set; }
+    }
+
+    /// <summary>
+    /// An installed tool or runtime detected on the server (name + version, no paths for security).
+    /// </summary>
+    public class ServerToolInfo
+    {
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = string.Empty;
+        [JsonPropertyName("version")]
+        public string Version { get; set; } = string.Empty;
+        [JsonPropertyName("category")]
+        public string Category { get; set; } = string.Empty;
+    }
+
+    public class ServerDotNetSdkInfo
+    {
+        [JsonPropertyName("version")]
+        public string Version { get; set; } = string.Empty;
+    }
+
+    public class ServerDotNetRuntimeInfo
+    {
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = string.Empty;
+        [JsonPropertyName("version")]
+        public string Version { get; set; } = string.Empty;
+    }
+
+    public class ServerWindowsUpdateEntry
+    {
+        [JsonPropertyName("title")]
+        public string Title { get; set; } = string.Empty;
+        [JsonPropertyName("kbArticleId")]
+        public string? KBArticleId { get; set; }
+        [JsonPropertyName("installedOn")]
+        public DateTime? InstalledOn { get; set; }
+        [JsonPropertyName("status")]
+        public string? Status { get; set; }
+    }
+
+    public class ServerWindowsUpdateInfo
+    {
+        [JsonPropertyName("lastInstalledDate")]
+        public DateTime? LastInstalledDate { get; set; }
+        [JsonPropertyName("pendingUpdateCount")]
+        public int PendingUpdateCount { get; set; }
+        [JsonPropertyName("windowsVersion")]
+        public string? WindowsVersion { get; set; }
+        [JsonPropertyName("windowsBuild")]
+        public string? WindowsBuild { get; set; }
+        [JsonPropertyName("recentUpdates")]
+        public List<ServerWindowsUpdateEntry> RecentUpdates { get; set; } = [];
+    }
+
+    /// <summary>
+    /// A notable running service detected on the server (e.g., SQL Server, Azure DevOps Agent).
+    /// Only includes non-trivial server software — basic Windows services are excluded.
+    /// </summary>
+    public class ServerServiceInfo
+    {
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonPropertyName("displayName")]
+        public string? DisplayName { get; set; }
+
+        [JsonPropertyName("status")]
+        public string Status { get; set; } = string.Empty;
+
+        [JsonPropertyName("version")]
+        public string? Version { get; set; }
+
+        [JsonPropertyName("category")]
+        public string Category { get; set; } = string.Empty;
+    }
+
+    public class ServerInstalledFeature
+    {
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = string.Empty;
+        [JsonPropertyName("displayName")]
+        public string? DisplayName { get; set; }
+        [JsonPropertyName("state")]
+        public string? State { get; set; }
+    }
+
+    /// <summary>
+    /// Non-invasive server hardware, OS, and framework stats. Safe for public display.
+    /// Gathered during pipeline deployment alongside IIS data.
+    /// </summary>
+    public class ServerStats
+    {
+        [JsonPropertyName("cpu")]
+        public ServerCpuInfo? Cpu { get; set; }
+
+        [JsonPropertyName("memory")]
+        public ServerMemoryInfo? Memory { get; set; }
+
+        [JsonPropertyName("disks")]
+        public List<ServerDiskInfo> Disks { get; set; } = [];
+
+        [JsonPropertyName("os")]
+        public ServerOsInfo? Os { get; set; }
+
+        [JsonPropertyName("tools")]
+        public List<ServerToolInfo> Tools { get; set; } = [];
+
+        [JsonPropertyName("dotNetSdks")]
+        public List<ServerDotNetSdkInfo> DotNetSdks { get; set; } = [];
+
+        [JsonPropertyName("dotNetRuntimes")]
+        public List<ServerDotNetRuntimeInfo> DotNetRuntimes { get; set; } = [];
+
+        [JsonPropertyName("windowsUpdate")]
+        public ServerWindowsUpdateInfo? WindowsUpdate { get; set; }
+
+        [JsonPropertyName("services")]
+        public List<ServerServiceInfo> Services { get; set; } = [];
+
+        [JsonPropertyName("installedFeatures")]
+        public List<ServerInstalledFeature> InstalledFeatures { get; set; } = [];
+
+        [JsonPropertyName("scannedUtc")]
+        public DateTime? ScannedUtc { get; set; }
+    }
+
     public class IISInfo
     {
         [JsonPropertyName("ApplicationPools")]
@@ -270,6 +485,9 @@ public partial class DataObjects
 
         [JsonPropertyName("Sites")]
         public List<Site> Sites { get; set; } = new();
+
+        [JsonPropertyName("ServerStats")]
+        public ServerStats? ServerStats { get; set; }
     }
 
     public class IISSummary

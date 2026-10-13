@@ -81,6 +81,7 @@ stages:
   ####################################################################
   - stage: PreBuildStage
     displayName: ""Pre-Build Stage""
+    dependsOn: []
     jobs:
       - job: PreBuildJob
         workspace:
@@ -92,10 +93,11 @@ stages:
           - template: Templates/dump-env-variables-template.yml@TemplateRepo
 
   # -------------------------------------------------------------------
-  # Build Stage: pass the runtime variables to the build template
+  # Build Stage and Source Snapshot Stage run in parallel after PreBuild
   # -------------------------------------------------------------------
   - stage: BuildStage
     displayName: ""Build Stage""
+    dependsOn: PreBuildStage
     jobs:
       - job: BuildJob
         displayName: ""Build and Publish Application""
@@ -110,10 +112,29 @@ stages:
               buildNamespace: ""$(CI_BUILD_Namespace)""
 
   # -------------------------------------------------------------------
-  # Info Stage: Basic information (env dump, etc.)
+  # Source Snapshot Stage: runs in parallel with BuildStage
+  # Captures a zip of the source tree as a build artifact.
+  # Does NOT gate the deploy critical path.
+  # -------------------------------------------------------------------
+  - stage: SourceSnapshotStage
+    displayName: ""Source Snapshot""
+    dependsOn: PreBuildStage
+    jobs:
+      - job: SourceSnapshotJob
+        displayName: ""Capture Source Snapshot""
+        pool:
+          name: '{{PIPELINE_POOL}}'
+        steps:
+          - template: Templates/source-snapshot-template.yml@TemplateRepo
+            parameters:
+              projectName: ""$(CI_ProjectName)""
+
+  # -------------------------------------------------------------------
+  # Info Stage: waits for Build only; snapshot does not gate deploys
   # -------------------------------------------------------------------
   - stage: InfoStage
     displayName: ""Info Stage""
+    dependsOn: BuildStage
     jobs:
       - job: InfoJob
         displayName: ""Info Job""

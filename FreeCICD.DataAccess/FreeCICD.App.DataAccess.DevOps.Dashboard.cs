@@ -675,20 +675,21 @@ public partial class DataAccess
         foreach (var mapping in envMappings) {
             var fileName = $"IISInfo_{mapping.Value}.json";
             var filePath = Path.Combine(basePath, fileName);
-            
+
             try {
                 if (File.Exists(filePath)) {
                     var jsonContent = await File.ReadAllTextAsync(filePath);
                     var iisInfo = System.Text.Json.JsonSerializer.Deserialize<DataObjects.IISInfo>(
                         jsonContent,
                         new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                    
-                    if (iisInfo != null) {
-                        result[mapping.Key] = iisInfo;
-                    }
+
+                    result[mapping.Key] = iisInfo;
+                } else {
+                    result[mapping.Key] = null;
                 }
             } catch {
-                // If file doesn't exist or can't be parsed, skip this environment
+                // If file can't be parsed, still include the environment key with null
+                result[mapping.Key] = null;
             }
         }
         

@@ -1,0 +1,1717 @@
+@* Host Environment Component *@
+@* Displays installed development tools, runtimes, SDKs, and system information *@
+@* per deployment environment (DEV, PROD, CMS) from pipeline-generated JSON files, *@
+@* plus a live scan of the current server. *@
+
+@implements IDisposable
+@inject BlazorDataModel Model
+
+@code {
+    protected bool _loadedData = false;
+    protected bool _loading = true;
+    protected string _pageName = "host-environment";
+    protected string? _errorMessage;
+    protected string _loadingMessage = "Loading host environments...";
+
+    // Per-environment data (from pipeline-generated JSON files)
+    protected Dictionary<string, DataObjects.HostEnvironmentResponse?> _envData = new();
+
+    // Per-environment IIS data (from pipeline-generated JSON files)
+    protected Dictionary<string, DataObjects.IISInfo?> _iisData = new();
+
+    // Live scan of this server
+    protected DataObjects.HostEnvironmentResponse? _thisServerData;
+
+    // Current selected environment
+    protected string _selectedEnv = "";
+
+    // Filter state
+    protected string _searchTerm = "";
+    protected string _selectedCategory = "";
+
+    // View state
+    protected string _activeTab = "runtimes"; // runtimes, dotnet, hardware, updates, iis, services, serverstats, envvars, path
+
+    // The currently displayed response (based on selected environment)
+    protected DataObjects.HostEnvironmentResponse? ActiveResponse =>
+        _selectedEnv == "THIS_SERVER" ? _thisServerData :
+        (!string.IsNullOrEmpty(_selectedEnv) && _envData.TryGetValue(_selectedEnv, out var resp)) ? resp : null;
+
+    // The IIS info for the selected environment (no IIS data for live scan)
+    protected DataObjects.IISInfo? ActiveIISInfo =>
+        (_selectedEnv != "THIS_SERVER" && !string.IsNullOrEmpty(_selectedEnv) && _iisData.TryGetValue(_selectedEnv, out var iis)) ? iis : null;
+
+    // Active ServerStats from IIS data (gathered by pipeline alongside IIS info)
+    protected DataObjects.ServerStats? ActiveServerStats => ActiveIISInfo?.ServerStats;
+
+    // Filtered services from ServerStats (searchable)
+    protected List<DataObjects.ServerServiceInfo> FilteredServices {
+        get {
+            if (ActiveServerStats?.Services == null) return [];
+            if (string.IsNullOrWhiteSpace(_searchTerm)) return ActiveServerStats.Services;
+            var search = _searchTerm.ToLower();
+            return ActiveServerStats.Services.Where(s =>
+                s.Name.ToLower().Contains(search) ||
+                (s.DisplayName?.ToLower().Contains(search) ?? false) ||
+                (s.Version?.ToLower().Contains(search) ?? false) ||
+                s.Category.ToLower().Contains(search)).ToList();
+        }
+    }
+
+    // Available environments — always show all known environments,
+    // even when no JSON data file exists for them yet.
+    protected List<(string Key, string Label)> AvailableEnvironments {
+        get {
+            var items = new List<(string Key, string Label)>();
+            // Collect all environment keys from both host-env and IIS data
+            var allEnvKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var k in _envData.Keys) allEnvKeys.Add(k);
+            foreach (var k in _iisData.Keys) allEnvKeys.Add(k);
+
+            foreach (var envKey in allEnvKeys.OrderBy(k => k)) {
+                var label = envKey;
+                _envData.TryGetValue(envKey, out var envResp);
+                if (envResp != null && !string.IsNullOrWhiteSpace(envResp.System?.MachineName)) {
+                    label += $" ({envResp.System.MachineName})";
+                }
+                items.Add((envKey, label));
+            }
+            if (_thisServerData != null) {
+                var label = "This Server";
+                if (!string.IsNullOrWhiteSpace(_thisServerData.System?.MachineName)) {
+                    label += $" ({_thisServerData.System.MachineName})";
+                }
+                items.Add(("THIS_SERVER", label));
+            }
+            return items;
+        }
+    }
+
+    // Computed: filtered runtimes
+    protected List<DataObjects.HostRuntimeInfo> FilteredRuntimes {
+        get {
+            if (ActiveResponse?.Runtimes == null) return [];
+
+            var items = ActiveResponse.Runtimes.AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(_searchTerm)) {
+                var search = _searchTerm.ToLower();
+                items = items.Where(r =>
+                    r.Name.ToLower().Contains(search) ||
+                    (r.Version?.ToLower().Contains(search) ?? false) ||
+                    (r.Category?.ToLower().Contains(search) ?? false) ||
+                    (r.Path?.ToLower().Contains(search) ?? false));
+            }
+
+            if (!string.IsNullOrWhiteSpace(_selectedCategory)) {
+                items = items.Where(r => string.Equals(r.Category, _selectedCategory, StringComparison.OrdinalIgnoreCase));
+            }
+
+            return items.ToList();
+        }
+    }
+
+    // Computed: grouped runtimes by category
+    protected List<IGrouping<string, DataObjects.HostRuntimeInfo>> GroupedRuntimes =>
+        FilteredRuntimes
+            .GroupBy(r => r.Category ?? "Other")
+            .OrderBy(g => g.Key)
+            .ToList();
+
+    // Computed: filtered PATH entries
+    protected List<string> FilteredPathEntries {
+        get {
+            if (ActiveResponse?.PathEntries == null) return [];
+            if (string.IsNullOrWhiteSpace(_searchTerm)) return ActiveResponse.PathEntries;
+
+            var search = _searchTerm.ToLower();
+            return ActiveResponse.PathEntries.Where(p => p.ToLower().Contains(search)).ToList();
+        }
+    }
+
+    public void Dispose()
+    {
+        Model.OnChange -= OnDataModelUpdated;
+        Model.OnSignalRUpdate -= OnSignalRUpdate;
+    }
+
+    protected override void OnInitialized()
+    {
+        Model.OnChange += OnDataModelUpdated;
+        Model.OnSignalRUpdate += OnSignalRUpdate;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Model.Loaded && Model.LoggedIn) {
+            if (!_loadedData) {
+                _loadedData = true;
+                await LoadAllEnvironments();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Handles SignalR updates for progressive loading status.
+    /// </summary>
+    protected void OnSignalRUpdate(DataObjects.SignalRUpdate update)
+    {
+        if (update == null) return;
+
+        switch (update.UpdateType) {
+            case DataObjects.SignalRUpdateType.LoadingDevOpsInfoStatusUpdate:
+                if (!string.IsNullOrWhiteSpace(update.Message)) {
+                    _loadingMessage = update.Message;
+                    InvokeAsync(StateHasChanged);
+                }
+                break;
+
+            case DataObjects.SignalRUpdateType.HostEnvironmentLoadComplete:
+                _loading = false;
+                if (!string.IsNullOrWhiteSpace(update.Message)) {
+                    _loadingMessage = update.Message;
+                }
+                InvokeAsync(StateHasChanged);
+                break;
+        }
+    }
+
+    protected void OnDataModelUpdated()
+    {
+        if (Model.View == _pageName) {
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Loads per-environment data from JSON files and also kicks off a live scan of this server.
+    /// </summary>
+    protected async Task LoadAllEnvironments()
+    {
+        _loading = true;
+        _errorMessage = null;
+        _loadingMessage = "Loading host environments...";
+        StateHasChanged();
+
+        try {
+            // Load per-environment data from pipeline-generated JSON files
+            var envResult = await Helpers.GetOrPost<Dictionary<string, DataObjects.HostEnvironmentResponse>>(
+                DataObjects.Endpoints.HostEnvironment.GetEnvironmentByHost);
+
+            if (envResult != null) {
+                _envData.Clear();
+                foreach (var kv in envResult) {
+                    _envData[kv.Key] = kv.Value;
+                }
+            }
+
+            // Load IIS info per environment (same pattern — pipeline-generated JSON files)
+            var iisResult = await Helpers.GetOrPost<Dictionary<string, DataObjects.IISInfo>>(
+                DataObjects.Endpoints.DevOps.GetDevOpsIISInfo);
+
+            if (iisResult != null) {
+                _iisData.Clear();
+                foreach (var kv in iisResult) {
+                    _iisData[kv.Key] = kv.Value;
+                }
+            }
+
+            // Also do a live scan of this server
+            var thisServer = await Helpers.GetOrPost<DataObjects.HostEnvironmentResponse>(
+                DataObjects.Endpoints.HostEnvironment.GetEnvironment +
+                "?connectionId=" + Uri.EscapeDataString((string.Empty + Model?.SignalrClientRegistration?.ConnectionId).Trim()));
+
+            if (thisServer != null) {
+                _thisServerData = thisServer;
+            }
+
+            // Auto-select the first available environment
+            var available = AvailableEnvironments;
+            if (available.Count > 0) {
+                // Prefer the first environment that actually has data, falling back to first overall
+                var firstWithData = available.FirstOrDefault(e =>
+                    (e.Key == "THIS_SERVER" && _thisServerData != null) ||
+                    (e.Key != "THIS_SERVER" && (
+                        (_envData.TryGetValue(e.Key, out var ed) && ed != null) ||
+                        (_iisData.TryGetValue(e.Key, out var id) && id != null))));
+                _selectedEnv = firstWithData.Key ?? available[0].Key;
+                // Set the right default tab
+                SelectEnvironment(_selectedEnv);
+            }
+
+            var anyData = _envData.Values.Any(v => v != null) || _iisData.Values.Any(v => v != null);
+            if (!anyData && _thisServerData == null) {
+                _errorMessage = "No host environment data available. Deploy HostEnvironment JSON files or check connectivity.";
+            }
+        } catch (Exception ex) {
+            _errorMessage = $"Error loading environments: {ex.Message}";
+        } finally {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    protected async Task RefreshAll()
+    {
+        _loadedData = false;
+        _envData.Clear();
+        _iisData.Clear();
+        _thisServerData = null;
+        _selectedEnv = "";
+        _loadingMessage = "Refreshing host environments...";
+        await LoadAllEnvironments();
+    }
+
+    protected void SelectEnvironment(string envKey)
+    {
+        _selectedEnv = envKey;
+        _searchTerm = "";
+        _selectedCategory = "";
+        // If this environment has no HostEnvironment data but has IIS data, default to iis tab
+        var hasHostData = envKey == "THIS_SERVER" ? _thisServerData != null :
+            _envData.TryGetValue(envKey, out var resp) && resp != null;
+        var hasIisData = envKey != "THIS_SERVER" &&
+            _iisData.TryGetValue(envKey, out var iisResp) && iisResp != null;
+        _activeTab = !hasHostData && hasIisData ? "iis" : "runtimes";
+        StateHasChanged();
+    }
+
+    protected void SetActiveTab(string tab)
+    {
+        _activeTab = tab;
+        StateHasChanged();
+    }
+
+    protected string GetCategoryIcon(string category) => category.ToLower() switch {
+        ".net" => "fa-solid fa-code",
+        "python" => "fa-brands fa-python",
+        "javascript" => "fa-brands fa-js",
+        "java" => "fa-brands fa-java",
+        "go" => "fa-solid fa-forward",
+        "rust" => "fa-solid fa-gear",
+        "ruby" => "fa-solid fa-gem",
+        "php" => "fa-brands fa-php",
+        "containers" => "fa-brands fa-docker",
+        "devops" => "fa-solid fa-cloud",
+        "version control" => "fa-brands fa-git-alt",
+        "web server" => "fa-solid fa-server",
+        _ => "fa-solid fa-puzzle-piece"
+    };
+
+    protected string GetEnvBadgeClass(string envKey) => envKey.ToUpper() switch {
+        "DEV" => "bg-info text-dark",
+        "PROD" => "bg-danger",
+        "CMS" => "bg-warning text-dark",
+        "THIS_SERVER" => "bg-success",
+        _ => "bg-secondary"
+    };
+
+    protected string GetServiceCategoryIcon(string category) => category.ToLower() switch {
+        "database" => "fa-solid fa-database",
+        "devops" => "fa-solid fa-cloud",
+        "search" => "fa-solid fa-magnifying-glass",
+        "messaging" => "fa-solid fa-envelope",
+        "monitoring" => "fa-solid fa-chart-line",
+        "infrastructure" => "fa-solid fa-network-wired",
+        "containers" => "fa-brands fa-docker",
+        "webserver" => "fa-solid fa-server",
+        "remote" => "fa-solid fa-terminal",
+        "activedirectory" => "fa-solid fa-sitemap",
+        "security" => "fa-solid fa-shield-halved",
+        "email" => "fa-solid fa-at",
+        _ => "fa-solid fa-gear"
+    };
+
+    protected string GetUsageBarClass(double percent) => percent switch {
+        >= 90 => "bg-danger",
+        >= 75 => "bg-warning",
+        _ => "bg-success"
+    };
+}
+
+@* ════════════════════════════════════════════════════════════════ *@
+@* MARKUP *@
+@* ════════════════════════════════════════════════════════════════ *@
+
+@if (_loading) {
+    <h1 class="page-title">
+        <i class="fa-solid fa-server me-2"></i> Host Environment
+    </h1>
+    <div class="d-flex align-items-center gap-3 mt-3">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <span class="text-muted">@_loadingMessage</span>
+    </div>
+} else if (!string.IsNullOrWhiteSpace(_errorMessage) && AvailableEnvironments.Count == 0) {
+    <h1 class="page-title">
+        <i class="fa-solid fa-server me-2"></i> Host Environment
+    </h1>
+    <div class="alert alert-danger mt-3">
+        <i class="fa-solid fa-triangle-exclamation me-2"></i> @_errorMessage
+    </div>
+    <button class="btn btn-primary" @onclick="RefreshAll">
+        <i class="fa-solid fa-rotate me-1"></i> Retry
+    </button>
+} else {
+
+    @* ── Header ── *@
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+        <h1 class="page-title mb-0">
+            <i class="fa-solid fa-server me-2"></i> Host Environment
+        </h1>
+        <button class="btn btn-outline-secondary btn-sm" @onclick="RefreshAll">
+            <i class="fa-solid fa-rotate me-1"></i> Refresh
+        </button>
+    </div>
+
+    @* ── Environment selector pills ── *@
+    <div class="d-flex flex-wrap gap-2 mb-3">
+        @foreach (var env in AvailableEnvironments) {
+            var hasData = env.Key == "THIS_SERVER" ? _thisServerData != null :
+                (_envData.TryGetValue(env.Key, out var ed) && ed != null) ||
+                (_iisData.TryGetValue(env.Key, out var id) && id != null);
+            <button class="btn @(_selectedEnv == env.Key ? "btn-primary" : hasData ? "btn-outline-secondary" : "btn-outline-secondary opacity-75") btn-sm"
+                    @onclick="() => SelectEnvironment(env.Key)">
+                <span class="badge @GetEnvBadgeClass(env.Key) me-1">@(env.Key == "THIS_SERVER" ? "LIVE" : env.Key)</span>
+                @env.Label
+                @if (!hasData) { <i class="fa-solid fa-circle-exclamation ms-1 text-warning" title="No data available"></i> }
+            </button>
+        }
+    </div>
+
+    @if (ActiveResponse != null) {
+        var _envResponse = ActiveResponse;
+
+        @* ── System info card ── *@
+        <div class="card mb-3">
+            <div class="card-header py-2">
+                <i class="fa-solid fa-computer me-1"></i> System Information
+                <span class="badge @GetEnvBadgeClass(_selectedEnv) ms-2">@(_selectedEnv == "THIS_SERVER" ? "LIVE SCAN" : _selectedEnv)</span>
+            </div>
+            <div class="card-body py-2">
+                <div class="row">
+                    <div class="col-md-6">
+                        <table class="table table-sm table-borderless mb-0">
+                            <tbody>
+                                <tr>
+                                    <td class="text-muted" style="width: 160px;">Machine Name</td>
+                                    <td class="fw-semibold">@_envResponse.System.MachineName</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Operating System</td>
+                                    <td>@_envResponse.System.OsDescription</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">OS Architecture</td>
+                                    <td>@_envResponse.System.OsArchitecture</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <table class="table table-sm table-borderless mb-0">
+                            <tbody>
+                                <tr>
+                                    <td class="text-muted" style="width: 160px;">Process Architecture</td>
+                                    <td>@_envResponse.System.ProcessArchitecture</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Processor Count</td>
+                                    <td>@_envResponse.System.ProcessorCount</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">.NET Runtime</td>
+                                    <td><span class="badge bg-primary">@_envResponse.System.DotnetRuntimeVersion</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* ── Summary stat cards ── *@
+        <div class="row row-cols-2 row-cols-md-3 row-cols-lg-5 g-2 mb-3">
+            <div class="col">
+                <div class="card text-center h-100">
+                    <div class="card-body py-2">
+                        <div class="fs-4 fw-bold text-primary">@_envResponse.RuntimeCount</div>
+                        <small class="text-muted">Tools Found</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card text-center h-100">
+                    <div class="card-body py-2">
+                        <div class="fs-4 fw-bold text-primary">@_envResponse.SdkCount</div>
+                        <small class="text-muted">.NET SDKs</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card text-center h-100">
+                    <div class="card-body py-2">
+                        <div class="fs-4 fw-bold text-primary">@_envResponse.DotNetRuntimeCount</div>
+                        <small class="text-muted">.NET Runtimes</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card text-center h-100">
+                    <div class="card-body py-2">
+                        <div class="fs-4 fw-bold text-primary">@_envResponse.EnvironmentVariableCount</div>
+                        <small class="text-muted">Env Variables</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card text-center h-100">
+                    <div class="card-body py-2">
+                        <div class="fs-4 fw-bold text-success">@_envResponse.ElapsedSeconds.ToString("F1")s</div>
+                        <small class="text-muted">Scan Time</small>
+                    </div>
+                </div>
+            </div>
+            @if (ActiveIISInfo != null) {
+                <div class="col">
+                    <div class="card text-center h-100">
+                        <div class="card-body py-2">
+                            <div class="fs-4 fw-bold text-info">@ActiveIISInfo.Sites.Count</div>
+                            <small class="text-muted">IIS Sites</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col">
+                    <div class="card text-center h-100">
+                        <div class="card-body py-2">
+                            <div class="fs-4 fw-bold text-info">@ActiveIISInfo.ApplicationPools.Count</div>
+                            <small class="text-muted">App Pools</small>
+                        </div>
+                    </div>
+                </div>
+                @if (ActiveServerStats?.Services.Count > 0) {
+                    <div class="col">
+                        <div class="card text-center h-100">
+                            <div class="card-body py-2">
+                                <div class="fs-4 fw-bold text-warning">@ActiveServerStats.Services.Count</div>
+                                <small class="text-muted">Services</small>
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+
+        @* ── Search and filter bar ── *@
+        <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
+            <div class="input-group" style="max-width: 350px;">
+                <span class="input-group-text"><i class="fa-solid fa-search"></i></span>
+                <input type="text" class="form-control" placeholder="Search tools, versions, paths..."
+                       @bind="_searchTerm" @bind:event="oninput" />
+                @if (!string.IsNullOrWhiteSpace(_searchTerm)) {
+                    <button class="btn btn-outline-secondary" @onclick="() => _searchTerm = string.Empty">
+                        <i class="fa-solid fa-times"></i>
+                    </button>
+                }
+            </div>
+
+            @if (_envResponse.Categories.Count > 0) {
+                <select class="form-select" style="max-width: 200px;" @bind="_selectedCategory">
+                    <option value="">All Categories</option>
+                    @foreach (var cat in _envResponse.Categories) {
+                        <option value="@cat">@cat</option>
+                    }
+                </select>
+            }
+        </div>
+
+        @* ── Tab navigation ── *@
+        <ul class="nav nav-tabs mb-3">
+            <li class="nav-item">
+                <button class="nav-link @(_activeTab == "runtimes" ? "active" : "")" @onclick='() => SetActiveTab("runtimes")'>
+                    <i class="fa-solid fa-puzzle-piece me-1"></i> Tools & Runtimes (@FilteredRuntimes.Count)
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link @(_activeTab == "dotnet" ? "active" : "")" @onclick='() => SetActiveTab("dotnet")'>
+                    <i class="fa-solid fa-code me-1"></i> .NET Detail (@(_envResponse.SdkCount + _envResponse.DotNetRuntimeCount))
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link @(_activeTab == "hardware" ? "active" : "")" @onclick='() => SetActiveTab("hardware")'>
+                    <i class="fa-solid fa-hard-drive me-1"></i> Hardware
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link @(_activeTab == "updates" ? "active" : "")" @onclick='() => SetActiveTab("updates")'>
+                    <i class="fa-solid fa-shield-halved me-1"></i> Windows Updates
+                    @if (_envResponse.WindowsUpdate?.PendingUpdateCount > 0) {
+                        <span class="badge bg-warning text-dark ms-1">@_envResponse.WindowsUpdate.PendingUpdateCount pending</span>
+                    }
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link @(_activeTab == "envvars" ? "active" : "")" @onclick='() => SetActiveTab("envvars")'>
+                    <i class="fa-solid fa-terminal me-1"></i> Environment (@_envResponse.EnvironmentVariableCount)
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link @(_activeTab == "path" ? "active" : "")" @onclick='() => SetActiveTab("path")'>
+                    <i class="fa-solid fa-road me-1"></i> PATH (@_envResponse.PathEntryCount)
+                </button>
+            </li>
+            @if (ActiveIISInfo != null) {
+                <li class="nav-item">
+                    <button class="nav-link @(_activeTab == "iis" ? "active" : "")" @onclick='() => SetActiveTab("iis")'>
+                        <i class="fa-solid fa-globe me-1"></i> IIS
+                        <span class="badge bg-secondary ms-1">@(ActiveIISInfo.Sites.Count) sites</span>
+                    </button>
+                </li>
+                @if (ActiveServerStats?.Services.Count > 0) {
+                    <li class="nav-item">
+                        <button class="nav-link @(_activeTab == "services" ? "active" : "")" @onclick='() => SetActiveTab("services")'>
+                            <i class="fa-solid fa-gears me-1"></i> Services
+                            <span class="badge bg-secondary ms-1">@ActiveServerStats.Services.Count</span>
+                        </button>
+                    </li>
+                }
+                @if (ActiveServerStats != null) {
+                    <li class="nav-item">
+                        <button class="nav-link @(_activeTab == "serverstats" ? "active" : "")" @onclick='() => SetActiveTab("serverstats")'>
+                            <i class="fa-solid fa-chart-bar me-1"></i> Server Stats
+                        </button>
+                    </li>
+                }
+            }
+        </ul>
+
+        @* ══════════════════════════════════════════════════════════ *@
+        @* TAB: Tools & Runtimes (grouped by category) *@
+        @* ══════════════════════════════════════════════════════════ *@
+        @if (_activeTab == "runtimes") {
+            @foreach (var group in GroupedRuntimes) {
+                <div class="card mb-2">
+                    <div class="card-header py-2">
+                        <i class="@GetCategoryIcon(group.Key) me-2"></i>
+                        <strong>@group.Key</strong>
+                        <span class="badge bg-secondary ms-2">@group.Count()</span>
+                    </div>
+                    <div class="card-body py-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 200px;">Tool</th>
+                                        <th style="width: 180px;">Version</th>
+                                        <th>Path</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var rt in group.OrderBy(r => r.Name)) {
+                                        <tr>
+                                            <td class="fw-semibold">@rt.Name</td>
+                                            <td><span class="badge bg-success">@(rt.Version ?? "—")</span></td>
+                                            <td class="text-muted small text-truncate" style="max-width: 400px;" title="@rt.Path">@(rt.Path ?? "—")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @if (FilteredRuntimes.Count == 0) {
+                <div class="text-muted text-center py-4">
+                    <i class="fa-solid fa-puzzle-piece fa-2x mb-2 d-block"></i>
+                    No tools match the current filters.
+                </div>
+            }
+        }
+
+        @* ══════════════════════════════════════════════════════════ *@
+        @* TAB: .NET Detail (SDKs + Runtimes) *@
+        @* ══════════════════════════════════════════════════════════ *@
+        @if (_activeTab == "dotnet") {
+            @if (_envResponse.DotNetSdks.Count > 0) {
+                <div class="card mb-3">
+                    <div class="card-header py-2">
+                        <i class="fa-solid fa-box me-1"></i> Installed .NET SDKs
+                        <span class="badge bg-secondary ms-2">@_envResponse.DotNetSdks.Count</span>
+                    </div>
+                    <div class="card-body py-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 200px;">Version</th>
+                                        <th>Install Path</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var sdk in _envResponse.DotNetSdks.OrderByDescending(s => s.Version)) {
+                                        <tr>
+                                            <td><span class="badge bg-primary">@sdk.Version</span></td>
+                                            <td class="text-muted small">@sdk.Path</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @if (_envResponse.DotNetRuntimes.Count > 0) {
+                <div class="card mb-3">
+                    <div class="card-header py-2">
+                        <i class="fa-solid fa-microchip me-1"></i> Installed .NET Runtimes
+                        <span class="badge bg-secondary ms-2">@_envResponse.DotNetRuntimes.Count</span>
+                    </div>
+                    <div class="card-body py-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 280px;">Runtime</th>
+                                        <th style="width: 150px;">Version</th>
+                                        <th>Install Path</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var rt in _envResponse.DotNetRuntimes.OrderBy(r => r.Name).ThenByDescending(r => r.Version)) {
+                                        <tr>
+                                            <td class="fw-semibold">@rt.Name</td>
+                                            <td><span class="badge bg-info text-dark">@rt.Version</span></td>
+                                            <td class="text-muted small">@rt.Path</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @if (_envResponse.DotNetSdks.Count == 0 && _envResponse.DotNetRuntimes.Count == 0) {
+                <div class="text-muted text-center py-4">
+                    <i class="fa-solid fa-code fa-2x mb-2 d-block"></i>
+                    No .NET SDKs or runtimes detected.
+                </div>
+            }
+        }
+
+        @* ══════════════════════════════════════════════════════════ *@
+        @* TAB: Hardware (CPU, Memory, Disks) *@
+        @* ══════════════════════════════════════════════════════════ *@
+        @if (_activeTab == "hardware") {
+            <div class="row g-3 mb-3">
+                @* ── CPU Card ── *@
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header py-2">
+                            <i class="fa-solid fa-microchip me-1"></i> CPU
+                        </div>
+                        <div class="card-body py-2">
+                            @if (_envResponse.Cpu != null) {
+                                <table class="table table-sm table-borderless mb-0">
+                                    <tbody>
+                                        <tr>
+                                            <td class="text-muted" style="width: 160px;">Processor</td>
+                                            <td class="fw-semibold">@_envResponse.Cpu.Name</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="text-muted">Cores</td>
+                                            <td>@_envResponse.Cpu.Cores physical / @_envResponse.Cpu.LogicalProcessors logical</td>
+                                        </tr>
+                                        @if (!string.IsNullOrWhiteSpace(_envResponse.Cpu.MaxClockSpeedMHz)) {
+                                            <tr>
+                                                <td class="text-muted">Clock Speed</td>
+                                                <td>@_envResponse.Cpu.MaxClockSpeedMHz MHz</td>
+                                            </tr>
+                                        }
+                                        <tr>
+                                            <td class="text-muted">Usage at Scan</td>
+                                            <td>
+                                                <div class="progress" style="height: 20px;">
+                                                    <div class="progress-bar @(GetUsageBarClass(_envResponse.Cpu.UsagePercent))" role="progressbar"
+                                                         style="width: @_envResponse.Cpu.UsagePercent%;"
+                                                         aria-valuenow="@_envResponse.Cpu.UsagePercent" aria-valuemin="0" aria-valuemax="100">
+                                                        @_envResponse.Cpu.UsagePercent.ToString("F0")%
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            } else {
+                                <span class="text-muted">CPU data not available (pipeline-scanned data only).</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                @* ── Memory Card ── *@
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header py-2">
+                            <i class="fa-solid fa-memory me-1"></i> Memory (RAM)
+                        </div>
+                        <div class="card-body py-2">
+                            @if (_envResponse.Memory != null) {
+                                <table class="table table-sm table-borderless mb-0">
+                                    <tbody>
+                                        <tr>
+                                            <td class="text-muted" style="width: 160px;">Total</td>
+                                            <td class="fw-semibold">@_envResponse.Memory.TotalGB.ToString("F1") GB</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="text-muted">Available</td>
+                                            <td>@_envResponse.Memory.AvailableGB.ToString("F1") GB</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="text-muted">Usage at Scan</td>
+                                            <td>
+                                                <div class="progress" style="height: 20px;">
+                                                    <div class="progress-bar @(GetUsageBarClass(_envResponse.Memory.UsedPercent))" role="progressbar"
+                                                         style="width: @_envResponse.Memory.UsedPercent%;"
+                                                         aria-valuenow="@_envResponse.Memory.UsedPercent" aria-valuemin="0" aria-valuemax="100">
+                                                        @_envResponse.Memory.UsedPercent.ToString("F0")%
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            } else {
+                                <span class="text-muted">Memory data not available (pipeline-scanned data only).</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* ── Disk Drives ── *@
+            @if (_envResponse.Disks.Count > 0) {
+                <div class="card mb-3">
+                    <div class="card-header py-2">
+                        <i class="fa-solid fa-hard-drive me-1"></i> Disk Drives
+                        <span class="badge bg-secondary ms-2">@_envResponse.Disks.Count</span>
+                    </div>
+                    <div class="card-body py-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 80px;">Drive</th>
+                                        <th style="width: 160px;">Label</th>
+                                        <th style="width: 100px;">File System</th>
+                                        <th style="width: 100px;">Total</th>
+                                        <th style="width: 100px;">Free</th>
+                                        <th>Usage</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var disk in _envResponse.Disks) {
+                                        <tr>
+                                            <td class="fw-semibold font-monospace">@disk.DriveLetter</td>
+                                            <td>@(disk.VolumeLabel ?? "—")</td>
+                                            <td class="text-muted small">@(disk.FileSystem ?? "—")</td>
+                                            <td>@disk.TotalGB.ToString("F1") GB</td>
+                                            <td>@disk.FreeGB.ToString("F1") GB</td>
+                                            <td>
+                                                <div class="progress" style="height: 18px;">
+                                                    <div class="progress-bar @(GetUsageBarClass(disk.UsedPercent))" role="progressbar"
+                                                         style="width: @disk.UsedPercent%;"
+                                                         aria-valuenow="@disk.UsedPercent" aria-valuemin="0" aria-valuemax="100">
+                                                        @disk.UsedPercent.ToString("F0")%
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @if (_envResponse.Cpu == null && _envResponse.Memory == null && _envResponse.Disks.Count == 0) {
+                <div class="text-muted text-center py-4">
+                    <i class="fa-solid fa-hard-drive fa-2x mb-2 d-block"></i>
+                    No hardware data available. Hardware stats are gathered by the pipeline scanner during nightly deployments.
+                </div>
+            }
+        }
+
+        @* ══════════════════════════════════════════════════════════ *@
+        @* TAB: Windows Updates & Features *@
+        @* ══════════════════════════════════════════════════════════ *@
+        @if (_activeTab == "updates") {
+            @if (_envResponse.WindowsUpdate != null) {
+                var wu = _envResponse.WindowsUpdate;
+
+                @* ── Summary cards row ── *@
+                <div class="row g-3 mb-3">
+                    <div class="col-md-3">
+                        <div class="card text-center h-100">
+                            <div class="card-body py-2">
+                                <div class="fs-5 fw-bold text-primary">@(wu.WindowsVersion ?? "—")</div>
+                                <small class="text-muted">Windows Version</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center h-100">
+                            <div class="card-body py-2">
+                                <div class="fs-5 fw-bold text-secondary">@(wu.WindowsBuild ?? "—")</div>
+                                <small class="text-muted">Build Number</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center h-100">
+                            <div class="card-body py-2">
+                                <div class="fs-5 fw-bold text-success">@(wu.LastInstalledDate?.ToLocalTime().ToString("yyyy-MM-dd") ?? "Unknown")</div>
+                                <small class="text-muted">Last Patched</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center h-100">
+                            <div class="card-body py-2">
+                                <div class="fs-5 fw-bold @(wu.PendingUpdateCount > 0 ? "text-warning" : "text-success")">@wu.PendingUpdateCount</div>
+                                <small class="text-muted">Pending Updates</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                @* ── Recent Hotfixes ── *@
+                @if (wu.RecentUpdates.Count > 0) {
+                    <div class="card mb-3">
+                        <div class="card-header py-2">
+                            <i class="fa-solid fa-clock-rotate-left me-1"></i> Recent Hotfixes
+                            <span class="badge bg-secondary ms-2">@wu.RecentUpdates.Count</span>
+                        </div>
+                        <div class="card-body py-0">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 140px;">KB Article</th>
+                                            <th>Description</th>
+                                            <th style="width: 140px;">Installed On</th>
+                                            <th style="width: 100px;">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var hf in wu.RecentUpdates) {
+                                            <tr>
+                                                <td class="fw-semibold font-monospace small">@(hf.KBArticleId ?? "—")</td>
+                                                <td>@hf.Title</td>
+                                                <td class="text-muted small">@(hf.InstalledOn?.ToLocalTime().ToString("yyyy-MM-dd") ?? "—")</td>
+                                                <td><span class="badge @(hf.Status == "Installed" ? "bg-success" : "bg-secondary")">@(hf.Status ?? "—")</span></td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                }
+            } else {
+                <div class="text-muted text-center py-4">
+                    <i class="fa-solid fa-shield-halved fa-2x mb-2 d-block"></i>
+                    No Windows Update data available. This data is gathered by the pipeline scanner during nightly deployments.
+                </div>
+            }
+
+            @* ── Installed Windows Features ── *@
+            @if (_envResponse.InstalledFeatures.Count > 0) {
+                <div class="card mb-3">
+                    <div class="card-header py-2">
+                        <i class="fa-solid fa-list-check me-1"></i> Installed Windows Features
+                        <span class="badge bg-secondary ms-2">@_envResponse.InstalledFeatures.Count</span>
+                    </div>
+                    <div class="card-body py-0">
+                        <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="sticky-top bg-white">
+                                    <tr>
+                                        <th style="width: 280px;">Name</th>
+                                        <th>Display Name</th>
+                                        <th style="width: 120px;">State</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var feat in _envResponse.InstalledFeatures.OrderBy(f => f.Name)) {
+                                        <tr>
+                                            <td class="fw-semibold font-monospace small">@feat.Name</td>
+                                            <td>@(feat.DisplayName ?? "—")</td>
+                                            <td><span class="badge bg-success">@(feat.State ?? "Installed")</span></td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+
+        @* ══════════════════════════════════════════════════════════ *@
+        @* TAB: Environment Variables *@
+        @* ══════════════════════════════════════════════════════════ *@
+        @if (_activeTab == "envvars") {
+            @if (_envResponse.EnvironmentVariables.Count > 0) {
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 250px;">Variable</th>
+                                <th>Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var ev in _envResponse.EnvironmentVariables.OrderBy(e => e.Name)) {
+                                <tr>
+                                    <td class="fw-semibold font-monospace small">@ev.Name</td>
+                                    <td class="text-muted font-monospace small" style="word-break: break-all;">@ev.Value</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            } else {
+                <div class="text-muted text-center py-4">
+                    <i class="fa-solid fa-terminal fa-2x mb-2 d-block"></i>
+                    No relevant environment variables detected.
+                </div>
+            }
+        }
+
+        @* ══════════════════════════════════════════════════════════ *@
+        @* TAB: PATH Entries *@
+        @* ══════════════════════════════════════════════════════════ *@
+        @if (_activeTab == "path") {
+            @if (FilteredPathEntries.Count > 0) {
+                <div class="card">
+                    <div class="card-header py-2">
+                        <i class="fa-solid fa-road me-1"></i> PATH Entries
+                        <span class="badge bg-secondary ms-2">@FilteredPathEntries.Count</span>
+                    </div>
+                    <div class="card-body py-0">
+                        <div class="list-group list-group-flush">
+                            @{ int pathIndex = 0; }
+                            @foreach (var entry in FilteredPathEntries) {
+                                pathIndex++;
+                                <div class="list-group-item py-1 px-2 d-flex align-items-center">
+                                    <span class="badge bg-light text-dark me-2" style="min-width: 30px;">@pathIndex</span>
+                                    <span class="font-monospace small" style="word-break: break-all;">@entry</span>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            } else {
+                <div class="text-muted text-center py-4">
+                    <i class="fa-solid fa-road fa-2x mb-2 d-block"></i>
+                    No PATH entries match the current filter.
+                </div>
+            }
+        }
+
+        @* ══════════════════════════════════════════════════════════ *@
+        @* TAB: IIS Sites & App Pools *@
+        @* ══════════════════════════════════════════════════════════ *@
+        @if (_activeTab == "iis" && ActiveIISInfo != null) {
+            var iis = ActiveIISInfo;
+
+            @* ── Sites with Bindings & Applications ── *@
+            @if (iis.Sites.Count > 0) {
+                @foreach (var site in iis.Sites.OrderBy(s => s.Name)) {
+                    <div class="card mb-3">
+                        <div class="card-header py-2">
+                            <i class="fa-solid fa-globe me-1"></i>
+                            <strong>@site.Name</strong>
+                            <span class="badge bg-info text-dark ms-2">@site.Applications.Count app(s)</span>
+                            <span class="badge bg-secondary ms-1">@site.Bindings.Count binding(s)</span>
+                        </div>
+                        <div class="card-body py-0">
+                            @* ── Bindings ── *@
+                            @if (site.Bindings.Count > 0) {
+                                <h6 class="mt-2 mb-1 text-muted small text-uppercase">Bindings</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover mb-2">
+                                        <thead>
+                                            <tr>
+                                                <th style="width: 100px;">Protocol</th>
+                                                <th>Binding Information</th>
+                                                <th style="width: 180px;">Certificate</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var binding in site.Bindings) {
+                                                <tr>
+                                                    <td>
+                                                        <span class="badge @(binding.Protocol == "https" ? "bg-success" : "bg-secondary")">
+                                                            @binding.Protocol
+                                                        </span>
+                                                    </td>
+                                                    <td class="font-monospace small">@binding.BindingInformation</td>
+                                                    <td class="text-muted small text-truncate" style="max-width: 180px;" title="@binding.CertificateHash">
+                                                        @(string.IsNullOrWhiteSpace(binding.CertificateHash) ? "—" : binding.CertificateStoreName + " / " + binding.CertificateHash[..Math.Min(12, binding.CertificateHash.Length)] + "…")
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+
+                            @* ── Applications ── *@
+                            @if (site.Applications.Count > 0) {
+                                <h6 class="mt-1 mb-1 text-muted small text-uppercase">Applications</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover mb-2">
+                                        <thead>
+                                            <tr>
+                                                <th style="width: 200px;">Path</th>
+                                                <th style="width: 180px;">App Pool</th>
+                                                <th>Physical Path</th>
+                                                <th style="width: 80px;">Virtual</th>
+                                                <th style="width: 160px;">web.config Modified</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var app in site.Applications.OrderBy(a => a.Path)) {
+                                                <tr>
+                                                    <td class="fw-semibold font-monospace small">@app.Path</td>
+                                                    <td><span class="badge bg-primary">@app.AppPool</span></td>
+                                                    <td class="text-muted small text-truncate" style="max-width: 350px;" title="@app.PhysicalPath">@app.PhysicalPath</td>
+                                                    <td class="text-center">
+                                                        @if (app.IsVirtual) {
+                                                            <i class="fa-solid fa-check text-success"></i>
+                                                        }
+                                                    </td>
+                                                    <td class="text-muted small">@(app.WebConfigLastModified?.ToLocalTime().ToString("g") ?? "—")</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+
+            @* ── Application Pools ── *@
+            @if (iis.ApplicationPools.Count > 0) {
+                <div class="card mb-3">
+                    <div class="card-header py-2">
+                        <i class="fa-solid fa-layer-group me-1"></i> Application Pools
+                        <span class="badge bg-secondary ms-2">@iis.ApplicationPools.Count</span>
+                    </div>
+                    <div class="card-body py-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th style="width: 120px;">State</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var pool in iis.ApplicationPools.OrderBy(p => p.Name)) {
+                                        <tr>
+                                            <td class="fw-semibold">@pool.Name</td>
+                                            <td>
+                                                <span class="badge @(pool.State == "Started" ? "bg-success" : pool.State == "Stopped" ? "bg-danger" : "bg-secondary")">
+                                                    @pool.State
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @if (iis.Sites.Count == 0 && iis.ApplicationPools.Count == 0) {
+                <div class="text-muted text-center py-4">
+                    <i class="fa-solid fa-globe fa-2x mb-2 d-block"></i>
+                    No IIS configuration data available for this environment.
+                </div>
+            }
+        }
+
+        @* ══════════════════════════════════════════════════════════ *@
+        @* TAB: Running Services (from IIS ServerStats) *@
+        @* ══════════════════════════════════════════════════════════ *@
+        @if (_activeTab == "services" && ActiveServerStats?.Services != null) {
+            @if (FilteredServices.Count > 0) {
+                var serviceGroups = FilteredServices
+                    .GroupBy(s => s.Category)
+                    .OrderBy(g => g.Key);
+                @foreach (var group in serviceGroups) {
+                    <div class="card mb-2">
+                        <div class="card-header py-2">
+                            <i class="@GetServiceCategoryIcon(group.Key) me-2"></i>
+                            <strong>@group.Key</strong>
+                            <span class="badge bg-secondary ms-2">@group.Count()</span>
+                        </div>
+                        <div class="card-body py-0">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 200px;">Service Name</th>
+                                            <th>Display Name</th>
+                                            <th style="width: 140px;">Version</th>
+                                            <th style="width: 100px;">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var svc in group.OrderBy(s => s.Name)) {
+                                            <tr>
+                                                <td class="fw-semibold font-monospace small">@svc.Name</td>
+                                                <td>@(svc.DisplayName ?? "—")</td>
+                                                <td>
+                                                    @if (!string.IsNullOrWhiteSpace(svc.Version)) {
+                                                        <span class="badge bg-info text-dark">@svc.Version</span>
+                                                    } else {
+                                                        <span class="text-muted">—</span>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    <span class="badge @(svc.Status == "Running" ? "bg-success" : svc.Status == "Stopped" ? "bg-danger" : "bg-secondary")">
+                                                        @svc.Status
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                }
+            } else {
+                <div class="text-muted text-center py-4">
+                    <i class="fa-solid fa-gears fa-2x mb-2 d-block"></i>
+                    @if (!string.IsNullOrWhiteSpace(_searchTerm)) {
+                        @:No services match the current filter.
+                    } else {
+                        @:No notable services detected on this server.
+                    }
+                </div>
+            }
+        }
+
+        @* ══════════════════════════════════════════════════════════ *@
+        @* TAB: Server Stats (from IIS ServerStats) *@
+        @* ══════════════════════════════════════════════════════════ *@
+        @if (_activeTab == "serverstats" && ActiveServerStats != null) {
+            var ss = ActiveServerStats;
+
+            @* ── CPU & Memory (same layout as Hardware tab but from IIS pipeline) ── *@
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header py-2"><i class="fa-solid fa-microchip me-1"></i> CPU</div>
+                        <div class="card-body py-2">
+                            @if (ss.Cpu != null) {
+                                <table class="table table-sm table-borderless mb-0">
+                                    <tbody>
+                                        <tr>
+                                            <td class="text-muted" style="width: 160px;">Processor</td>
+                                            <td class="fw-semibold">@ss.Cpu.Name</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="text-muted">Cores</td>
+                                            <td>@ss.Cpu.Cores physical / @ss.Cpu.LogicalProcessors logical</td>
+                                        </tr>
+                                        @if (ss.Cpu.MaxClockSpeedMHz > 0) {
+                                            <tr>
+                                                <td class="text-muted">Clock Speed</td>
+                                                <td>@ss.Cpu.MaxClockSpeedMHz MHz</td>
+                                            </tr>
+                                        }
+                                        <tr>
+                                            <td class="text-muted">Usage at Scan</td>
+                                            <td>
+                                                <div class="progress" style="height: 20px;">
+                                                    <div class="progress-bar @(GetUsageBarClass(ss.Cpu.UsagePercent))" role="progressbar"
+                                                         style="width: @ss.Cpu.UsagePercent%;"
+                                                         aria-valuenow="@ss.Cpu.UsagePercent" aria-valuemin="0" aria-valuemax="100">
+                                                        @ss.Cpu.UsagePercent.ToString("F0")%
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            } else { <span class="text-muted">CPU data not available.</span> }
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header py-2"><i class="fa-solid fa-memory me-1"></i> Memory (RAM)</div>
+                        <div class="card-body py-2">
+                            @if (ss.Memory != null) {
+                                <table class="table table-sm table-borderless mb-0">
+                                    <tbody>
+                                        <tr>
+                                            <td class="text-muted" style="width: 160px;">Total</td>
+                                            <td class="fw-semibold">@ss.Memory.TotalGB.ToString("F1") GB</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="text-muted">Available</td>
+                                            <td>@ss.Memory.AvailableGB.ToString("F1") GB</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="text-muted">Usage at Scan</td>
+                                            <td>
+                                                <div class="progress" style="height: 20px;">
+                                                    <div class="progress-bar @(GetUsageBarClass(ss.Memory.UsedPercent))" role="progressbar"
+                                                         style="width: @ss.Memory.UsedPercent%;"
+                                                         aria-valuenow="@ss.Memory.UsedPercent" aria-valuemin="0" aria-valuemax="100">
+                                                        @ss.Memory.UsedPercent.ToString("F0")%
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            } else { <span class="text-muted">Memory data not available.</span> }
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* ── OS Info ── *@
+            @if (ss.Os != null) {
+                <div class="card mb-3">
+                    <div class="card-header py-2"><i class="fa-brands fa-windows me-1"></i> Operating System</div>
+                    <div class="card-body py-2">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <table class="table table-sm table-borderless mb-0">
+                                    <tbody>
+                                        <tr><td class="text-muted" style="width:160px;">Name</td><td class="fw-semibold">@ss.Os.Name</td></tr>
+                                        <tr><td class="text-muted">Version</td><td>@ss.Os.Version</td></tr>
+                                        <tr><td class="text-muted">Build</td><td class="font-monospace">@ss.Os.Build</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="col-md-6">
+                                <table class="table table-sm table-borderless mb-0">
+                                    <tbody>
+                                        <tr><td class="text-muted" style="width:160px;">Architecture</td><td>@ss.Os.Architecture</td></tr>
+                                        @if (ss.Os.LastBootTime.HasValue) {
+                                            <tr><td class="text-muted">Last Boot</td><td>@ss.Os.LastBootTime.Value.ToLocalTime().ToString("g")</td></tr>
+                                        }
+                                        <tr><td class="text-muted">Uptime</td><td>@ss.Os.UptimeDays.ToString("F1") days</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @* ── Disks ── *@
+            @if (ss.Disks.Count > 0) {
+                <div class="card mb-3">
+                    <div class="card-header py-2">
+                        <i class="fa-solid fa-hard-drive me-1"></i> Disk Drives
+                        <span class="badge bg-secondary ms-2">@ss.Disks.Count</span>
+                    </div>
+                    <div class="card-body py-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th style="width:80px;">Drive</th>
+                                        <th style="width:160px;">Label</th>
+                                        <th style="width:100px;">File System</th>
+                                        <th style="width:100px;">Total</th>
+                                        <th style="width:100px;">Free</th>
+                                        <th>Usage</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var disk in ss.Disks) {
+                                        <tr>
+                                            <td class="fw-semibold font-monospace">@disk.DriveLetter</td>
+                                            <td>@(string.IsNullOrWhiteSpace(disk.VolumeLabel) ? "—" : disk.VolumeLabel)</td>
+                                            <td class="text-muted small">@(string.IsNullOrWhiteSpace(disk.FileSystem) ? "—" : disk.FileSystem)</td>
+                                            <td>@disk.TotalGB.ToString("F1") GB</td>
+                                            <td>@disk.FreeGB.ToString("F1") GB</td>
+                                            <td>
+                                                <div class="progress" style="height: 18px;">
+                                                    <div class="progress-bar @(GetUsageBarClass(disk.UsedPercent))" role="progressbar"
+                                                         style="width: @disk.UsedPercent%;"
+                                                         aria-valuenow="@disk.UsedPercent" aria-valuemin="0" aria-valuemax="100">
+                                                        @disk.UsedPercent.ToString("F0")%
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @* ── Detected Tools ── *@
+            @if (ss.Tools.Count > 0) {
+                <div class="card mb-3">
+                    <div class="card-header py-2">
+                        <i class="fa-solid fa-wrench me-1"></i> Detected Tools
+                        <span class="badge bg-secondary ms-2">@ss.Tools.Count</span>
+                    </div>
+                    <div class="card-body py-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 200px;">Name</th>
+                                        <th style="width: 180px;">Version</th>
+                                        <th>Category</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var tool in ss.Tools.OrderBy(t => t.Category).ThenBy(t => t.Name)) {
+                                        <tr>
+                                            <td class="fw-semibold">@tool.Name</td>
+                                            <td><span class="badge bg-success">@(string.IsNullOrWhiteSpace(tool.Version) ? "—" : tool.Version)</span></td>
+                                            <td class="text-muted">@tool.Category</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @* ── .NET SDKs & Runtimes from pipeline ── *@
+            @if (ss.DotNetSdks.Count > 0 || ss.DotNetRuntimes.Count > 0) {
+                <div class="row g-3 mb-3">
+                    @if (ss.DotNetSdks.Count > 0) {
+                        <div class="col-md-6">
+                            <div class="card h-100">
+                                <div class="card-header py-2">
+                                    <i class="fa-solid fa-box me-1"></i> .NET SDKs
+                                    <span class="badge bg-secondary ms-2">@ss.DotNetSdks.Count</span>
+                                </div>
+                                <div class="card-body py-0">
+                                    <div class="list-group list-group-flush">
+                                        @foreach (var sdk in ss.DotNetSdks.OrderByDescending(s => s.Version)) {
+                                            <div class="list-group-item py-1 px-2">
+                                                <span class="badge bg-primary">@sdk.Version</span>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    @if (ss.DotNetRuntimes.Count > 0) {
+                        <div class="col-md-6">
+                            <div class="card h-100">
+                                <div class="card-header py-2">
+                                    <i class="fa-solid fa-microchip me-1"></i> .NET Runtimes
+                                    <span class="badge bg-secondary ms-2">@ss.DotNetRuntimes.Count</span>
+                                </div>
+                                <div class="card-body py-0">
+                                    <div class="table-responsive">
+                                        <table class="table table-sm mb-0">
+                                            <tbody>
+                                                @foreach (var rt in ss.DotNetRuntimes.OrderBy(r => r.Name).ThenByDescending(r => r.Version)) {
+                                                    <tr>
+                                                        <td class="fw-semibold small">@rt.Name</td>
+                                                        <td><span class="badge bg-info text-dark">@rt.Version</span></td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
+            @* ── Windows Features from pipeline ── *@
+            @if (ss.InstalledFeatures.Count > 0) {
+                <div class="card mb-3">
+                    <div class="card-header py-2">
+                        <i class="fa-solid fa-list-check me-1"></i> Installed Windows Features
+                        <span class="badge bg-secondary ms-2">@ss.InstalledFeatures.Count</span>
+                    </div>
+                    <div class="card-body py-0">
+                        <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="sticky-top bg-white">
+                                    <tr>
+                                        <th style="width: 280px;">Name</th>
+                                        <th>Display Name</th>
+                                        <th style="width: 120px;">State</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var feat in ss.InstalledFeatures.OrderBy(f => f.Name)) {
+                                        <tr>
+                                            <td class="fw-semibold font-monospace small">@feat.Name</td>
+                                            <td>@(feat.DisplayName ?? "—")</td>
+                                            <td><span class="badge bg-success">@(feat.State ?? "Installed")</span></td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @* ── Scan timestamp ── *@
+            @if (ss.ScannedUtc.HasValue) {
+                <div class="text-muted small">
+                    <i class="fa-regular fa-clock me-1"></i>
+                    Pipeline scanned: @ss.ScannedUtc.Value.ToLocalTime().ToString("g")
+                </div>
+            }
+        }
+
+        @* ── Footer with scan time ── *@
+        @if (_envResponse.LastScannedUtc.HasValue) {
+            <div class="text-muted small mt-3">
+                <i class="fa-regular fa-clock me-1"></i>
+                Last scanned: @_envResponse.LastScannedUtc.Value.ToLocalTime().ToString("g")
+                — @_envResponse.ElapsedSeconds.ToString("F1")s
+            </div>
+        }
+    } else if (_selectedEnv != "THIS_SERVER" && !string.IsNullOrEmpty(_selectedEnv)) {
+        @* ── Selected a pipeline environment that has no HostEnvironment data yet ── *@
+        <div class="card mb-3">
+            <div class="card-header py-2">
+                <i class="fa-solid fa-computer me-1"></i> System Information
+                <span class="badge @GetEnvBadgeClass(_selectedEnv) ms-2">@_selectedEnv</span>
+            </div>
+            <div class="card-body py-3">
+                <div class="text-muted text-center">
+                    <i class="fa-solid fa-clock-rotate-left fa-2x mb-2 d-block"></i>
+                    <strong>No host environment scan data available for @_selectedEnv.</strong>
+                    <p class="mt-2 mb-0 small">
+                        Deploy <code>HostEnvironment_@(_selectedEnv switch { "DEV" => "AzureDev", "PROD" => "AzureProd", "CMS" => "AzureCMS", _ => _selectedEnv }).json</code>
+                        to the application root. This file is generated by the host environment scanner during deployment.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        @* ── Still show IIS data if available for this environment ── *@
+        @if (ActiveIISInfo != null) {
+            <div class="row row-cols-2 row-cols-md-3 g-2 mb-3">
+                <div class="col">
+                    <div class="card text-center h-100">
+                        <div class="card-body py-2">
+                            <div class="fs-4 fw-bold text-info">@ActiveIISInfo.Sites.Count</div>
+                            <small class="text-muted">IIS Sites</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col">
+                    <div class="card text-center h-100">
+                        <div class="card-body py-2">
+                            <div class="fs-4 fw-bold text-info">@ActiveIISInfo.ApplicationPools.Count</div>
+                            <small class="text-muted">App Pools</small>
+                        </div>
+                    </div>
+                </div>
+                @if (ActiveServerStats?.Services.Count > 0) {
+                    <div class="col">
+                        <div class="card text-center h-100">
+                            <div class="card-body py-2">
+                                <div class="fs-4 fw-bold text-warning">@ActiveServerStats.Services.Count</div>
+                                <small class="text-muted">Services</small>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            @* ── Tab navigation for IIS-only data ── *@
+            <ul class="nav nav-tabs mb-3">
+                <li class="nav-item">
+                    <button class="nav-link @(_activeTab == "iis" ? "active" : "")" @onclick='() => SetActiveTab("iis")'>
+                        <i class="fa-solid fa-globe me-1"></i> IIS
+                        <span class="badge bg-secondary ms-1">@(ActiveIISInfo.Sites.Count) sites</span>
+                    </button>
+                </li>
+                @if (ActiveServerStats?.Services.Count > 0) {
+                    <li class="nav-item">
+                        <button class="nav-link @(_activeTab == "services" ? "active" : "")" @onclick='() => SetActiveTab("services")'>
+                            <i class="fa-solid fa-gears me-1"></i> Services
+                            <span class="badge bg-secondary ms-1">@ActiveServerStats.Services.Count</span>
+                        </button>
+                    </li>
+                }
+                @if (ActiveServerStats != null) {
+                    <li class="nav-item">
+                        <button class="nav-link @(_activeTab == "serverstats" ? "active" : "")" @onclick='() => SetActiveTab("serverstats")'>
+                            <i class="fa-solid fa-chart-bar me-1"></i> Server Stats
+                        </button>
+                    </li>
+                }
+            </ul>
+
+            @* Reuse IIS tab content *@
+            @if (_activeTab == "iis") {
+                var iis = ActiveIISInfo;
+                @if (iis.Sites.Count > 0) {
+                    @foreach (var site in iis.Sites.OrderBy(s => s.Name)) {
+                        <div class="card mb-3">
+                            <div class="card-header py-2">
+                                <i class="fa-solid fa-globe me-1"></i>
+                                <strong>@site.Name</strong>
+                                <span class="badge bg-info text-dark ms-2">@site.Applications.Count app(s)</span>
+                                <span class="badge bg-secondary ms-1">@site.Bindings.Count binding(s)</span>
+                            </div>
+                            <div class="card-body py-0">
+                                @if (site.Bindings.Count > 0) {
+                                    <h6 class="mt-2 mb-1 text-muted small text-uppercase">Bindings</h6>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-hover mb-2">
+                                            <thead><tr><th style="width:100px;">Protocol</th><th>Binding Information</th><th style="width:180px;">Certificate</th></tr></thead>
+                                            <tbody>
+                                                @foreach (var binding in site.Bindings) {
+                                                    <tr>
+                                                        <td><span class="badge @(binding.Protocol == "https" ? "bg-success" : "bg-secondary")">@binding.Protocol</span></td>
+                                                        <td class="font-monospace small">@binding.BindingInformation</td>
+                                                        <td class="text-muted small text-truncate" style="max-width:180px;" title="@binding.CertificateHash">
+                                                            @(string.IsNullOrWhiteSpace(binding.CertificateHash) ? "—" : binding.CertificateStoreName + " / " + binding.CertificateHash[..Math.Min(12, binding.CertificateHash.Length)] + "…")
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                }
+                                @if (site.Applications.Count > 0) {
+                                    <h6 class="mt-1 mb-1 text-muted small text-uppercase">Applications</h6>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-hover mb-2">
+                                            <thead><tr><th style="width:200px;">Path</th><th style="width:180px;">App Pool</th><th>Physical Path</th><th style="width:80px;">Virtual</th><th style="width:160px;">web.config Modified</th></tr></thead>
+                                            <tbody>
+                                                @foreach (var app in site.Applications.OrderBy(a => a.Path)) {
+                                                    <tr>
+                                                        <td class="fw-semibold font-monospace small">@app.Path</td>
+                                                        <td><span class="badge bg-primary">@app.AppPool</span></td>
+                                                        <td class="text-muted small text-truncate" style="max-width:350px;" title="@app.PhysicalPath">@app.PhysicalPath</td>
+                                                        <td class="text-center">@if (app.IsVirtual) { <i class="fa-solid fa-check text-success"></i> }</td>
+                                                        <td class="text-muted small">@(app.WebConfigLastModified?.ToLocalTime().ToString("g") ?? "—")</td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+                @if (iis.ApplicationPools.Count > 0) {
+                    <div class="card mb-3">
+                        <div class="card-header py-2"><i class="fa-solid fa-layer-group me-1"></i> Application Pools <span class="badge bg-secondary ms-2">@iis.ApplicationPools.Count</span></div>
+                        <div class="card-body py-0">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover mb-0">
+                                    <thead><tr><th>Name</th><th style="width:120px;">State</th></tr></thead>
+                                    <tbody>
+                                        @foreach (var pool in iis.ApplicationPools.OrderBy(p => p.Name)) {
+                                            <tr>
+                                                <td class="fw-semibold">@pool.Name</td>
+                                                <td><span class="badge @(pool.State == "Started" ? "bg-success" : pool.State == "Stopped" ? "bg-danger" : "bg-secondary")">@pool.State</span></td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+
+            @* Reuse Services tab content *@
+            @if (_activeTab == "services" && ActiveServerStats?.Services != null) {
+                var serviceGroups = FilteredServices.GroupBy(s => s.Category).OrderBy(g => g.Key);
+                @foreach (var group in serviceGroups) {
+                    <div class="card mb-2">
+                        <div class="card-header py-2"><i class="@GetServiceCategoryIcon(group.Key) me-2"></i><strong>@group.Key</strong> <span class="badge bg-secondary ms-2">@group.Count()</span></div>
+                        <div class="card-body py-0">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover mb-0">
+                                    <thead><tr><th style="width:200px;">Service Name</th><th>Display Name</th><th style="width:140px;">Version</th><th style="width:100px;">Status</th></tr></thead>
+                                    <tbody>
+                                        @foreach (var svc in group.OrderBy(s => s.Name)) {
+                                            <tr>
+                                                <td class="fw-semibold font-monospace small">@svc.Name</td>
+                                                <td>@(svc.DisplayName ?? "—")</td>
+                                                <td>@if (!string.IsNullOrWhiteSpace(svc.Version)) { <span class="badge bg-info text-dark">@svc.Version</span> } else { <span class="text-muted">—</span> }</td>
+                                                <td><span class="badge @(svc.Status == "Running" ? "bg-success" : svc.Status == "Stopped" ? "bg-danger" : "bg-secondary")">@svc.Status</span></td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+
+            @* Reuse Server Stats tab content *@
+            @if (_activeTab == "serverstats" && ActiveServerStats != null) {
+                var ss = ActiveServerStats;
+                @if (ss.ScannedUtc.HasValue) {
+                    <div class="text-muted small mb-2"><i class="fa-regular fa-clock me-1"></i> Pipeline scanned: @ss.ScannedUtc.Value.ToLocalTime().ToString("g")</div>
+                }
+                <div class="alert alert-info">
+                    <i class="fa-solid fa-info-circle me-2"></i>
+                    Server stats are available from the IIS pipeline scan. Select the <strong>Server Stats</strong> tab above to view CPU, memory, disk, and OS details.
+                </div>
+            }
+        } else {
+            <div class="alert alert-secondary mt-3">
+                <i class="fa-solid fa-info-circle me-2"></i>
+                No IIS scan data is available for <strong>@_selectedEnv</strong> either.
+                Data will appear here after the next pipeline deployment runs the gather stages for this environment.
+            </div>
+        }
+    } else if (AvailableEnvironments.Count > 0) {
+        <div class="text-muted text-center py-4">
+            <i class="fa-solid fa-arrow-pointer fa-2x mb-2 d-block"></i>
+            Select an environment above to view host details.
+        </div>
+    } else {
+        <div class="alert alert-info mt-3">
+            <i class="fa-solid fa-info-circle me-2"></i>
+            No host environment data found. To populate per-environment data, deploy
+            <code>HostEnvironment_AzureDev.json</code>, <code>HostEnvironment_AzureProd.json</code>,
+            or <code>HostEnvironment_AzureCMS.json</code> files to the application root.
+            These are generated by running the host environment scanner on each server.
+        </div>
+    }
+}

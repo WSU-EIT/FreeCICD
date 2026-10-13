@@ -1,16 +1,24 @@
 # templates/gather-iis-info-template.yml
+# -----------------------------------------------------------
+# Split into 3 PowerShell tasks that write temporary partial
+# JSON files, then a final merge step combines them into one
+# artifact JSON.  This keeps each inline script well under the
+# Azure DevOps 21 000-character expression limit.
+# -----------------------------------------------------------
 parameters:
   - name: artifactName
     type: string
     default: 'IISInfo'
 
 steps:
+  # â”€â”€ Task 1/3: Gather IIS Sites, Bindings, Apps & App Pools â”€â”€
   - task: PowerShell@2
-    displayName: "Gather IIS Information and Write JSON"
+    displayName: "Gather IIS Data (Sites, Pools)"
     inputs:
       targetType: 'inline'
       script: |
-        Write-Host "Gathering IIS information..."
+        $ErrorActionPreference = 'Continue'
+        Write-Host "=== Task 1/3: Gathering IIS Sites & App Pools ==="
         try {
             Import-Module WebAdministration -ErrorAction Stop
         }
@@ -18,20 +26,19 @@ steps:
             Write-Error "Failed to load the WebAdministration module. Exiting."
             exit 1
         }
-        
+
         # Initialize an array for site information.
         $sitesData = @()
-        
+
         # Enumerate all sites in IIS.
         $sites = Get-ChildItem IIS:\Sites
         foreach ($site in $sites) {
             $siteName = $site.Name
-            # Create an object for the site with Applications.
             $siteObj = @{
                 Name = $siteName
                 Applications = @()
             }
-            
+
             # --- Gather binding information for the site ---
             $bindings = Get-WebBinding -Name $siteName
             $bindingsArray = @()
@@ -54,8 +61,7 @@ steps:
                 $bindingsArray += $bindingObj
             }
             $siteObj["Bindings"] = $bindingsArray
-            # -----------------------------------------------------
-            
+
             # Enumerate applications for this site.
             $apps = Get-WebConfiguration -Filter "system.applicationHost/sites/site[@name='$siteName']/application"
             foreach ($app in $apps) {
@@ -63,15 +69,13 @@ steps:
                 $appPool = $app.GetAttributeValue("applicationPool")
                 $isVirtual = ($appPath -ne "/")
                 $rootSite = $siteName
-                
-                # Retrieve the physical path from the application's root virtual directory.
+
                 $vdir = Get-WebConfiguration -Filter "system.applicationHost/sites/site[@name='$siteName']/application[@path='$appPath']/virtualDirectory[@path='/']"
                 $physicalPath = $null
-                if ($vdir) { 
-                    $physicalPath = $vdir.physicalPath 
+                if ($vdir) {
+                    $physicalPath = $vdir.physicalPath
                 }
-                
-                # Get the last modified time of web.config in ISO-8601 (UTC) format if available.
+
                 $webConfigLastModified = $null
                 if ($physicalPath -and (Test-Path $physicalPath)) {
                     $webConfig = Join-Path $physicalPath "web.config"
@@ -79,7 +83,7 @@ steps:
                         $webConfigLastModified = (Get-Item $webConfig).LastWriteTimeUtc.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
                     }
                 }
-                
+
                 $appObj = @{
                     Path                  = $appPath
                     AppPool               = $appPool
@@ -90,10 +94,10 @@ steps:
                 }
                 $siteObj.Applications += $appObj
             }
-            
+
             $sitesData += $siteObj
         }
-        
+
         # Gather application pool information.
         $appPoolsData = @()
         $appPools = Get-ChildItem IIS:\AppPools
@@ -104,22 +108,464 @@ steps:
             }
             $appPoolsData += $poolObj
         }
-        
-        # Build the final object with sites and application pools.
-        $iisInfo = @{
+
+        # Write the IIS partial data to a temp file.
+        $iisPartial = @{
             Sites            = $sitesData
             ApplicationPools = $appPoolsData
         }
-        
-        # Convert the object to JSON.
-        $jsonOutput = $iisInfo | ConvertTo-Json -Depth 5
-        
-        # Build the output filename using the provided artifactName.
+        $tempDir = Join-Path "$(Build.ArtifactStagingDirectory)" "_partials"
+        if (!(Test-Path $tempDir)) { New-Item -ItemType Directory -Path $tempDir -Force | Out-Null }
+        $iisPartial | ConvertTo-Json -Depth 5 | Out-File -FilePath (Join-Path $tempDir "iis_part.json") -Encoding UTF8
+        Write-Host "IIS partial data written to $tempDir\iis_part.json"
+        Write-Host "=== Task 1/3 Complete ==="
+
+  # â”€â”€ Task 2/3: Gather Server Stats (Hardware, OS, Tools, SDKs) â”€â”€
+  - task: PowerShell@2
+    displayName: "Gather Server Stats (Hardware, Tools, SDKs)"
+    inputs:
+      targetType: 'inline'
+      script: |
+        $ErrorActionPreference = 'Continue'
+        Write-Host "=== Task 2/3: Gathering Server Stats ==="
+
+        # â”€â”€ Helper: run a command and return stdout (first line) â”€â”€
+        function Get-ToolVersion {
+            param([string]$Command, [string]$Arguments = "--version")
+            try {
+                $psi = New-Object System.Diagnostics.ProcessStartInfo
+                $psi.FileName = $Command
+                $psi.Arguments = $Arguments
+                $psi.RedirectStandardOutput = $true
+                $psi.RedirectStandardError = $true
+                $psi.UseShellExecute = $false
+                $psi.CreateNoWindow = $true
+                $proc = [System.Diagnostics.Process]::Start($psi)
+                $stdout = $proc.StandardOutput.ReadToEnd()
+                $stderr = $proc.StandardError.ReadToEnd()
+                $null = $proc.WaitForExit(10000)  # WaitForExit returns a bool; suppress it or it leaks into the function output
+                if ($proc.ExitCode -eq 0 -and $stdout.Trim()) { return $stdout.Trim().Split("`n")[0].Trim() }
+                if ($proc.ExitCode -eq 0 -and $stderr.Trim()) { return $stderr.Trim().Split("`n")[0].Trim() }
+            } catch { }
+            return $null
+        }
+
+        function Try-DetectTool {
+            param($List, [string]$Category, [string]$DisplayName, [string]$Command, [string]$Arguments = "--version", [string]$Pattern = $null)
+            $ver = Get-ToolVersion -Command $Command -Arguments $Arguments
+            if (-not $ver) { return }
+            if ($Pattern) {
+                $m = [regex]::Match($ver, $Pattern)
+                if ($m.Success) { $ver = $m.Groups[1].Value }
+            }
+            $List.Add(@{ name = $DisplayName; version = $ver; category = $Category }) | Out-Null
+            Write-Host "  Found: $DisplayName $ver"
+        }
+
+        $serverStats = @{
+            scannedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+        }
+
+        # â”€â”€ CPU â”€â”€
+        try {
+            $cpuInfo = Get-CimInstance -ClassName Win32_Processor -ErrorAction Stop | Select-Object -First 1
+            if ($cpuInfo) {
+                $cpuUsage = 0
+                try {
+                    $cpuCounter = Get-CimInstance -ClassName Win32_PerfFormattedData_PerfOS_Processor -Filter "Name='_Total'" -ErrorAction SilentlyContinue
+                    if ($cpuCounter) { $cpuUsage = [math]::Round($cpuCounter.PercentProcessorTime, 1) }
+                } catch { }
+
+                $serverStats["cpu"] = @{
+                    name              = ($cpuInfo.Name -replace '\s+', ' ').Trim()
+                    cores             = [int]$cpuInfo.NumberOfCores
+                    logicalProcessors = [int]$cpuInfo.NumberOfLogicalProcessors
+                    maxClockSpeedMHz  = [int]$cpuInfo.MaxClockSpeed
+                    usagePercent      = $cpuUsage
+                }
+                Write-Host "  CPU: $($cpuInfo.Name) ($($cpuInfo.NumberOfCores) cores, $($cpuInfo.NumberOfLogicalProcessors) logical) @ $($cpuUsage)%"
+            }
+        } catch {
+            Write-Host "  WARNING: Could not gather CPU info: $($_.Exception.Message)"
+        }
+
+        # â”€â”€ Memory (RAM) â”€â”€
+        try {
+            $osInfo = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+            if ($osInfo) {
+                $totalGB = [math]::Round($osInfo.TotalVisibleMemorySize / 1MB, 2)
+                $availGB = [math]::Round($osInfo.FreePhysicalMemory / 1MB, 2)
+                $usedPct = if ($totalGB -gt 0) { [math]::Round((($totalGB - $availGB) / $totalGB) * 100, 1) } else { 0 }
+
+                $serverStats["memory"] = @{
+                    totalGB      = $totalGB
+                    availableGB  = $availGB
+                    usedPercent  = $usedPct
+                }
+                Write-Host "  RAM: $($totalGB) GB total, $($availGB) GB available ($($usedPct)% used)"
+            }
+        } catch {
+            Write-Host "  WARNING: Could not gather memory info: $($_.Exception.Message)"
+        }
+
+        # â”€â”€ Disk Drives â”€â”€
+        try {
+            $disksData = @()
+            $drives = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction Stop
+            foreach ($drive in $drives) {
+                $totalGB = [math]::Round($drive.Size / 1GB, 2)
+                $freeGB  = [math]::Round($drive.FreeSpace / 1GB, 2)
+                $usedPct = if ($totalGB -gt 0) { [math]::Round((($totalGB - $freeGB) / $totalGB) * 100, 1) } else { 0 }
+
+                $diskObj = @{
+                    driveLetter = $drive.DeviceID
+                    volumeLabel = if ($drive.VolumeName) { $drive.VolumeName } else { "" }
+                    fileSystem  = if ($drive.FileSystem) { $drive.FileSystem } else { "" }
+                    totalGB     = $totalGB
+                    freeGB      = $freeGB
+                    usedPercent = $usedPct
+                }
+                $disksData += $diskObj
+                Write-Host "  Disk $($drive.DeviceID): $($totalGB) GB total, $($freeGB) GB free ($($usedPct)% used)"
+            }
+            $serverStats["disks"] = $disksData
+        } catch {
+            Write-Host "  WARNING: Could not gather disk info: $($_.Exception.Message)"
+            $serverStats["disks"] = @()
+        }
+
+        # â”€â”€ OS Info â”€â”€
+        try {
+            $osDetail = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+            $lastBoot = $null
+            $uptimeDays = 0
+            if ($osDetail.LastBootUpTime) {
+                $lastBoot = $osDetail.LastBootUpTime.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                $uptimeDays = [math]::Round(((Get-Date) - $osDetail.LastBootUpTime).TotalDays, 2)
+            }
+
+            $winVer = ""
+            $winBuild = ""
+            try {
+                $regPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+                $winVer = (Get-ItemProperty -Path $regPath -Name "DisplayVersion" -ErrorAction SilentlyContinue).DisplayVersion
+                if (-not $winVer) { $winVer = (Get-ItemProperty -Path $regPath -Name "ReleaseId" -ErrorAction SilentlyContinue).ReleaseId }
+                $major = (Get-ItemProperty -Path $regPath -Name "CurrentMajorVersionNumber" -ErrorAction SilentlyContinue).CurrentMajorVersionNumber
+                $minor = (Get-ItemProperty -Path $regPath -Name "CurrentMinorVersionNumber" -ErrorAction SilentlyContinue).CurrentMinorVersionNumber
+                $build = (Get-ItemProperty -Path $regPath -Name "CurrentBuildNumber" -ErrorAction SilentlyContinue).CurrentBuildNumber
+                $ubr   = (Get-ItemProperty -Path $regPath -Name "UBR" -ErrorAction SilentlyContinue).UBR
+                if ($build) { $winBuild = "$major.$minor.$build.$ubr" }
+            } catch { }
+
+            $serverStats["os"] = @{
+                name         = ($osDetail.Caption -replace '\s+', ' ').Trim()
+                version      = if ($winVer) { $winVer } else { "" }
+                build        = if ($winBuild) { $winBuild } else { "" }
+                architecture = $osDetail.OSArchitecture
+                lastBootTime = $lastBoot
+                uptimeDays   = $uptimeDays
+            }
+            Write-Host "  OS: $($osDetail.Caption) ($winVer, Build $winBuild)"
+            Write-Host "  Uptime: $($uptimeDays) days (last boot: $lastBoot)"
+        } catch {
+            Write-Host "  WARNING: Could not gather OS info: $($_.Exception.Message)"
+        }
+
+        # â”€â”€ Installed Tools & Frameworks (version only, no paths) â”€â”€
+        Write-Host ""
+        Write-Host "Scanning for installed tools & frameworks..."
+        $tools = [System.Collections.ArrayList]::new()
+
+        Try-DetectTool -List $tools -Category ".NET" -DisplayName "dotnet" -Command "dotnet" -Arguments "--version"
+        Try-DetectTool -List $tools -Category ".NET" -DisplayName "MSBuild" -Command "msbuild" -Arguments "-version -nologo"
+        Try-DetectTool -List $tools -Category ".NET" -DisplayName "NuGet" -Command "nuget" -Arguments "help" -Pattern '(\d+\.\d+[\.\d]*)'
+        Try-DetectTool -List $tools -Category "JavaScript" -DisplayName "Node.js" -Command "node" -Arguments "--version"
+        Try-DetectTool -List $tools -Category "JavaScript" -DisplayName "npm" -Command "npm" -Arguments "--version"
+        Try-DetectTool -List $tools -Category "Python" -DisplayName "Python" -Command "python" -Arguments "--version" -Pattern 'Python (\S+)'
+        Try-DetectTool -List $tools -Category "Java" -DisplayName "Java" -Command "java" -Arguments "-version"
+        Try-DetectTool -List $tools -Category "Version Control" -DisplayName "Git" -Command "git" -Arguments "--version" -Pattern 'git version (\S+)'
+        Try-DetectTool -List $tools -Category "Containers" -DisplayName "Docker" -Command "docker" -Arguments "--version" -Pattern 'Docker version (\S+?)[,]?'
+        Try-DetectTool -List $tools -Category "DevOps" -DisplayName "Azure CLI" -Command "az" -Arguments "version" -Pattern '"azure-cli":\s*"(\S+?)"'
+        Try-DetectTool -List $tools -Category "DevOps" -DisplayName "Terraform" -Command "terraform" -Arguments "--version" -Pattern 'v(\S+)'
+        Try-DetectTool -List $tools -Category "Go" -DisplayName "Go" -Command "go" -Arguments "version" -Pattern 'go(\d+\.\d+[\.\d]*)'
+        Try-DetectTool -List $tools -Category "Rust" -DisplayName "Rust" -Command "rustc" -Arguments "--version" -Pattern 'rustc (\S+)'
+        Try-DetectTool -List $tools -Category "Ruby" -DisplayName "Ruby" -Command "ruby" -Arguments "--version" -Pattern 'ruby (\S+)'
+        Try-DetectTool -List $tools -Category "PHP" -DisplayName "PHP" -Command "php" -Arguments "--version" -Pattern 'PHP (\S+)'
+
+        try {
+            $iisVer = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\InetStp' -ErrorAction SilentlyContinue).VersionString
+            if ($iisVer) {
+                $tools.Add(@{ name = "IIS"; version = $iisVer; category = "Web Server" }) | Out-Null
+                Write-Host "  Found: IIS $iisVer"
+            }
+        } catch { }
+
+        $serverStats["tools"] = @($tools.ToArray())
+        Write-Host "  Total tools found: $($tools.Count)"
+
+        # â”€â”€ .NET SDKs â”€â”€
+        Write-Host ""
+        Write-Host "Scanning .NET SDKs..."
+        $dotnetSdks = @()
+        try {
+            $sdkRaw = & dotnet --list-sdks 2>$null
+            if ($sdkRaw) {
+                foreach ($line in $sdkRaw) {
+                    $m = [regex]::Match($line, '^(\S+)\s+\[')
+                    if ($m.Success) {
+                        $dotnetSdks += @{ version = $m.Groups[1].Value }
+                        Write-Host "  SDK $($m.Groups[1].Value)"
+                    }
+                }
+            }
+        } catch { }
+        $serverStats["dotNetSdks"] = $dotnetSdks
+
+        # â”€â”€ .NET Runtimes â”€â”€
+        Write-Host ""
+        Write-Host "Scanning .NET Runtimes..."
+        $dotnetRuntimes = @()
+        try {
+            $rtRaw = & dotnet --list-runtimes 2>$null
+            if ($rtRaw) {
+                foreach ($line in $rtRaw) {
+                    $m = [regex]::Match($line, '^(\S+)\s+(\S+)\s+\[')
+                    if ($m.Success) {
+                        $dotnetRuntimes += @{ name = $m.Groups[1].Value; version = $m.Groups[2].Value }
+                        Write-Host "  $($m.Groups[1].Value) $($m.Groups[2].Value)"
+                    }
+                }
+            }
+        } catch { }
+        $serverStats["dotNetRuntimes"] = $dotnetRuntimes
+
+        # â”€â”€ Windows Update Status â”€â”€
+        Write-Host ""
+        Write-Host "Checking Windows Update status..."
+        $windowsUpdate = $null
+        try {
+            $ntVer = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -ErrorAction SilentlyContinue
+            $winUpdateVer = $ntVer.DisplayVersion
+            $winUpdateBuild = "$($ntVer.CurrentBuildNumber).$($ntVer.UBR)"
+            Write-Host "  Windows $winUpdateVer (Build $winUpdateBuild)"
+
+            $recentUpdates = @()
+            $lastInstalled = $null
+            try {
+                $hotfixes = Get-HotFix | Sort-Object InstalledOn -Descending -ErrorAction SilentlyContinue | Select-Object -First 20
+                foreach ($hf in $hotfixes) {
+                    $recentUpdates += @{
+                        title       = if ($hf.Description) { $hf.Description } else { $hf.HotFixID }
+                        kbArticleId = $hf.HotFixID
+                        installedOn = if ($hf.InstalledOn) { $hf.InstalledOn.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ") } else { $null }
+                        status      = "Installed"
+                    }
+                    if ($hf.InstalledOn -and (-not $lastInstalled -or $hf.InstalledOn -gt $lastInstalled)) {
+                        $lastInstalled = $hf.InstalledOn
+                    }
+                }
+                Write-Host "  Recent Hotfixes: $($recentUpdates.Count)"
+            } catch { Write-Host "  (Could not enumerate hotfixes)" }
+
+            $pendingCount = 0
+            try {
+                $session = New-Object -ComObject Microsoft.Update.Session
+                $searcher = $session.CreateUpdateSearcher()
+                $searchResult = $searcher.Search("IsInstalled=0")
+                $pendingCount = $searchResult.Updates.Count
+                Write-Host "  Pending Updates: $pendingCount"
+            } catch { Write-Host "  (Could not check pending updates)" }
+
+            $windowsUpdate = @{
+                lastInstalledDate  = if ($lastInstalled) { $lastInstalled.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ") } else { $null }
+                pendingUpdateCount = $pendingCount
+                windowsVersion     = $winUpdateVer
+                windowsBuild       = $winUpdateBuild
+                recentUpdates      = $recentUpdates
+            }
+        } catch { Write-Host "  (Could not get Windows Update info)" }
+        $serverStats["windowsUpdate"] = $windowsUpdate
+
+        # Write the server stats partial data to a temp file.
+        $tempDir = Join-Path "$(Build.ArtifactStagingDirectory)" "_partials"
+        if (!(Test-Path $tempDir)) { New-Item -ItemType Directory -Path $tempDir -Force | Out-Null }
+        $serverStats | ConvertTo-Json -Depth 5 | Out-File -FilePath (Join-Path $tempDir "server_part.json") -Encoding UTF8
+        Write-Host "Server stats partial data written to $tempDir\server_part.json"
+        Write-Host "=== Task 2/3 Complete ==="
+
+  # â”€â”€ Task 3/3: Windows Features, Services & Merge â”€â”€
+  - task: PowerShell@2
+    displayName: "Gather Features, Services & Merge Final JSON"
+    inputs:
+      targetType: 'inline'
+      script: |
+        $ErrorActionPreference = 'Continue'
+        Write-Host "=== Task 3/3: Features, Services & Merge ==="
+
+        $tempDir = Join-Path "$(Build.ArtifactStagingDirectory)" "_partials"
+
+        # â”€â”€ Load partial files from previous tasks â”€â”€
+        $iisPartPath = Join-Path $tempDir "iis_part.json"
+        $serverPartPath = Join-Path $tempDir "server_part.json"
+
+        if (!(Test-Path $iisPartPath)) { Write-Error "Missing IIS partial: $iisPartPath"; exit 1 }
+        if (!(Test-Path $serverPartPath)) { Write-Error "Missing Server partial: $serverPartPath"; exit 1 }
+
+        $iisPart = Get-Content $iisPartPath -Raw | ConvertFrom-Json
+        $serverPart = Get-Content $serverPartPath -Raw | ConvertFrom-Json
+
+        # Convert server partial back to hashtable for easy mutation
+        $serverStats = @{}
+        $serverPart.PSObject.Properties | ForEach-Object { $serverStats[$_.Name] = $_.Value }
+
+        # â”€â”€ Installed Windows Features (Server OS only) â”€â”€
+        Write-Host ""
+        Write-Host "Scanning Windows Features..."
+        $installedFeatures = @()
+        try {
+            $features = Get-WindowsFeature | Where-Object { $_.Installed -or $_.InstallState -eq 'Installed' }
+            foreach ($f in $features) {
+                $installedFeatures += @{
+                    name        = $f.Name
+                    displayName = $f.DisplayName
+                    state       = "$($f.InstallState)"
+                }
+            }
+            Write-Host "  Installed Features: $($installedFeatures.Count)"
+        } catch {
+            Write-Host "  (Get-WindowsFeature not available - requires Server OS)"
+        }
+        $serverStats["installedFeatures"] = $installedFeatures
+
+        # â”€â”€ Notable Running Services â”€â”€
+        Write-Host ""
+        Write-Host "Scanning for notable running services..."
+        $services = [System.Collections.ArrayList]::new()
+
+        # Curated patterns: service name regex -> category label
+        $servicePatterns = @(
+            @{ Pattern = '^W3SVC$';                       Category = 'IIS' },
+            @{ Pattern = '^WAS$';                         Category = 'IIS' },
+            @{ Pattern = '^IISADMIN';                     Category = 'IIS' },
+            @{ Pattern = '^MSSQL';                        Category = 'Database' },
+            @{ Pattern = '^SQL';                          Category = 'Database' },
+            @{ Pattern = '^MySQL';                        Category = 'Database' },
+            @{ Pattern = '^postgres';                     Category = 'Database' },
+            @{ Pattern = '^MongoDB';                      Category = 'Database' },
+            @{ Pattern = '^Redis';                        Category = 'Cache' },
+            @{ Pattern = '^Memcached';                    Category = 'Cache' },
+            @{ Pattern = '^RabbitMQ';                     Category = 'Messaging' },
+            @{ Pattern = '^Kafka';                        Category = 'Messaging' },
+            @{ Pattern = '^elasticsearch';                Category = 'Search' },
+            @{ Pattern = '^Solr';                         Category = 'Search' },
+            @{ Pattern = '^docker';                       Category = 'Containers' },
+            @{ Pattern = '^kubelet|^kube-proxy';          Category = 'Containers' },
+            @{ Pattern = '^Wmsvc$';                       Category = 'IIS' },
+            @{ Pattern = '^MsDepSvc';                     Category = 'IIS' },
+            @{ Pattern = '^aspnet_state';                 Category = 'IIS' },
+            @{ Pattern = '^Spooler';                      Category = 'System' },
+            @{ Pattern = '^WinRM';                        Category = 'Remote' },
+            @{ Pattern = '^TermService|^UmRdp';           Category = 'Remote' },
+            @{ Pattern = '^sshd|^OpenSSH';                Category = 'Remote' },
+            @{ Pattern = '^MSDTC';                        Category = 'System' },
+            @{ Pattern = '^NTDS|^ADWS';                   Category = 'ActiveDirectory' },
+            @{ Pattern = '^DNS$';                         Category = 'ActiveDirectory' },
+            @{ Pattern = '^DFSR|^DFS$';                   Category = 'ActiveDirectory' },
+            @{ Pattern = '^CertSvc';                      Category = 'Security' },
+            @{ Pattern = '^SMTPSVC|^MSExchange';          Category = 'Email' },
+            @{ Pattern = '^wuauserv';                     Category = 'System' },
+            @{ Pattern = '^grafana';                      Category = 'Monitoring' },
+            @{ Pattern = '^prometheus';                   Category = 'Monitoring' },
+            @{ Pattern = '^Zabbix';                       Category = 'Monitoring' },
+            @{ Pattern = '^influxdb';                     Category = 'Monitoring' },
+            @{ Pattern = '^telegraf';                     Category = 'Monitoring' },
+            @{ Pattern = '^jenkins';                      Category = 'CI' },
+            @{ Pattern = '^TeamCity';                     Category = 'CI' },
+            @{ Pattern = '^nginx';                        Category = 'WebServer' },
+            @{ Pattern = '^Tomcat';                       Category = 'WebServer' }
+        )
+
+        # Get all running services with their executable paths
+        $runningWmiSvcs = @{}
+        try {
+            Get-CimInstance Win32_Service -Filter "State='Running'" | ForEach-Object {
+                $runningWmiSvcs[$_.Name] = $_.PathName
+            }
+        } catch {
+            Write-Host "  (Win32_Service query failed - continuing with Get-Service only)"
+        }
+
+        $runningSvcs = Get-Service | Where-Object { $_.Status -eq 'Running' }
+
+        foreach ($svc in $runningSvcs) {
+            $matched = $false
+            $category = ""
+            foreach ($sp in $servicePatterns) {
+                if ($svc.ServiceName -match $sp.Pattern) {
+                    $matched = $true
+                    $category = $sp.Category
+                    break
+                }
+            }
+
+            if (-not $matched) { continue }
+
+            # Try to get version from the service executable
+            $version = $null
+            $exePath = $runningWmiSvcs[$svc.ServiceName]
+            if ($exePath) {
+                $cleanPath = $exePath -replace '^"([^"]+)".*','$1' -replace '^([^\s]+)\s.*','$1'
+                try {
+                    if (Test-Path $cleanPath) {
+                        $vi = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($cleanPath)
+                        if ($vi.FileVersion) { $version = $vi.FileVersion }
+                    }
+                } catch { }
+            }
+
+            [void]$services.Add(@{
+                name        = $svc.ServiceName
+                displayName = $svc.DisplayName
+                status      = "$($svc.Status)"
+                version     = $version
+                category    = $category
+            })
+        }
+
+        Write-Host "  Notable services found: $($services.Count)"
+        foreach ($s in $services) {
+            $ver = if ($s.version) { " v$($s.version)" } else { "" }
+            Write-Host "    [$($s.category)] $($s.displayName)$ver ($($s.status))"
+        }
+        $serverStats["services"] = @($services.ToArray())
+
+        # â”€â”€ Merge everything into the final JSON â”€â”€
+        Write-Host ""
+        Write-Host "Merging partial data into final JSON..."
+
+        # Reconstruct the complete object
+        $finalObj = @{
+            Sites            = $iisPart.Sites
+            ApplicationPools = $iisPart.ApplicationPools
+            ServerStats      = $serverStats
+        }
+
+        $tools = $serverStats["tools"]
+        $dotnetSdks = $serverStats["dotNetSdks"]
+        $dotnetRuntimes = $serverStats["dotNetRuntimes"]
+        Write-Host "  Tools: $(if($tools){$tools.Count}else{0}) | SDKs: $(if($dotnetSdks){$dotnetSdks.Count}else{0}) | Runtimes: $(if($dotnetRuntimes){$dotnetRuntimes.Count}else{0}) | Features: $($installedFeatures.Count) | Services: $($services.Count)"
+
+        $jsonOutput = $finalObj | ConvertTo-Json -Depth 7
         $outputFile = "${{ parameters.artifactName }}.json"
         $outputPath = Join-Path "$(Build.ArtifactStagingDirectory)" $outputFile
         $jsonOutput | Out-File -FilePath $outputPath -Encoding UTF8
-        Write-Host "IIS information written to $outputPath"
-        
+        Write-Host "Final IIS information written to $outputPath"
+
+        # Clean up temp partials
+        Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Host "Cleaned up partial temp files."
+        Write-Host "=== Task 3/3 Complete ==="
+
   - task: PublishBuildArtifacts@1
     displayName: "Publish IIS Info Artifact"
     inputs:

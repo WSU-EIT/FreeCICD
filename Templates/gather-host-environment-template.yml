@@ -1,0 +1,402 @@
+# templates/gather-host-environment-template.yml
+# ---------------------------------------------------------------
+# Split into 2 PowerShell tasks that write a temporary partial
+# JSON file, then a final task adds remaining data and merges
+# into one artifact JSON.  This keeps each inline script under
+# the Azure DevOps 21 000-character expression limit.
+# ---------------------------------------------------------------
+
+parameters:
+  - name: artifactName
+    type: string
+    default: 'HostEnvironment'
+
+steps:
+  # -- Task 1/2: System Info, Tools, SDKs, Hardware --
+  - task: PowerShell@2
+    displayName: "Gather System Info, Tools & Hardware"
+    inputs:
+      targetType: 'inline'
+      script: |
+        $ErrorActionPreference = 'Continue'
+        $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+        Write-Host "Task 1/2: System Info, Tools & Hardware"
+        Write-Host ""
+
+        function Get-ToolVersion {
+            param([string]$Command, [string]$Arguments = "--version")
+            try {
+                $psi = New-Object System.Diagnostics.ProcessStartInfo
+                $psi.FileName = $Command
+                $psi.Arguments = $Arguments
+                $psi.RedirectStandardOutput = $true
+                $psi.RedirectStandardError = $true
+                $psi.UseShellExecute = $false
+                $psi.CreateNoWindow = $true
+                $proc = [System.Diagnostics.Process]::Start($psi)
+                $stdout = $proc.StandardOutput.ReadToEnd()
+                $stderr = $proc.StandardError.ReadToEnd()
+                $null = $proc.WaitForExit(10000)  # WaitForExit returns a bool; suppress it or it leaks into the function output
+                if ($proc.ExitCode -eq 0 -and $stdout.Trim()) { return $stdout.Trim().Split("`n")[0].Trim() }
+                if ($proc.ExitCode -eq 0 -and $stderr.Trim()) { return $stderr.Trim().Split("`n")[0].Trim() }
+            } catch { }
+            return $null
+        }
+
+        function Get-CommandPath {
+            param([string]$Command)
+            try {
+                $result = Get-Command $Command -ErrorAction SilentlyContinue
+                if ($result) { return $result.Source }
+            } catch { }
+            return $null
+        }
+
+        function Add-Runtime {
+            param($List, [string]$Name, [string]$Version, [string]$Path, [string]$Category, [string]$Details = $null)
+            $obj = @{ name = $Name; version = $Version; path = $Path; category = $Category }
+            if ($Details) { $obj["details"] = $Details }
+            $List.Add($obj) | Out-Null
+        }
+
+        function Try-DetectTool {
+            param($List, [string]$Category, [string]$DisplayName, [string]$Command, [string]$Arguments = "--version", [string]$Pattern = $null)
+            $ver = Get-ToolVersion -Command $Command -Arguments $Arguments
+            if (-not $ver) { return }
+            if ($Pattern) {
+                $m = [regex]::Match($ver, $Pattern)
+                if ($m.Success) { $ver = $m.Groups[1].Value }
+            }
+            $path = Get-CommandPath -Command $Command
+            Add-Runtime -List $List -Name $DisplayName -Version $ver -Path $path -Category $Category
+            Write-Host "  Found: $DisplayName $ver"
+        }
+
+        # System Information
+        Write-Host "[System Information]"
+        $system = @{
+            machineName          = $env:COMPUTERNAME
+            osDescription        = [System.Runtime.InteropServices.RuntimeInformation]::OSDescription
+            osArchitecture       = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+            processArchitecture  = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
+            processorCount       = [Environment]::ProcessorCount
+            dotnetRuntimeVersion = [System.Runtime.InteropServices.RuntimeInformation]::FrameworkDescription
+        }
+        Write-Host "  Machine: $($system.machineName)"
+        Write-Host "  OS: $($system.osDescription)"
+        Write-Host ""
+
+        # Runtimes & Tools Detection
+        Write-Host "[Scanning for development tools & runtimes...]"
+        $runtimes = [System.Collections.ArrayList]::new()
+
+        Try-DetectTool -List $runtimes -Category ".NET" -DisplayName "dotnet" -Command "dotnet" -Arguments "--version"
+        Try-DetectTool -List $runtimes -Category ".NET" -DisplayName "MSBuild" -Command "msbuild" -Arguments "-version -nologo"
+        Try-DetectTool -List $runtimes -Category ".NET" -DisplayName "NuGet" -Command "nuget" -Arguments "help" -Pattern '(\d+\.\d+[\.\d]*)'
+        Try-DetectTool -List $runtimes -Category "Python" -DisplayName "Python" -Command "python" -Arguments "--version" -Pattern 'Python (\S+)'
+        Try-DetectTool -List $runtimes -Category "Python" -DisplayName "pip" -Command "pip" -Arguments "--version" -Pattern 'pip (\S+)'
+        Try-DetectTool -List $runtimes -Category "JavaScript" -DisplayName "Node.js" -Command "node" -Arguments "--version"
+        Try-DetectTool -List $runtimes -Category "JavaScript" -DisplayName "npm" -Command "npm" -Arguments "--version"
+        Try-DetectTool -List $runtimes -Category "JavaScript" -DisplayName "yarn" -Command "yarn" -Arguments "--version"
+
+        $javaVersion = Get-ToolVersion -Command "java" -Arguments "-version"
+        if ($javaVersion) {
+            $jv = $javaVersion
+            $m = [regex]::Match($javaVersion, 'version\s+"?(\S+?)"?$')
+            if ($m.Success) { $jv = $m.Groups[1].Value }
+            $path = Get-CommandPath -Command "java"
+            Add-Runtime -List $runtimes -Name "Java" -Version $jv -Path $path -Category "Java"
+            Write-Host "  Found: Java $jv"
+        }
+        Try-DetectTool -List $runtimes -Category "Java" -DisplayName "Maven" -Command "mvn" -Arguments "--version" -Pattern 'Apache Maven (\S+)'
+        Try-DetectTool -List $runtimes -Category "Java" -DisplayName "Gradle" -Command "gradle" -Arguments "--version" -Pattern 'Gradle (\S+)'
+        Try-DetectTool -List $runtimes -Category "Go" -DisplayName "Go" -Command "go" -Arguments "version" -Pattern 'go(\d+\.\d+[\.\d]*)'
+        Try-DetectTool -List $runtimes -Category "Rust" -DisplayName "Rust" -Command "rustc" -Arguments "--version" -Pattern 'rustc (\S+)'
+        Try-DetectTool -List $runtimes -Category "Rust" -DisplayName "Cargo" -Command "cargo" -Arguments "--version" -Pattern 'cargo (\S+)'
+        Try-DetectTool -List $runtimes -Category "Ruby" -DisplayName "Ruby" -Command "ruby" -Arguments "--version" -Pattern 'ruby (\S+)'
+        Try-DetectTool -List $runtimes -Category "Ruby" -DisplayName "RubyGems" -Command "gem" -Arguments "--version"
+        Try-DetectTool -List $runtimes -Category "PHP" -DisplayName "PHP" -Command "php" -Arguments "--version" -Pattern 'PHP (\S+)'
+        Try-DetectTool -List $runtimes -Category "PHP" -DisplayName "Composer" -Command "composer" -Arguments "--version" -Pattern 'Composer version (\S+)'
+        Try-DetectTool -List $runtimes -Category "Containers" -DisplayName "Docker" -Command "docker" -Arguments "--version" -Pattern 'Docker version (\S+?)[,]?'
+        Try-DetectTool -List $runtimes -Category "Containers" -DisplayName "kubectl" -Command "kubectl" -Arguments "version --client --short" -Pattern 'v(\S+)'
+        Try-DetectTool -List $runtimes -Category "DevOps" -DisplayName "Terraform" -Command "terraform" -Arguments "--version" -Pattern 'v(\S+)'
+        Try-DetectTool -List $runtimes -Category "DevOps" -DisplayName "Azure CLI" -Command "az" -Arguments "version" -Pattern '"azure-cli":\s*"(\S+?)"'
+        Try-DetectTool -List $runtimes -Category "DevOps" -DisplayName "AWS CLI" -Command "aws" -Arguments "--version" -Pattern 'aws-cli/(\S+)'
+        Try-DetectTool -List $runtimes -Category "Version Control" -DisplayName "Git" -Command "git" -Arguments "--version" -Pattern 'git version (\S+)'
+        Try-DetectTool -List $runtimes -Category "Version Control" -DisplayName "SVN" -Command "svn" -Arguments "--version" -Pattern 'version (\S+)'
+
+        try {
+            $iisVer = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\InetStp' -ErrorAction SilentlyContinue).VersionString
+            if ($iisVer) {
+                Add-Runtime -List $runtimes -Name "IIS" -Version $iisVer -Path $null -Category "Web Server" -Details "Internet Information Services"
+                Write-Host "  Found: IIS $iisVer"
+            }
+        } catch { }
+        try {
+            $iisExpPath = "C:\Program Files\IIS Express\iisexpress.exe"
+            if (Test-Path $iisExpPath) {
+                $iisExpVer = (Get-Item $iisExpPath).VersionInfo.ProductVersion
+                Add-Runtime -List $runtimes -Name "IIS Express" -Version $iisExpVer -Path $iisExpPath -Category "Web Server"
+                Write-Host "  Found: IIS Express $iisExpVer"
+            }
+        } catch { }
+        Write-Host ""
+
+        # .NET SDKs
+        Write-Host "[.NET SDKs]"
+        $dotnetSdks = @()
+        try {
+            $sdkRaw = & dotnet --list-sdks 2>$null
+            if ($sdkRaw) {
+                foreach ($line in $sdkRaw) {
+                    $m = [regex]::Match($line, '^(\S+)\s+\[(.+)\]$')
+                    if ($m.Success) {
+                        $dotnetSdks += @{ name = "dotnet-sdk"; version = $m.Groups[1].Value; path = $m.Groups[2].Value }
+                        Write-Host "  SDK $($m.Groups[1].Value)"
+                    }
+                }
+            }
+        } catch { }
+        Write-Host ""
+
+        # .NET Runtimes
+        Write-Host "[.NET Runtimes]"
+        $dotnetRuntimes = @()
+        try {
+            $rtRaw = & dotnet --list-runtimes 2>$null
+            if ($rtRaw) {
+                foreach ($line in $rtRaw) {
+                    $m = [regex]::Match($line, '^(\S+)\s+(\S+)\s+\[(.+)\]$')
+                    if ($m.Success) {
+                        $dotnetRuntimes += @{ name = $m.Groups[1].Value; version = $m.Groups[2].Value; path = $m.Groups[3].Value; category = ".NET" }
+                        Write-Host "  $($m.Groups[1].Value) $($m.Groups[2].Value)"
+                    }
+                }
+            }
+        } catch { }
+        Write-Host ""
+
+        # Hardware: Disk Drives
+        Write-Host "[Disk Drives]"
+        $disks = @()
+        try {
+            foreach ($drive in [System.IO.DriveInfo]::GetDrives() | Where-Object { $_.IsReady -and $_.DriveType -eq 'Fixed' }) {
+                $totalGB = [math]::Round($drive.TotalSize / 1GB, 1)
+                $freeGB  = [math]::Round($drive.AvailableFreeSpace / 1GB, 1)
+                $usedPct = if ($totalGB -gt 0) { [math]::Round((1 - $freeGB / $totalGB) * 100, 1) } else { 0 }
+                $disks += @{
+                    driveLetter = $drive.Name.TrimEnd('\')
+                    volumeLabel = $drive.VolumeLabel
+                    totalGB     = $totalGB
+                    freeGB      = $freeGB
+                    usedPercent = $usedPct
+                    fileSystem  = $drive.DriveFormat
+                }
+                Write-Host "  $($drive.Name.TrimEnd('\')) $freeGB GB free / $totalGB GB ($usedPct% used)"
+            }
+        } catch { Write-Host "  (Could not enumerate drives)" }
+        Write-Host ""
+
+        # Hardware: CPU
+        Write-Host "[CPU Information]"
+        $cpu = $null
+        try {
+            $cpuWmi = Get-CimInstance Win32_Processor | Select-Object -First 1
+            if ($cpuWmi) {
+                $cpu = @{
+                    name              = $cpuWmi.Name.Trim()
+                    cores             = $cpuWmi.NumberOfCores
+                    logicalProcessors = $cpuWmi.NumberOfLogicalProcessors
+                    usagePercent      = if ($cpuWmi.LoadPercentage) { $cpuWmi.LoadPercentage } else { 0 }
+                    maxClockSpeedMHz  = "$($cpuWmi.MaxClockSpeed)"
+                }
+                Write-Host "  $($cpu.name) ($($cpu.cores)c / $($cpu.logicalProcessors)t, $($cpu.usagePercent)% load)"
+            }
+        } catch { Write-Host "  (Could not get CPU info)" }
+        Write-Host ""
+
+        # Hardware: Memory
+        Write-Host "[Memory Information]"
+        $memory = $null
+        try {
+            $os = Get-CimInstance Win32_OperatingSystem
+            if ($os) {
+                $totalGB = [math]::Round($os.TotalVisibleMemorySize / 1MB, 1)
+                $availGB = [math]::Round($os.FreePhysicalMemory / 1MB, 1)
+                $usedPct = if ($totalGB -gt 0) { [math]::Round((1 - $availGB / $totalGB) * 100, 1) } else { 0 }
+                $memory = @{
+                    totalGB     = $totalGB
+                    availableGB = $availGB
+                    usedPercent = $usedPct
+                }
+                Write-Host "  $availGB GB free / $totalGB GB ($usedPct% used)"
+            }
+        } catch { Write-Host "  (Could not get memory info)" }
+        Write-Host ""
+
+        $stopwatch.Stop()
+
+        # Write the partial data to a temp file.
+        $partial = @{
+            system         = $system
+            runtimes       = @($runtimes.ToArray())
+            dotNetSdks     = $dotnetSdks
+            dotNetRuntimes = $dotnetRuntimes
+            disks          = $disks
+            cpu            = $cpu
+            memory         = $memory
+            elapsedSeconds = [math]::Round($stopwatch.Elapsed.TotalSeconds, 2)
+        }
+        $tempDir = Join-Path "$(Build.ArtifactStagingDirectory)" "_partials"
+        if (!(Test-Path $tempDir)) { New-Item -ItemType Directory -Path $tempDir -Force | Out-Null }
+        $partial | ConvertTo-Json -Depth 5 | Out-File -FilePath (Join-Path $tempDir "hostenv_part.json") -Encoding UTF8
+        Write-Host "Partial data written to $tempDir\hostenv_part.json (Task 1/2 complete)"
+
+  # -- Task 2/2: Windows Update, Features, Env Vars, PATH & Merge --
+  - task: PowerShell@2
+    displayName: "Gather WinUpdate, Features & Merge Final JSON"
+    inputs:
+      targetType: 'inline'
+      script: |
+        $ErrorActionPreference = 'Continue'
+        Write-Host "Task 2/2: WinUpdate, Features & Merge"
+
+        $tempDir = Join-Path "$(Build.ArtifactStagingDirectory)" "_partials"
+        $partialPath = Join-Path $tempDir "hostenv_part.json"
+        if (!(Test-Path $partialPath)) { Write-Error "Missing partial: $partialPath"; exit 1 }
+        $partial = Get-Content $partialPath -Raw | ConvertFrom-Json
+
+        # Windows Update Status
+        Write-Host "[Windows Update Status]"
+        $windowsUpdate = $null
+        try {
+            $ntVer = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -ErrorAction SilentlyContinue
+            $winVer = $ntVer.DisplayVersion
+            $winBuild = "$($ntVer.CurrentBuildNumber).$($ntVer.UBR)"
+            Write-Host "  Windows Version: $winVer (Build $winBuild)"
+
+            $recentUpdates = @()
+            $lastInstalled = $null
+            try {
+                $hotfixes = Get-HotFix | Sort-Object InstalledOn -Descending -ErrorAction SilentlyContinue | Select-Object -First 20
+                foreach ($hf in $hotfixes) {
+                    $entry = @{
+                        title       = if ($hf.Description) { $hf.Description } else { $hf.HotFixID }
+                        kbArticleId = $hf.HotFixID
+                        installedOn = if ($hf.InstalledOn) { $hf.InstalledOn.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ") } else { $null }
+                        status      = "Installed"
+                    }
+                    $recentUpdates += $entry
+                    if ($hf.InstalledOn -and (-not $lastInstalled -or $hf.InstalledOn -gt $lastInstalled)) {
+                        $lastInstalled = $hf.InstalledOn
+                    }
+                }
+                Write-Host "  Last Update: $(if ($lastInstalled) { $lastInstalled.ToString('yyyy-MM-dd') } else { 'Unknown' })"
+                Write-Host "  Recent Hotfixes: $($recentUpdates.Count)"
+            } catch { Write-Host "  (Could not enumerate hotfixes)" }
+
+            $pendingCount = 0
+            try {
+                $session = New-Object -ComObject Microsoft.Update.Session
+                $searcher = $session.CreateUpdateSearcher()
+                $result = $searcher.Search("IsInstalled=0")
+                $pendingCount = $result.Updates.Count
+                Write-Host "  Pending Updates: $pendingCount"
+            } catch { Write-Host "  (Could not check pending updates)" }
+
+            $windowsUpdate = @{
+                lastInstalledDate  = if ($lastInstalled) { $lastInstalled.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ") } else { $null }
+                pendingUpdateCount = $pendingCount
+                windowsVersion     = $winVer
+                windowsBuild       = $winBuild
+                recentUpdates      = $recentUpdates
+            }
+        } catch { Write-Host "  (Could not get Windows Update info)" }
+        Write-Host ""
+
+        # Installed Windows Features (Server OS only)
+        Write-Host "[Installed Windows Features]"
+        $installedFeatures = @()
+        try {
+            $features = Get-WindowsFeature | Where-Object { $_.Installed -or $_.InstallState -eq 'Installed' }
+            foreach ($f in $features) {
+                $installedFeatures += @{
+                    name        = $f.Name
+                    displayName = $f.DisplayName
+                    state       = "$($f.InstallState)"
+                }
+            }
+            Write-Host "  Features Installed: $($installedFeatures.Count)"
+        } catch {
+            Write-Host "  (Get-WindowsFeature not available - requires Server OS)"
+        }
+        Write-Host ""
+
+        # Environment Variables
+        Write-Host "[Environment Variables]"
+        $envVars = @()
+        $envVarNames = @(
+            "JAVA_HOME", "GOPATH", "GOROOT", "RUSTUP_HOME", "CARGO_HOME",
+            "PYTHON_HOME", "PYTHONPATH", "NODE_PATH", "NVM_HOME",
+            "DOTNET_ROOT", "DOTNET_CLI_HOME", "NUGET_PACKAGES",
+            "ASPNETCORE_ENVIRONMENT", "ASPNETCORE_URLS",
+            "DOCKER_HOST", "KUBECONFIG", "TERRAFORM_HOME",
+            "ANDROID_HOME", "ANDROID_SDK_ROOT",
+            "RUBY_HOME", "GEM_HOME", "GEM_PATH",
+            "PHP_HOME", "COMPOSER_HOME"
+        )
+        foreach ($name in $envVarNames) {
+            $val = [Environment]::GetEnvironmentVariable($name)
+            if ($val) {
+                $envVars += @{ name = $name; value = $val }
+                Write-Host "  $name = $val"
+            }
+        }
+        Write-Host ""
+
+        # PATH Entries
+        $pathEntries = ($env:PATH -split ';' | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
+
+        # Build final JSON matching HostEnvironmentResponse
+        Write-Host "Merging partial data into final JSON..."
+        $result = @{
+            success              = $true
+            errorMessage         = $null
+            system               = $partial.system
+            runtimes             = $partial.runtimes
+            dotNetSdks           = $partial.dotNetSdks
+            dotNetRuntimes       = $partial.dotNetRuntimes
+            environmentVariables = $envVars
+            pathEntries          = @($pathEntries)
+            lastScannedUtc       = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+            elapsedSeconds       = $partial.elapsedSeconds
+            disks                = $partial.disks
+            memory               = $partial.memory
+            cpu                  = $partial.cpu
+            windowsUpdate        = $windowsUpdate
+            installedFeatures    = $installedFeatures
+        }
+
+        $jsonOutput = $result | ConvertTo-Json -Depth 6
+
+        $outputFile = "${{ parameters.artifactName }}.json"
+        $outputPath = Join-Path "$(Build.ArtifactStagingDirectory)" $outputFile
+        $jsonOutput | Out-File -FilePath $outputPath -Encoding UTF8
+
+        # Clean up temp partials
+        Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+
+        Write-Host ""
+        Write-Host "  SCAN COMPLETE"
+        Write-Host "  Tools found:       $(if($partial.runtimes){$partial.runtimes.Count}else{0})"
+        Write-Host "  .NET SDKs:         $(if($partial.dotNetSdks){$partial.dotNetSdks.Count}else{0})"
+        Write-Host "  .NET Runtimes:     $(if($partial.dotNetRuntimes){$partial.dotNetRuntimes.Count}else{0})"
+        Write-Host "  Disks:             $(if($partial.disks){$partial.disks.Count}else{0})"
+        Write-Host "  Features:          $($installedFeatures.Count)"
+        Write-Host "  JSON written to:   $outputPath"
+
+  - task: PublishBuildArtifacts@1
+    displayName: "Publish Host Environment Artifact"
+    inputs:
+      PathtoPublish: '$(Build.ArtifactStagingDirectory)\${{ parameters.artifactName }}.json'
+      ArtifactName: '${{ parameters.artifactName }}'

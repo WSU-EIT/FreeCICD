@@ -66,6 +66,10 @@ parameters:
     type: string
     default: ''
 
+  - name: FixWasmCompression
+    type: boolean
+    default: false
+
   # New parameter for specifying files/folders for permission updates
   - name: GrantAccessToFilesAndFolders
     type: string
@@ -81,7 +85,18 @@ parameters:
   - name: IISInfoArtifactCms
     type: string
     default: ''   # If provided, the PROD IIS info artifact name (e.g. "IISInfo_AzureCMS")
-    
+
+  # Parameters for specifying the names of the Host Environment artifacts (without the .json extension)
+  - name: HostEnvArtifactDev
+    type: string
+    default: ''   # If provided, the DEV host environment artifact name (e.g. "HostEnvironment_AzureDev")
+  - name: HostEnvArtifactProd
+    type: string
+    default: ''   # If provided, the PROD host environment artifact name (e.g. "HostEnvironment_AzureProd")
+  - name: HostEnvArtifactCms
+    type: string
+    default: ''   # If provided, the CMS host environment artifact name (e.g. "HostEnvironment_AzureCMS")
+
   # New optional parameter for binding overrides.
   # If provided, this value (which should be a JSON string) will override the computed bindings.
   - name: CustomBindings
@@ -120,7 +135,8 @@ steps:
         $jobAttempt   = $env:SYSTEM_JOBATTEMPT
 
         # Compute final directory inline
-        $CI_DEPLOY_DIR = "${{ parameters.basePath }}\${{ parameters.envFolderName }}\${{ parameters.projectName }}\1.$buildNumber`_$jobAttempt"
+        # FIX: basePath is already env-specific (e.g. ...\Dev\...\Applications), so do NOT append envFolderName again.
+        $CI_DEPLOY_DIR = "${{ parameters.basePath }}\${{ parameters.projectName }}\1.$buildNumber`_$jobAttempt"
         Write-Host "Final Deploy Dir: $CI_DEPLOY_DIR"
 
         # Set pipeline variable for deploy directory
@@ -201,6 +217,52 @@ steps:
         }
 
   #
+  # Copy Host Environment JSON Files to Deploy Folder
+  #
+  - task: PowerShell@2
+    displayName: "Copy Host Environment JSON Files to Deploy Folder"
+    inputs:
+      targetType: 'inline'
+      script: |
+        Write-Host "Starting Host Environment JSON copy step..."
+
+        # Build an array of artifact names from the provided parameters (skip if empty)
+        $artifactNames = @()
+        if (-not [string]::IsNullOrWhiteSpace('${{ parameters.HostEnvArtifactDev }}')) {
+            $artifactNames += '${{ parameters.HostEnvArtifactDev }}'
+            Write-Host "Using HostEnvArtifactDev: $($artifactNames[-1])"
+        }
+        if (-not [string]::IsNullOrWhiteSpace('${{ parameters.HostEnvArtifactProd }}')) {
+            $artifactNames += '${{ parameters.HostEnvArtifactProd }}'
+            Write-Host "Using HostEnvArtifactProd: $($artifactNames[-1])"
+        }
+        if (-not [string]::IsNullOrWhiteSpace('${{ parameters.HostEnvArtifactCms }}')) {
+            $artifactNames += '${{ parameters.HostEnvArtifactCms }}'
+            Write-Host "Using HostEnvArtifactCms: $($artifactNames[-1])"
+        }
+
+        if ($artifactNames.Count -eq 0) {
+            Write-Host "No Host Environment artifact parameters provided. Skipping copy step."
+            exit 0
+        }
+
+        foreach ($artifact in $artifactNames) {
+            # Construct the expected folder path and file path:
+            $sourceFolder = Join-Path "$(Pipeline.Workspace)" $artifact
+            $sourceFile = Join-Path $sourceFolder "$artifact.json"
+            Write-Host "Looking for file: $sourceFile"
+            if (Test-Path $sourceFile) {
+                Write-Host "Found Host Environment file: $sourceFile"
+                $destination = Join-Path "$(deployDir)" "$artifact.json"
+                Copy-Item $sourceFile -Destination $destination -Force
+                Write-Host "Copied '$artifact.json' to $destination"
+            }
+            else {
+                Write-Host "WARNING: No matching Host Environment JSON file found at $sourceFile for artifact '$artifact'."
+            }
+        }
+
+  #
   # 2) Runtime Switch: set an Azure DevOps variable
   #
   - task: PowerShell@2
@@ -244,7 +306,91 @@ steps:
       enableXmlTransform: false
       jsonTargetFiles: '**/appsettings.json'
 
-  #
+  - task: PowerShell@2
+    displayName: "Inject WASM Compression Fix into web.config"
+    condition: and(succeeded(), eq('${{ parameters.FixWasmCompression }}', 'true'))
+    inputs:
+      targetType: inline
+      script: |
+        Write-Host "=== Configuring web.config for WASM Compression Fix ==="
+        $webConfigPath = Join-Path "$(deployDir)" "web.config"
+
+        if (-not (Test-Path $webConfigPath)) {
+            Write-Warning "web.config not found at $webConfigPath. Cannot apply WASM fix."
+            exit 0
+        }
+
+        Write-Host "Loading web.config..."
+        [xml]$xml = Get-Content $webConfigPath
+
+        # Ensure configuration/system.webServer exists
+        if (-not $xml.configuration) { 
+           Throw "Invalid web.config structure (missing configuration node)" 
+        }
+
+        # Handle XML Namespaces if present (rare in basic config, but possible)
+        $ns = New-Object System.Xml.XmlNamespaceManager($xml.NameTable)
+        
+        # Helper to get or create node
+        function Get-OrCreateNode($parent, $nodeName) {
+            $node = $parent[$nodeName]
+            if (-not $node) {
+                $node = $parent.OwnerDocument.CreateElement($nodeName)
+                $parent.AppendChild($node) | Out-Null
+            }
+            return $node
+        }
+
+        $sysWeb = Get-OrCreateNode $xml.configuration "system.webServer"
+
+        # FIX 1: Disable Dynamic Compression
+        $urlComp = $sysWeb["urlCompression"]
+        if (-not $urlComp) {
+            $urlComp = $xml.CreateElement("urlCompression")
+            $sysWeb.AppendChild($urlComp) | Out-Null
+        }
+        $urlComp.SetAttribute("doStaticCompression", "true")
+        $urlComp.SetAttribute("doDynamicCompression", "false")
+        Write-Host "Set urlCompression: Static=true, Dynamic=false"
+
+        # FAILSAFE: Remove the old Rewrite Rule if it exists (from previous attempts)
+        $rewrite = $sysWeb["rewrite"]
+        if ($rewrite) {
+            $outbound = $rewrite["outboundRules"]
+            if ($outbound) {
+                $ruleName = "Disable dynamic compression for WASM"
+                $badRule = $outbound.SelectSingleNode("rule[@name='$ruleName']")
+                if ($badRule) {
+                    $outbound.RemoveChild($badRule) | Out-Null
+                    Write-Host "Removed legacy Rewrite Rule '$ruleName'"
+                }
+            }
+        }
+        
+        # Ensure staticContent MimeMap
+        $staticContent = Get-OrCreateNode $sysWeb "staticContent"
+        
+        # Remove and re-add to be safe
+        $removeNode = $staticContent.SelectSingleNode("remove[@fileExtension='.wasm']")
+        if (-not $removeNode) {
+            $rem = $xml.CreateElement("remove")
+            $rem.SetAttribute("fileExtension", ".wasm")
+            $staticContent.AppendChild($rem) | Out-Null
+        }
+        
+        $mimeNode = $staticContent.SelectSingleNode("mimeMap[@fileExtension='.wasm']")
+        if (-not $mimeNode) {
+            $mime = $xml.CreateElement("mimeMap")
+            $mime.SetAttribute("fileExtension", ".wasm")
+            $mime.SetAttribute("mimeType", "application/wasm")
+            $staticContent.AppendChild($mime) | Out-Null
+        }
+
+        $xml.Save($webConfigPath)
+        Write-Host "Successfully patched web.config."
+        Write-Host "=== End WASM Fix ==="
+
+      #
   # Compute and Set Binding Variable (with override support)
   #
   - task: PowerShell@2
@@ -265,7 +411,7 @@ steps:
         Write-Host "##vso[task.setvariable variable=bindings]$bindings"
 
   #
-  # 4.a) Deploy IIS Website / Web App with custom auth – set permissions
+  # 4.a) Deploy IIS Website / Web App with custom auth â€“ set permissions
   #
   - task: PowerShell@2
     displayName: "Set File & Folder Permissions for AuthUsername"
@@ -455,72 +601,99 @@ steps:
         $appPoolName = '${{ parameters.AppPoolName }}'
         $siteName    = '${{ parameters.WebsiteName }}'
         $deployType  = "$(DEPLOY_TYPE)"
+        $virtualPath = '${{ parameters.VirtualPath }}'
 
         if ([string]::IsNullOrWhiteSpace($appPoolName) -or [string]::IsNullOrWhiteSpace($siteName)) {
           Write-Host "AppPoolName or WebsiteName not provided. Skipping Always-On configuration."
           exit 0
         }
 
-        # Determine application path based on deployment type
+        # Decide which application path to target:
+        # - IISWebsite / IISWebsiteAuth  -> root ("/")
+        # - IISWebApplication*           -> use VirtualPath (e.g. "/HelpDesk")
         if ($deployType -eq 'IISWebApplication' -or $deployType -eq 'IISWebApplicationAuth') {
-          $appPath = '${{ parameters.VirtualPath }}'
-          if ([string]::IsNullOrWhiteSpace($appPath)) {
+          if (-not [string]::IsNullOrWhiteSpace($virtualPath)) {
+            $appPath = $virtualPath
+          }
+          else {
             $appPath = '/'
           }
         }
         else {
-          # Website root application
           $appPath = '/'
         }
 
-        Write-Host "Using deployment type: $deployType"
-        Write-Host "Site Name: $siteName"
-        Write-Host "App Pool Name: $appPoolName"
+        Write-Host "Deployment type:  $deployType"
+        Write-Host "Site Name:        $siteName"
+        Write-Host "App Pool Name:    $appPoolName"
         Write-Host "Application Path: $appPath"
 
         try {
           Import-Module WebAdministration -ErrorAction Stop
           Write-Host "Loaded WebAdministration module."
 
-          # Set app pool to AlwaysRunning
+          # 1) Make App Pool AlwaysRunning
           $appPoolPath = "IIS:\AppPools\$appPoolName"
           if (Test-Path $appPoolPath) {
             Write-Host "Setting startMode=AlwaysRunning on app pool '$appPoolName'..."
-            Set-ItemProperty $appPoolPath -Name startMode -Value "AlwaysRunning"
+            Set-ItemProperty $appPoolPath -Name startMode -Value "AlwaysRunning" -ErrorAction Stop
           }
           else {
             throw "App pool '$appPoolName' not found at path '$appPoolPath'."
           }
-
-          # Enable preload on application/website
-          $siteAppPath = "IIS:\Sites\$siteName$appPath"
-          if (Test-Path $siteAppPath) {
-            Write-Host "Enabling preloadEnabled on '$siteAppPath'..."
-            Set-ItemProperty $siteAppPath -Name preloadEnabled -Value $true
-          }
-          else {
-            throw "Site/application path '$siteAppPath' not found."
-          }
-
-          # Enable applicationInitialization doAppInitAfterRestart if possible
-          try {
-            Write-Host "Enabling applicationInitialization.doAppInitAfterRestart on '$siteAppPath'..."
-            Set-WebConfigurationProperty `
-              -pspath $siteAppPath `
-              -Filter 'system.webServer/applicationInitialization' `
-              -Name 'doAppInitAfterRestart' `
-              -Value 'True'
-          }
-          catch {
-            Write-Host "WARNING: Failed to set doAppInitAfterRestart (Application Initialization may not be installed or configured). Error: $($_.Exception.Message)"
-          }
-
-          Write-Host "=== IIS Always-On configuration completed successfully. ==="
         }
         catch {
-          Write-Error "Failed to configure IIS Always-On settings: $($_.Exception.Message)"
+          Write-Error "Failed to configure app pool AlwaysRunning: $($_.Exception.Message)"
           throw
         }
+
+        # 2) Try to enable preloadEnabled using Microsoft.Web.Administration
+        try {
+          Write-Host "Attempting to set preloadEnabled using Microsoft.Web.Administration..."
+
+          $dllPath = Join-Path $env:WINDIR 'system32\inetsrv\Microsoft.Web.Administration.dll'
+          if (-not (Test-Path $dllPath)) {
+            # Fallback for 32-bit PowerShell on 64-bit Windows
+            $dllPath = Join-Path $env:WINDIR 'sysnative\inetsrv\Microsoft.Web.Administration.dll'
+          }
+
+          if (-not (Test-Path $dllPath)) {
+            throw "Microsoft.Web.Administration.dll not found (looked in system32 and sysnative)."
+          }
+
+          [System.Reflection.Assembly]::LoadFrom($dllPath) | Out-Null
+
+          $serverManager = New-Object Microsoft.Web.Administration.ServerManager
+          $site = $serverManager.Sites[$siteName]
+          if (-not $site) {
+            throw "Site '$siteName' not found."
+          }
+
+          # Normalize app path to leading "/" ("/" for root, "/HelpDesk" for virtual apps)
+          if ([string]::IsNullOrWhiteSpace($appPath)) {
+            $appPath = '/'
+          }
+          elseif (-not $appPath.StartsWith('/')) {
+            $appPath = '/' + $appPath
+          }
+
+          $application = $site.Applications[$appPath]
+          if (-not $application) {
+            throw "Application '$appPath' not found on site '$siteName'."
+          }
+
+          Write-Host "Setting preloadEnabled = true on '$siteName' application '$appPath'..."
+          $application.SetAttributeValue("preloadEnabled", $true)
+          $serverManager.CommitChanges()
+
+          Write-Host "preloadEnabled successfully set."
+        }
+        catch {
+          # Do NOT fail the deploy on preload issues â€“ log and continue, per Brad's request.
+          Write-Warning "Failed to set preloadEnabled (deployment will continue). Error: $($_.Exception.Message)"
+        }
+
+        Write-Host "=== IIS Always-On configuration finished ==="
 
   - task: PowerShell@2
     displayName: "Retention Policy: Remove Old Release Folders (with Info Dump)"
@@ -528,19 +701,25 @@ steps:
       targetType: inline
       script: |
         Write-Host "=== Retention Policy: Cleaning Up Old Releases ==="
-        $deployBase = "${{ parameters.basePath }}\${{ parameters.envFolderName }}\${{ parameters.projectName }}"
+
+        # FIX: basePath is already env-specific, so do NOT append envFolderName again.
+        $deployBase = "${{ parameters.basePath }}\${{ parameters.projectName }}"
         Write-Host "Looking for release folders in: $deployBase"
+
         if (!(Test-Path $deployBase)) {
             Write-Host "Deploy base folder does not exist. Exiting cleanup."
             exit 0
         }
+
         $allDirs = Get-ChildItem -Path $deployBase -Directory | Sort-Object CreationTime -Descending
         Write-Host "Found $($allDirs.Count) release directories:"
         foreach ($d in $allDirs) {
             Write-Host "   $($d.FullName)"
         }
+
         $currentRelease = $env:deployDir
         Write-Host "Current release folder: $currentRelease"
+
         Write-Host "=== IIS Information Dump ==="
         $iisPaths = @()
         try {
@@ -562,28 +741,35 @@ steps:
         catch {
             Write-Host "Failed to load WebAdministration module or retrieve IIS info. Error: $_"
         }
+
         Write-Host "IIS Physical Paths in use:"
         foreach ($path in $iisPaths) {
             Write-Host "   $path"
         }
+
         $releaseRetention = [int]"${{ parameters.releaseRetention }}"
         Write-Host "Retaining the latest $releaseRetention release(s)."
+
         if ($allDirs.Count -le $releaseRetention) {
             Write-Host "No directories to delete as the count ($($allDirs.Count)) is less than or equal to the retention count ($releaseRetention)."
             exit 0
         }
+
         $dirsToDelete = $allDirs | Select-Object -Skip $releaseRetention
         Write-Host "Directories marked for deletion (before IIS check):"
         foreach ($dir in $dirsToDelete) {
             Write-Host "   $($dir.FullName)"
         }
+
         foreach ($dir in $dirsToDelete) {
             $dirNormalized = $dir.FullName.TrimEnd('\')
             $currentReleaseNormalized = $currentRelease.TrimEnd('\')
+
             if ($dirNormalized -eq $currentReleaseNormalized) {
                 Write-Host "Skipping deletion of $($dir.FullName) because it is the current release directory."
                 continue
             }
+
             $inUse = $false
             foreach ($iisPath in $iisPaths) {
                 if ($dirNormalized -eq $iisPath.TrimEnd('\')) {
@@ -592,16 +778,19 @@ steps:
                     break
                 }
             }
+
             if (-not $inUse) {
                 Write-Host "Deleting old release directory: $($dir.FullName)"
                 Remove-Item -Path $dir.FullName -Recurse -Force
             }
         }
+
         Write-Host "=== Final Remaining Directories in Deploy Base ==="
         $remainingDirs = Get-ChildItem -Path $deployBase -Directory | Sort-Object CreationTime -Descending
         foreach ($d in $remainingDirs) {
             Write-Host "   $($d.FullName)"
         }
+
         Write-Host "Old release directories cleanup completed."
 
   #

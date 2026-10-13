@@ -9,13 +9,13 @@ variables:
     
   # Deploy pipeline variables for application folders
   - name: CI_PIPELINE_COMMON_ApplicationFolder_DEV
-    value: 'C:\WebRoot\OctopusDev\azagentdev\Applications' # Path to the DEV application folder
+    value: 'C:\WebRoot\CICD\Dev\AzureDevops\Applications' # Path to the DEV application folder
 
   - name: CI_PIPELINE_COMMON_ApplicationFolder_PROD
-    value: 'C:\WebRoot\Octopus\azagentprod\Applications' # Path to the PROD application folder
+    value: 'C:\WebRoot\CICD\Prod\AzureDevops\Applications' # Path to the PROD application folder
 
   - name: CI_PIPELINE_COMMON_ApplicationFolder_CMS
-    value: 'C:\WebRoot\OctopusCMS\azagentcms\Applications'
+    value: 'C:\WebRoot\CICD\CMS\AzureDevops\Applications'
 
   # Deploy pipeline variables for DEV IIS settings
   - name: CI_PIPELINE_COMMON_DotNetVersion_DEV

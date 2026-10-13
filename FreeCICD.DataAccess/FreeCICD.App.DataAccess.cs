@@ -59,6 +59,13 @@ public partial interface IDataAccess
     Task<DataObjects.DevopsGitRepoInfo> CreateDevOpsRepoAsync(string pat, string orgName, string projectId, string repoName, string? connectionId = null);
     Task<DataObjects.ImportPublicRepoResponse> ImportPublicRepoAsync(string pat, string orgName, DataObjects.ImportPublicRepoRequest request, string? connectionId = null);
     Task<DataObjects.ImportPublicRepoResponse> GetImportStatusAsync(string pat, string orgName, string projectId, string repoId, int importRequestId, string? connectionId = null);
+
+    // NuGet Inventory Methods
+    Task<DataObjects.NuGetInventoryResponse> GetNuGetInventoryAsync(string pat, string orgName, string? connectionId = null);
+
+    // Host Environment Methods
+    Task<DataObjects.HostEnvironmentResponse> GetHostEnvironmentAsync(string? connectionId = null);
+    Task<Dictionary<string, DataObjects.HostEnvironmentResponse?>> GetHostEnvironmentByEnvironmentAsync();
 }
 
 public partial class DataAccess

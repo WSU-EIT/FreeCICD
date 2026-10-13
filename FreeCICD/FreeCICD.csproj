@@ -9,6 +9,7 @@
     <UserSecretsId>1459ccfa-dbd6-4620-8fb7-0945292e8a9a</UserSecretsId>
   </PropertyGroup>
 
+
   <ItemGroup>
     <ProjectReference Include="..\FreeCICD.DataAccess\FreeCICD.DataAccess.csproj" />
     <ProjectReference Include="..\FreeCICD.Plugins\FreeCICD.Plugins.csproj" />

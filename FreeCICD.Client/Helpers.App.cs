@@ -11,6 +11,8 @@ public static partial class Helpers
                 { "fa:fa-rocket", new List<string> { "Pipelines", "PipelineDashboard" }},
                 { "fa:fa-magic", new List<string> { "PipelineWizard", "Wizard" }},
                 { "fa:fa-plug", new List<string> { "Plug", "SignalR" }},
+                { "fa:fa-cubes", new List<string> { "NuGetInventory" }},
+                { "fa:fa-server", new List<string> { "HostEnvironment" }},
             };
 
             return icons;
@@ -109,6 +111,26 @@ public static partial class Helpers
                 PageNames = new List<string> { "home" },
                 SortOrder = 200,
                 url = Helpers.BuildUrl("Wizard"),
+                AppAdminOnly = false,
+            });
+
+            // NuGet Inventory - Package scanner across all repos (SortOrder: 300)
+            output.Add(new DataObjects.MenuItem {
+                Title = "NuGet Inventory",
+                Icon = "NuGetInventory",
+                PageNames = new List<string> { "nuget-inventory" },
+                SortOrder = 300,
+                url = Helpers.BuildUrl("NuGetInventory"),
+                AppAdminOnly = false,
+            });
+
+            // Host Environment - Server tools and runtimes (SortOrder: 400)
+            output.Add(new DataObjects.MenuItem {
+                Title = "Host Environment",
+                Icon = "HostEnvironment",
+                PageNames = new List<string> { "host-environment" },
+                SortOrder = 400,
+                url = Helpers.BuildUrl("HostEnvironment"),
                 AppAdminOnly = false,
             });
 

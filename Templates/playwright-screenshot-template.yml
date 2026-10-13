@@ -206,7 +206,7 @@ stages:
           Write-Host "✓ Multi-stage Project Dockerfile generated at $dockerfilePath"
 
     - task: PowerShell@2
-      displayName: 'Generate Program.cs (Playwright + multi/parallel mode)'
+      displayName: 'Generate Program.cs (Playwright + multi/parallel mode + smarter waits + curl snapshot)'
       inputs:
         targetType: 'inline'
         script: |
@@ -214,8 +214,11 @@ stages:
           using Microsoft.Playwright;
           using System;
           using System.Collections.Generic;
+          using System.Diagnostics;
           using System.IO;
           using System.Linq;
+          using System.Net.Http;
+          using System.Text;
           using System.Threading;
           using System.Threading.Tasks;
 
@@ -223,6 +226,8 @@ stages:
           {
               private static readonly AsyncLocal<TextWriter?> LogWriter = new() { Value = Console.Out };
               private static readonly object ConsoleLock = new();
+              private static readonly HttpClient Http = new();
+              private const int DefaultExtraWaitMs = 15000;
 
               private static void Log(string message)
                   => (LogWriter.Value ?? Console.Out).WriteLine(message);
@@ -245,9 +250,11 @@ stages:
                   //   [1] = screenshot path (default screenshot.png)
                   //
                   // Env:
-                  //   PLAYWRIGHT_BROWSER  = chromium | firefox | webkit
-                  //   PLAYWRIGHT_DEVICE   = optional device name
-                  //   PLAYWRIGHT_VIEWPORT = "WIDTHxHEIGHT"
+                  //   PLAYWRIGHT_BROWSER        = chromium | firefox | webkit
+                  //   PLAYWRIGHT_DEVICE         = optional device name
+                  //   PLAYWRIGHT_VIEWPORT       = "WIDTHxHEIGHT"
+                  //   PLAYWRIGHT_EXTRA_WAIT_MS  = extra static wait after load/network-idle
+                  //   PLAYWRIGHT_READY_SELECTOR = optional CSS selector that must become visible
                   return await RunPlaywrightAsync(args);
               }
 
@@ -295,7 +302,7 @@ stages:
 
                   try
                   {
-                      Log("[1/5] Initializing Playwright...");
+                      Log("[1/6] Initializing Playwright...");
                       using var playwright = await Playwright.CreateAsync();
 
                       IBrowserType browserType = config.BrowserName switch
@@ -305,7 +312,7 @@ stages:
                           _         => playwright.Chromium
                       };
 
-                      Log($"[2/5] Launching {config.BrowserName} (headless)...");
+                      Log($"[2/6] Launching {config.BrowserName} (headless)...");
                       await using var browser = await browserType.LaunchAsync(new() { Headless = true });
 
                       BrowserNewContextOptions contextOptions;
@@ -331,13 +338,15 @@ stages:
                       var context = await browser.NewContextAsync(contextOptions);
                       var page    = await context.NewPageAsync();
 
-                      Log($"[3/5] Navigating to {config.Url}...");
+                      Log($"[3/6] Navigating to {config.Url}...");
                       IResponse? response = null;
                       try
                       {
+                          // For SPA / Blazor apps DOMContentLoaded is usually enough,
+                          // we'll then layer additional waits on top.
                           response = await page.GotoAsync(config.Url, new()
                           {
-                              WaitUntil = WaitUntilState.Load,
+                              WaitUntil = WaitUntilState.DOMContentLoaded,
                               Timeout   = 60000
                           });
                           Log($"✓ Navigation complete (Status: {response?.Status})");
@@ -347,9 +356,55 @@ stages:
                           Log("⚠ Navigation timed out, continuing anyway");
                       }
 
-                      await page.WaitForTimeoutAsync(5000);
+                      // --------------------------------------------------------------
+                      // Smarter "wait until ready" logic for SPA / Blazor
+                      // --------------------------------------------------------------
+                      var readySelector = Environment.GetEnvironmentVariable("PLAYWRIGHT_READY_SELECTOR");
+                      int extraWaitMs   = GetExtraWaitMsFromEnv(DefaultExtraWaitMs);
 
-                      Log("[4/5] Capturing screenshot...");
+                      try
+                      {
+                          Log("[4/6] Waiting for network to be idle (up to 30s)...");
+                          try
+                          {
+                              await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new() { Timeout = 30000 });
+                              Log("✓ Network idle detected.");
+                          }
+                          catch (TimeoutException)
+                          {
+                              Log("⚠ Network idle wait timed out (common for apps with long polling); continuing.");
+                          }
+
+                          if (!string.IsNullOrWhiteSpace(readySelector))
+                          {
+                              Log($"[4/6] Waiting for selector '{readySelector}' to become visible (up to 30s)...");
+                              try
+                              {
+                                  await page.Locator(readySelector).First.WaitForAsync(new()
+                                  {
+                                      State   = WaitForSelectorState.Visible,
+                                      Timeout = 30000
+                                  });
+                                  Log("✓ Ready selector became visible.");
+                              }
+                              catch (TimeoutException)
+                              {
+                                  Log("⚠ Ready selector did not appear in time; continuing anyway.");
+                              }
+                          }
+
+                          if (extraWaitMs > 0)
+                          {
+                              Log($"[5/6] Extra static wait of {extraWaitMs}ms for Blazor/SPA hydration...");
+                              await page.WaitForTimeoutAsync(extraWaitMs);
+                          }
+                      }
+                      catch (Exception waitEx)
+                      {
+                          Log($"⚠ Unexpected error while waiting for page readiness: {waitEx.Message}");
+                      }
+
+                      Log("[5/6] Capturing screenshot...");
                       var outputDir = Path.GetDirectoryName(config.OutputPath);
                       if (!string.IsNullOrEmpty(outputDir))
                       {
@@ -363,6 +418,7 @@ stages:
                       var title      = await page.TitleAsync();
                       var currentUrl = page.Url;
 
+                      Log("[6/6] Writing result + curl-like files...");
                       var resultsFile = config.OutputPath.Replace(".png", "_results.txt");
                       await File.WriteAllTextAsync(resultsFile, $@"
           Playwright Test Results
@@ -374,6 +430,9 @@ stages:
           Size: {fileInfo.Length / 1024:F2} KB
           Status: PASSED
           ");
+
+                      var curlLikeFile = config.OutputPath.Replace(".png", "_curl.txt");
+                      await CaptureHttpSnapshotAsync(config.Url, curlLikeFile);
 
                       await context.CloseAsync();
                       return 0;
@@ -652,6 +711,80 @@ stages:
                   }
                   
                   return (null, null);
+              }
+
+              private static int GetExtraWaitMsFromEnv(int defaultValue)
+              {
+                  var env = Environment.GetEnvironmentVariable("PLAYWRIGHT_EXTRA_WAIT_MS");
+                  if (!string.IsNullOrWhiteSpace(env) &&
+                      int.TryParse(env, out var value) &&
+                      value >= 0)
+                  {
+                      return value;
+                  }
+
+                  return defaultValue;
+              }
+
+              private static async Task CaptureHttpSnapshotAsync(string url, string outputPath)
+              {
+                  try
+                  {
+                      var request = new HttpRequestMessage(HttpMethod.Get, url);
+                      request.Headers.TryAddWithoutValidation("User-Agent", "PlaywrightVisualTester/1.0 (+curl-like)");
+
+                      var sw = Stopwatch.StartNew();
+                      HttpResponseMessage? response = null;
+                      string body;
+
+                      try
+                      {
+                          response = await Http.SendAsync(request);
+                          body = await response.Content.ReadAsStringAsync();
+                      }
+                      finally
+                      {
+                          sw.Stop();
+                      }
+
+                      var headerLines = new List<string>
+                      {
+                          $"HTTP { (int)response.StatusCode } { response.ReasonPhrase }"
+                      };
+
+                      headerLines.AddRange(response.Headers
+                          .Select(h => $"{h.Key}: {string.Join(",", h.Value)}"));
+
+                      headerLines.AddRange(response.Content.Headers
+                          .Select(h => $"{h.Key}: {string.Join(",", h.Value)}"));
+
+                      const int maxBody = 32 * 1024;
+                      var bodyToWrite = body.Length > maxBody ? body.Substring(0, maxBody) : body;
+
+                      var sb = new StringBuilder();
+                      sb.AppendLine($"# HTTP snapshot (curl-like) for {url}");
+                      sb.AppendLine($"# Status: {(int)response.StatusCode} {response.ReasonPhrase}");
+                      sb.AppendLine($"# DurationMs: {sw.ElapsedMilliseconds}");
+                      sb.AppendLine();
+                      sb.AppendLine("=== Headers ===");
+                      foreach (var line in headerLines)
+                      {
+                          sb.AppendLine(line);
+                      }
+
+                      sb.AppendLine();
+                      sb.AppendLine($"=== Body (first {maxBody} chars) ===");
+                      sb.AppendLine(bodyToWrite);
+
+                      await File.WriteAllTextAsync(outputPath, sb.ToString());
+                  }
+                  catch (Exception ex)
+                  {
+                      await File.WriteAllTextAsync(
+                          outputPath,
+                          $"Failed to capture HTTP snapshot for {url}:{Environment.NewLine}{ex}"
+                      );
+                  }
               }
           }
           '@
@@ -1348,7 +1481,7 @@ stages:
           Write-Host "  • Crawler Image: ${{ parameters.crawlerImageName }}:release"
           Write-Host ""
           Write-Host "Artifacts:"
-          Write-Host "  • playwright-results  - Main screenshots + *_results.txt per scenario"
+          Write-Host "  • playwright-results  - Main screenshots + *_results.txt per scenario + *_curl.txt"
           Write-Host "  • playwright-links    - Deep-link screenshots (desktop + phone + phone-landscape) + link-list.txt"
           Write-Host ""
           Write-Host "Docker Layer Caching:"
