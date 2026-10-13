@@ -23,7 +23,6 @@
     <File Path="Templates/dump-env-variables-template.yml" />
     <File Path="Templates/gather-iis-info-template.yml" />
   </Folder>
-  <Project Path="docs/Docs.csproj" />
   <Project Path="FreeCICD.Client/FreeCICD.Client.csproj" />
   <Project Path="FreeCICD.DataAccess/FreeCICD.DataAccess.csproj" Id="c3d74026-d748-47a7-aba3-a3296d06b4ef" />
   <Project Path="FreeCICD.DataObjects/FreeCICD.DataObjects.csproj" Id="b5bbbe19-a355-4d45-9d83-6dc59b12bd9a" />
