@@ -1,0 +1,1303 @@
+@* Host Stats ("Task Manager") Component *@
+@* Live performance view of the server FreeCICD runs on, styled after the Windows Task Manager *@
+@* Performance tab: device tiles with sparklines, a 60-second area chart, a stats grid, history *@
+@* ranges with min/max bands, top processes and IIS workers, and the storage budget per tier. *@
+@* Live samples arrive over SignalR (HostStatsLiveSample) with a polling fallback. *@
+
+@implements IAsyncDisposable
+@inject BlazorDataModel Model
+@inject IJSRuntime jsRuntime
+
+@code {
+    protected DataObjects.HostStatsSummary? _summary;
+    protected DataObjects.HostStatsSample? _latest;
+    protected DataObjects.HostStatsLiveResponse? _processes;
+    protected List<DataObjects.HostStatsSample> _recent = new();
+    protected List<HostStatsDevice> _devices = new();
+    protected string _shape = "";
+    protected string _selectedId = "cpu";
+    protected string _cpuView = "overall";
+    protected string _range = "live";
+    protected string _processTab = "cpu";
+    protected DataObjects.HostStatsHistoryResponse? _history;
+    protected bool _historyLoading = false;
+    protected int _historyRequest = 0;
+    protected bool _loading = true;
+    protected string? _errorMessage;
+    protected string? _seedMessage;
+    protected bool _seeding = false;
+
+    // Live update state
+    protected bool _visible = true;
+    protected bool _chartsReady = false;
+    protected bool _devicesDirty = false;
+    protected bool _viewDirty = false;
+    protected long _lastT = 0;
+    protected DateTime _lastPushUtc = DateTime.MinValue;
+    protected DateTime _summaryLoadedUtc = DateTime.MinValue;
+    protected readonly SignalRGroupMembership _group = new(DataObjects.Endpoints.HostStats.Join, DataObjects.Endpoints.HostStats.Leave);
+    protected string _transport = "Connecting";
+    protected bool _disposed = false;
+    protected bool _tickBusy = false;
+    protected bool _paused = false;
+
+    // Accessible text: the chart caption changes at most every 5 s, the live region at most every 10 s.
+    protected string _chartCaption = "";
+    protected string _liveSummary = "";
+    protected DateTime _captionUpdatedUtc = DateTime.MinValue;
+    protected DateTime _summaryAnnouncedUtc = DateTime.MinValue;
+
+    protected IJSObjectReference? _module;
+    protected IJSObjectReference? _highchartsModule;
+    protected DotNetObjectReference<FreeCICD_App_UI_HostStats>? _dotNetRef;
+    protected System.Threading.Timer? _timer;
+
+    /// <summary>
+    /// A tile in the left rail: CPU, Memory, each disk, each network adapter, IIS workers.
+    /// Serialized to the JS module, which uses Keys to find values in each pushed sample.
+    /// </summary>
+    public class HostStatsDevice
+    {
+        public int Cores { get; set; }
+        public string HistoryDevice { get; set; } = "";
+        public List<string> HistoryKeys { get; set; } = [];
+        public double HistoryScale { get; set; } = 1;
+        public string Id { get; set; } = "";
+        public int Index { get; set; }
+        public List<string> Keys { get; set; } = [];
+        public string Kind { get; set; } = "";
+        public string Name { get; set; } = "";
+        public bool Percent { get; set; }
+        public List<string> SeriesNames { get; set; } = [];
+        public string Title { get; set; } = "";
+        public string Unit { get; set; } = "%";
+    }
+
+    protected HostStatsDevice? Selected => _devices.FirstOrDefault(d => d.Id == _selectedId) ?? _devices.FirstOrDefault();
+
+    protected override void OnInitialized()
+    {
+        Model.OnSignalRUpdate += OnSignalRUpdate;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        Model.OnSignalRUpdate -= OnSignalRUpdate;
+
+        if (_timer != null) {
+            await _timer.DisposeAsync();
+            _timer = null;
+        }
+
+        await _group.LeaveAsync();
+        await ReleaseModules();
+
+        _dotNetRef?.Dispose();
+    }
+
+    /// <summary>
+    /// Releases the JS modules, once: from DisposeAsync, and again from the first render when the component was
+    /// disposed while that render was still importing them. A disconnected browser has nothing to clean up.
+    /// </summary>
+    protected async Task ReleaseModules()
+    {
+        var module = _module;
+        var highcharts = _highchartsModule;
+        _module = null;
+        _highchartsModule = null;
+        try {
+            if (module != null) {
+                await module.InvokeVoidAsync("dispose");
+                await module.DisposeAsync();
+            }
+            if (highcharts != null) {
+                await highcharts.DisposeAsync();
+            }
+        } catch { }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) {
+            _dotNetRef = DotNetObjectReference.Create(this);
+
+            // The user can leave the tab during any await below. DisposeAsync has then already run and released
+            // what existed at that moment, so anything created afterwards is released here instead of leaking.
+            try {
+                _module = await jsRuntime.InvokeAsync<IJSObjectReference>("import",
+                    "./Shared/AppComponents/FreeCICD.App.UI.HostStats.razor.js");
+                if (_disposed) { await ReleaseModules(); return; }
+                _visible = await _module.InvokeAsync<bool>("init", _dotNetRef);
+                await _module.InvokeVoidAsync("initRail");
+            } catch (Exception ex) {
+                _errorMessage = "Could not load the chart script: " + ex.Message;
+            }
+            if (_disposed) { await ReleaseModules(); return; }
+
+            await LoadSummary();
+            await LoadLive(null);
+            if (_disposed) { await ReleaseModules(); return; }
+            _loading = false;
+            StateHasChanged();
+
+            // Reuse the shared FreeCRM Highcharts loader; it calls OnHighchartsLoaded when the library is ready.
+            try {
+                _highchartsModule = await jsRuntime.InvokeAsync<IJSObjectReference>("import", "./Shared/Highcharts.razor.js");
+                if (_disposed) { await ReleaseModules(); return; }
+                await _highchartsModule.InvokeVoidAsync("SetDotNetHelper", _dotNetRef);
+                await _highchartsModule.InvokeVoidAsync("LoadHighchartsResources");
+            } catch (Exception ex) {
+                _errorMessage = "Could not load Highcharts: " + ex.Message;
+            }
+            if (_disposed) { await ReleaseModules(); return; }
+
+            _timer = new System.Threading.Timer(_ => InvokeAsync(TimerTick), null, 1000, 1000);
+            return;
+        }
+
+        if (_module == null || !_chartsReady) {
+            return;
+        }
+
+        if (_devicesDirty) {
+            _devicesDirty = false;
+            _viewDirty = true;
+            await _module.InvokeVoidAsync("setDevices", _devices);
+            await _module.InvokeVoidAsync("preload", _recent.Select(s => new { t = s.T, values = Values(s) }).ToList());
+        }
+
+        if (_viewDirty) {
+            _viewDirty = false;
+            await ApplyView();
+        }
+    }
+
+    [JSInvokable]
+    public Task OnHighchartsLoaded()
+    {
+        _chartsReady = true;
+        _devicesDirty = true;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public async Task OnVisibilityChanged(bool visible)
+    {
+        _visible = visible;
+        if (_paused) {
+            return;
+        }
+        if (!visible) {
+            // Stop the server pushing to this tab while nobody is looking at it.
+            await _group.LeaveAsync();
+        } else {
+            await CatchUpLiveAsync();
+        }
+        StateHasChanged();
+    }
+
+    /// <summary>Back to live after the tab was hidden or updates were paused: fetch what was missed, redraw, re-join.</summary>
+    private async Task CatchUpLiveAsync()
+    {
+        await LoadLive(_lastT > 0 ? _lastT : null);
+        if (_module != null && _chartsReady) {
+            await _module.InvokeVoidAsync("refreshAll");
+        }
+        if (!_disposed) {
+            await _group.EnsureJoinedAsync();
+        }
+    }
+
+    protected async Task LoadSummary()
+    {
+        try {
+            var summary = await Helpers.GetOrPost<DataObjects.HostStatsSummary>(DataObjects.Endpoints.HostStats.Summary);
+            if (summary != null) {
+                _summary = summary;
+                _summaryLoadedUtc = DateTime.UtcNow;
+                _lastBoot = ComputeLastBoot(summary);
+                BuildDevices();
+            }
+        } catch (Exception ex) {
+            _errorMessage = "Could not load server stats: " + ex.Message;
+        }
+    }
+
+    protected async Task LoadLive(long? since)
+    {
+        try {
+            string url = DataObjects.Endpoints.HostStats.Live + (since.HasValue ? "?since=" + since.Value : "");
+            var live = await Helpers.GetOrPost<DataObjects.HostStatsLiveResponse>(url);
+            if (live != null) {
+                await ApplyLive(live);
+            }
+        } catch { }
+    }
+
+    protected async Task LoadHistory()
+    {
+        var device = Selected;
+        if (device == null || _range == "live") {
+            return;
+        }
+
+        // A quick 1h → 24h click starts two requests; only the newest may set _history, or 1h data shows under 24h.
+        int request = ++_historyRequest;
+        _historyLoading = true;
+        StateHasChanged();
+
+        long to = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        long from = _range switch {
+            "1h" => to - 3_600_000L,
+            "24h" => to - 86_400_000L,
+            "7d" => to - 7 * 86_400_000L,
+            "30d" => to - 30 * 86_400_000L,
+            "boot" => _lastBoot ?? to - 3_600_000L,
+            _ => _summary?.DataStart ?? to - 3_600_000L,
+        };
+
+        DataObjects.HostStatsHistoryResponse? history = null;
+        try {
+            history = await Helpers.GetOrPost<DataObjects.HostStatsHistoryResponse>(
+                DataObjects.Endpoints.HostStats.History + "?from=" + from + "&to=" + to + "&points=600&device=" + Uri.EscapeDataString(device.HistoryDevice));
+        } catch (Exception ex) {
+            _errorMessage = "Could not load history: " + ex.Message;
+        }
+
+        if (request != _historyRequest || _disposed) {
+            // A newer range or device was picked (or the view went back to live) while this one loaded.
+            return;
+        }
+
+        _history = history;
+        _historyLoading = false;
+        _viewDirty = true;
+        StateHasChanged();
+    }
+
+    // Set when the summary loads; the boot markers only change with a new summary.
+    protected long? _lastBoot;
+
+    protected static long? ComputeLastBoot(DataObjects.HostStatsSummary summary)
+    {
+        long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var boots = summary.BootMarkers.Where(b => b <= now).ToList();
+        return boots.Count > 0 ? boots.Max() : (summary.BootTime > 0 ? summary.BootTime : null);
+    }
+
+    protected void OnSignalRUpdate(DataObjects.SignalRUpdate update)
+    {
+        if (update == null || update.UpdateType != DataObjects.SignalRUpdateType.HostStatsLiveSample || !_visible || _paused || _disposed) {
+            return;
+        }
+
+        var live = Helpers.SignalRPayload<DataObjects.HostStatsLiveResponse>(update);
+        if (live != null && (_summary == null || string.Equals(live.MachineName, _summary.MachineName, StringComparison.OrdinalIgnoreCase))) {
+            _lastPushUtc = DateTime.UtcNow;
+            _transport = "SignalR";
+            InvokeAsync(async () => {
+                await ApplyLive(live);
+                StateHasChanged();
+            });
+        }
+    }
+
+    /// <summary>
+    /// Once a second: join the SignalR group when a connection is available, and poll Live when no push has
+    /// arrived recently (SignalR not connected yet, or reconnecting).
+    /// </summary>
+    protected async Task TimerTick()
+    {
+        if (_disposed || !_visible || _paused || _tickBusy) {
+            return;
+        }
+        _tickBusy = true;
+
+        try {
+            // Joins once a connection exists, and again after a reconnect that came back with a new connection id.
+            await _group.EnsureJoinedAsync();
+
+            if ((DateTime.UtcNow - _lastPushUtc).TotalSeconds > 2.5) {
+                await LoadLive(_lastT > 0 ? _lastT : null);
+                _transport = "Polling";
+                StateHasChanged();
+            }
+
+            if ((DateTime.UtcNow - _summaryLoadedUtc).TotalSeconds > 30) {
+                await LoadSummary();
+                StateHasChanged();
+            }
+        } finally {
+            _tickBusy = false;
+        }
+    }
+
+    protected async Task ApplyLive(DataObjects.HostStatsLiveResponse live)
+    {
+        if (live.ProcessesUpdated.HasValue) {
+            _processes = live;
+        }
+        if (_summary != null) {
+            _summary.MemoryOnly = live.MemoryOnly;
+            _summary.StorageMessage = live.StorageMessage;
+        }
+
+        var fresh = live.Samples.Where(s => s.T > _lastT).OrderBy(s => s.T).ToList();
+        if (fresh.Count == 0) {
+            return;
+        }
+
+        foreach (var sample in fresh) {
+            _recent.Add(sample);
+        }
+        UpdateAccessibleText(force: false);
+        if (_recent.Count > 61) {
+            _recent.RemoveRange(0, _recent.Count - 61);
+        }
+        _lastT = fresh[^1].T;
+        _latest = fresh[^1];
+
+        if (BuildDevices()) {
+            // A disk or adapter appeared or went away: rebuild the tiles and charts after the next render.
+            return;
+        }
+
+        if (_module != null && _chartsReady && _visible) {
+            try {
+                if (fresh.Count > 3) {
+                    await _module.InvokeVoidAsync("preload", fresh.Select(s => new { t = s.T, values = Values(s) }).ToList());
+                } else {
+                    foreach (var sample in fresh) {
+                        await _module.InvokeVoidAsync("push", sample.T, Values(sample));
+                    }
+                }
+            } catch (JSDisconnectedException) { }
+        }
+    }
+
+    /// <summary>
+    /// Builds the device tiles from the summary and the latest sample. Returns true when the set changed.
+    /// </summary>
+    protected bool BuildDevices()
+    {
+        var sample = _latest;
+        if (sample == null) {
+            return false;
+        }
+
+        string shape = sample.CorePercent.Count + "|"
+            + string.Join(",", sample.Disks.Select(d => d.Name + (d.ActivePercent >= 0 ? "+" : "-"))) + "|"
+            + string.Join(",", sample.Adapters.Select(a => a.Name));
+        if (shape == _shape && _devices.Count > 0) {
+            return false;
+        }
+        _shape = shape;
+
+        var devices = new List<HostStatsDevice> {
+            new HostStatsDevice {
+                Id = "cpu", Kind = "cpu", Title = "CPU", Percent = true, Unit = "%",
+                Keys = ["cpu"], SeriesNames = ["Utilization"], Cores = sample.CorePercent.Count,
+                HistoryDevice = "cpu", HistoryKeys = ["cpu"],
+            },
+            new HostStatsDevice {
+                Id = "mem", Kind = "mem", Title = "Memory", Percent = true, Unit = "%",
+                Keys = ["mem"], SeriesNames = ["Memory usage"],
+                HistoryDevice = "mem", HistoryKeys = ["mem"],
+            },
+        };
+
+        for (int i = 0; i < sample.Disks.Count; i++) {
+            var disk = sample.Disks[i];
+            bool active = disk.ActivePercent >= 0;
+            devices.Add(new HostStatsDevice {
+                Id = "disk" + i, Kind = "disk", Title = DiskTitle(disk.Name, i), Name = disk.Name, Index = i,
+                Percent = active, Unit = active ? "%" : "B/s",
+                Keys = active ? ["disk" + i + ".active"] : ["disk" + i + ".read", "disk" + i + ".write"],
+                SeriesNames = active ? ["Active time"] : ["Read", "Write"],
+                HistoryDevice = "disk:" + disk.Name,
+                HistoryKeys = active ? ["disk." + disk.Name + ".active"] : ["disk." + disk.Name + ".read", "disk." + disk.Name + ".write"],
+            });
+        }
+
+        for (int i = 0; i < sample.Adapters.Count; i++) {
+            var adapter = sample.Adapters[i];
+            devices.Add(new HostStatsDevice {
+                Id = "net" + i, Kind = "net", Title = AdapterTitle(adapter.Name), Name = adapter.Name, Index = i,
+                Percent = false, Unit = "bps",
+                Keys = ["net" + i + ".recv", "net" + i + ".send"], SeriesNames = ["Receive", "Send"],
+                HistoryDevice = "net:" + adapter.Name,
+                HistoryKeys = ["net." + adapter.Name + ".recv", "net." + adapter.Name + ".send"],
+                HistoryScale = 8,
+            });
+        }
+
+        devices.Add(new HostStatsDevice {
+            Id = "iis", Kind = "iis", Title = "IIS workers", Percent = true, Unit = "%",
+            Keys = ["iis.cpu"], SeriesNames = ["w3wp CPU"],
+            HistoryDevice = "iis", HistoryKeys = ["iis.cpu"],
+        });
+
+        _devices = devices;
+        if (!_devices.Any(d => d.Id == _selectedId)) {
+            _selectedId = "cpu";
+        }
+        _devicesDirty = true;
+        return true;
+    }
+
+    /// <summary>
+    /// The flat values for one sample, keyed as in HostStatsDevice.Keys. Network rates are in bits per second.
+    /// </summary>
+    protected Dictionary<string, double?> Values(DataObjects.HostStatsSample s)
+    {
+        var values = new Dictionary<string, double?> {
+            ["cpu"] = s.CpuPercent,
+            ["mem"] = s.MemoryUsedPercent,
+            ["iis.cpu"] = s.IisCpuPercent >= 0 ? s.IisCpuPercent : null,
+        };
+        for (int i = 0; i < s.CorePercent.Count; i++) {
+            values["core" + i] = s.CorePercent[i];
+        }
+        for (int i = 0; i < s.Disks.Count; i++) {
+            var d = s.Disks[i];
+            values["disk" + i + ".active"] = d.ActivePercent >= 0 ? d.ActivePercent : null;
+            values["disk" + i + ".read"] = d.ReadBytesPerSec >= 0 ? d.ReadBytesPerSec : null;
+            values["disk" + i + ".write"] = d.WriteBytesPerSec >= 0 ? d.WriteBytesPerSec : null;
+        }
+        for (int i = 0; i < s.Adapters.Count; i++) {
+            values["net" + i + ".recv"] = s.Adapters[i].ReceiveBytesPerSec * 8;
+            values["net" + i + ".send"] = s.Adapters[i].SendBytesPerSec * 8;
+        }
+        return values;
+    }
+
+    protected async Task SelectDevice(string id)
+    {
+        if (_selectedId == id) {
+            return;
+        }
+        _selectedId = id;
+        if (_range != "live") {
+            _history = null;
+            await LoadHistory();
+        } else {
+            _viewDirty = true;
+        }
+    }
+
+    /// <summary>
+    /// WCAG 2.2.2: stops the charts, values and announcements from updating, and stops the server push to
+    /// this page. Resuming backfills the missed samples.
+    /// </summary>
+    protected async Task TogglePause()
+    {
+        _paused = !_paused;
+        if (_paused) {
+            await _group.LeaveAsync();
+            _liveSummary = "Live updates paused.";
+        } else {
+            _liveSummary = "Live updates resumed.";
+            await CatchUpLiveAsync();
+        }
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Updates the chart caption (at most every 5 s) and the polite live region (at most every 10 s).
+    /// </summary>
+    protected void UpdateAccessibleText(bool force)
+    {
+        var device = Selected;
+        if (device == null) {
+            return;
+        }
+        var now = DateTime.UtcNow;
+
+        if (force || (now - _captionUpdatedUtc).TotalSeconds >= 5) {
+            _captionUpdatedUtc = now;
+            if (_range == "live") {
+                string view = device.Kind == "cpu" && _cpuView == "cores" ? " (one chart per logical processor)" : "";
+                _chartCaption = $"{device.Title}{view}, last 60 seconds, now {Headline(device)}.";
+            } else {
+                var stats = HistoryStats(device);
+                _chartCaption = stats.HasValue
+                    ? $"{device.Title} history, {RangeLabel(_range)}: average {FormatUnit(stats.Value.Avg, device.Unit)}, peak {FormatUnit(stats.Value.Max, device.Unit)} at {LocalTime(stats.Value.PeakTime)}."
+                    : $"{device.Title} history, {RangeLabel(_range)}.";
+            }
+        }
+
+        if (_range == "live" && !_paused && (now - _summaryAnnouncedUtc).TotalSeconds >= 10) {
+            _summaryAnnouncedUtc = now;
+            _liveSummary = $"{device.Title}: {Headline(device)}.";
+        }
+    }
+
+    protected void SetCpuView(string view)
+    {
+        _cpuView = view;
+        _viewDirty = true;
+    }
+
+    protected async Task SelectRange(string range)
+    {
+        _range = range;
+        if (range == "live") {
+            _history = null;
+            _historyLoading = false;
+            _historyRequest++; // a history request still in flight is now stale
+            _viewDirty = true;
+        } else {
+            await LoadHistory();
+        }
+    }
+
+    protected async Task ApplyView()
+    {
+        var device = Selected;
+        if (_module == null || device == null) {
+            return;
+        }
+        UpdateAccessibleText(force: true);
+        try {
+            if (_range == "live") {
+                await _module.InvokeVoidAsync("showLive", device, device.Kind == "cpu" ? _cpuView : "overall");
+            } else if (_history != null) {
+                await _module.InvokeVoidAsync("showHistory", device, _history);
+            }
+        } catch (JSDisconnectedException) { }
+        StateHasChanged();
+    }
+
+    protected async Task SeedDemoHistory(int days)
+    {
+        _seeding = true;
+        _seedMessage = null;
+        StateHasChanged();
+        var result = await Helpers.GetOrPost<DataObjects.BooleanResponse>(
+            DataObjects.Endpoints.HostStats.SeedDemoHistory + "?days=" + days, new { });
+        _seedMessage = result != null ? string.Join(" ", result.Messages) : "The seed request failed.";
+        _seeding = false;
+        await LoadSummary();
+        if (_range != "live") {
+            await LoadHistory();
+        }
+        StateHasChanged();
+    }
+
+    protected static string DiskTitle(string name, int index)
+    {
+        var parts = name.Split(' ', 2);
+        if (parts.Length == 2 && int.TryParse(parts[0], out int number)) {
+            return $"Disk {number} ({parts[1]})";
+        }
+        if (int.TryParse(name, out int bare)) {
+            return $"Disk {bare}";
+        }
+        return $"Disk {index} ({name})";
+    }
+
+    protected string AdapterTitle(string name)
+    {
+        var info = _summary?.Adapters.FirstOrDefault(a => a.Name == name);
+        string type = info?.AdapterType ?? "Ethernet";
+        return type == "Ethernet" || type == "Wi-Fi" ? (name.StartsWith(type, StringComparison.OrdinalIgnoreCase) ? name : $"{type} ({name})") : name;
+    }
+
+    protected static string BytesPerSec(double value) => value < 0 ? "—" : Helpers.FormatBytes(value) + "/s";
+
+    protected static readonly string[] BitUnits = ["bps", "Kbps", "Mbps", "Gbps"];
+
+    protected static string Bits(double bitsPerSec)
+    {
+        if (bitsPerSec < 0) {
+            return "—";
+        }
+        var (value, unit) = Helpers.Scale(bitsPerSec, 1000, BitUnits);
+        return value.ToString(unit == "bps" || value >= 100 ? "F0" : "F1") + " " + unit;
+    }
+
+    /// <summary>
+    /// Send and receive in one unit, as on the Task Manager tile: "S: 120 R: 840 Kbps".
+    /// </summary>
+    protected static string BitsPair(double send, double receive)
+    {
+        double max = Math.Max(send, receive);
+        var (scaled, unit) = Helpers.Scale(max, 1000, BitUnits);
+        double divisor = scaled > 0 ? max / scaled : 1;
+        return $"S: {send / divisor:F0} R: {receive / divisor:F0} {unit}";
+    }
+
+    protected static string Percent(double value) => value < 0 ? "—" : value.ToString(value < 10 ? "F1" : "F0") + "%";
+
+    protected static string Speed(double mhz) => mhz <= 0 ? "—" : (mhz / 1000).ToString("F2") + " GHz";
+
+    protected static string Count(double value) => value < 0 ? "—" : ((long)value).ToString("N0");
+
+    protected static string Uptime(double seconds)
+    {
+        if (seconds <= 0) {
+            return "—";
+        }
+        var span = TimeSpan.FromSeconds(seconds);
+        return $"{(int)span.TotalDays}:{span.Hours:D2}:{span.Minutes:D2}:{span.Seconds:D2}";
+    }
+
+    /// <summary>
+    /// A sample time (Unix milliseconds, UTC) in the browser's local time with the framework's formatters: "g" date and
+    /// time, "d" date only, "T" time only. A dash when there is no time.
+    /// </summary>
+    protected static string LocalTime(long? epochMs, string format = "g")
+    {
+        if (!epochMs.HasValue || epochMs.Value <= 0) {
+            return "—";
+        }
+        var utc = DateTimeOffset.FromUnixTimeMilliseconds(epochMs.Value).UtcDateTime;
+        return format switch {
+            "d" => Helpers.FormatDate(utc),
+            "T" or "t" => Helpers.FormatTime(utc),
+            _ => Helpers.FormatDateTime(utc),
+        };
+    }
+
+    protected string Headline(HostStatsDevice device)
+    {
+        var s = _latest;
+        if (s == null) {
+            return "";
+        }
+        switch (device.Kind) {
+            case "cpu":
+                return Percent(s.CpuPercent) + (s.CpuMHz > 0 ? "  " + Speed(s.CpuMHz) : "");
+            case "mem":
+                double total = s.MemoryInUseBytes + s.MemoryAvailableBytes;
+                return $"{s.MemoryInUseBytes / 1073741824d:F1}/{total / 1073741824d:F1} GB ({s.MemoryUsedPercent:F0}%)";
+            case "disk":
+                var disk = device.Index < s.Disks.Count ? s.Disks[device.Index] : null;
+                if (disk == null) {
+                    return "";
+                }
+                return disk.ActivePercent >= 0
+                    ? Percent(disk.ActivePercent)
+                    : disk.ReadBytesPerSec >= 0 ? "R: " + BytesPerSec(disk.ReadBytesPerSec) + " W: " + BytesPerSec(disk.WriteBytesPerSec) : CapacityText(device.Name);
+            case "net":
+                var adapter = device.Index < s.Adapters.Count ? s.Adapters[device.Index] : null;
+                return adapter == null ? "" : BitsPair(adapter.SendBytesPerSec * 8, adapter.ReceiveBytesPerSec * 8);
+            case "iis":
+                return s.IisWorkerCount < 0 ? "Sampling..." : s.IisWorkerCount == 0 ? "Not running" : $"{s.IisWorkerCount} w3wp  {Percent(s.IisCpuPercent)}";
+        }
+        return "";
+    }
+
+    protected string CapacityText(string diskName)
+    {
+        var info = _summary?.Disks.FirstOrDefault(d => d.Name == diskName);
+        return info != null && info.CapacityBytes > 0 ? Helpers.FormatBytes(info.CapacityBytes, 0) : "";
+    }
+
+    protected string DeviceModel(HostStatsDevice device)
+    {
+        if (_summary == null) {
+            return "";
+        }
+        switch (device.Kind) {
+            case "cpu":
+                return _summary.CpuModel;
+            case "mem":
+                return Helpers.FormatBytes(_summary.MemoryTotalBytes);
+            case "disk":
+                var disk = _summary.Disks.FirstOrDefault(d => d.Name == device.Name);
+                return disk?.Model ?? disk?.Label ?? "";
+            case "net":
+                return _summary.Adapters.FirstOrDefault(a => a.Name == device.Name)?.Description ?? "";
+            case "iis":
+                return string.IsNullOrWhiteSpace(_summary.AppPoolName) ? "w3wp.exe worker processes" : "This app: " + _summary.AppPoolName;
+        }
+        return "";
+    }
+
+    protected string ChartLabel(HostStatsDevice device) => device.Kind switch {
+        "cpu" => "% Utilization",
+        "mem" => "Memory usage",
+        "disk" => device.Percent ? "Active time" : "Transfer rate",
+        "net" => "Throughput",
+        "iis" => "% CPU used by w3wp workers",
+        _ => "",
+    };
+
+    /// <summary>
+    /// Average, minimum and maximum over the history range for the first series of the selected device.
+    /// </summary>
+    protected (double Avg, double Min, double Max, long PeakTime)? HistoryStats(HostStatsDevice device)
+    {
+        // Cached per history response and device: the render and the caption both ask, and 600-point scans add up.
+        if (ReferenceEquals(_historyStatsFor.History, _history) && _historyStatsFor.DeviceId == device.Id) {
+            return _historyStats;
+        }
+        _historyStatsFor = (_history, device.Id);
+        _historyStats = null;
+
+        if (_history == null || device.HistoryKeys.Count == 0) {
+            return null;
+        }
+        var series = _history.Series.FirstOrDefault(s => s.Key == device.HistoryKeys[0]);
+        if (series == null || series.Avg.Count == 0) {
+            return null;
+        }
+        double scale = device.HistoryScale;
+        double avg = series.Avg.Average(p => p[1]) * scale;
+        double min = series.Band.Min(p => p[1]) * scale;
+        var peak = series.Band.MaxBy(p => p[2])!;
+        _historyStats = (avg, min, peak[2] * scale, (long)peak[0]);
+        return _historyStats;
+    }
+
+    protected (DataObjects.HostStatsHistoryResponse? History, string DeviceId) _historyStatsFor = (null, "");
+    protected (double Avg, double Min, double Max, long PeakTime)? _historyStats;
+
+    protected string FormatUnit(double value, string unit) => unit switch {
+        "%" => Percent(value),
+        "bps" => Bits(value),
+        "B/s" => BytesPerSec(value),
+        _ => value.ToString("N0"),
+    };
+
+    protected static string RangeLabel(string range) => range switch {
+        "live" => "Live",
+        "1h" => "1 h",
+        "24h" => "24 h",
+        "7d" => "7 d",
+        "30d" => "30 d",
+        "boot" => "Since reboot",
+        _ => "All",
+    };
+}
+
+@{
+    var device = Selected;
+    var s = _latest;
+}
+
+@* A named region landmark: the FreeCRM layout has no <main>, so this keeps the view's content inside a landmark. *@
+<section class="hoststats @(_range != "live" ? "hs-history-mode" : "")" aria-label="Live server performance">
+
+    @if (_loading) {
+        <FreeCICD_App_UI_Loading Inline="true" Message="Loading live server stats..." />
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_errorMessage)) {
+        <div class="alert alert-danger py-2"><i class="fa-solid fa-triangle-exclamation me-2" aria-hidden="true"></i>@_errorMessage</div>
+    }
+
+    @if (_summary != null && _summary.MemoryOnly && !string.IsNullOrWhiteSpace(_summary.StorageMessage)) {
+        <div class="alert alert-warning py-2" role="status">
+            <i class="fa-solid fa-floppy-disk me-2" aria-hidden="true"></i>
+            <strong>Memory only.</strong> @_summary.StorageMessage
+        </div>
+    }
+
+    @if (_summary != null && _summary.ContainsSyntheticData) {
+        <div class="alert alert-info py-2" role="status">
+            <i class="fa-solid fa-flask me-2" aria-hidden="true"></i>
+            <strong>Synthetic demo history.</strong>
+            Data before @LocalTime(_summary.SyntheticBefore) was generated by the development seeding
+            option and is not real. Remove it with the "Clear synthetic" button below.
+        </div>
+    }
+
+    @* ── This Server and the System overview (refreshed every 10 minutes on the server) ── *@
+    @if (_summary != null) {
+        var sys = _summary.System;
+        <div class="hs-server-head">
+            <h2 class="h5 mb-0">
+                <i class="fa-solid fa-server me-1" aria-hidden="true"></i> This Server: <strong>@_summary.MachineName</strong>
+            </h2>
+            @if (!string.IsNullOrWhiteSpace(sys?.VirtualMachine)) {
+                <span class="badge bg-info text-dark"><i class="fa-solid fa-cloud me-1" aria-hidden="true"></i>Virtual machine: @sys.VirtualMachine</span>
+            }
+            <span class="small text-muted">The server that answered this page. In a web farm each server keeps its own history.</span>
+        </div>
+
+        @if (sys != null) {
+            <details class="hs-system card mb-3" open>
+                <summary class="card-header py-2">
+                    <i class="fa-solid fa-circle-info me-1" aria-hidden="true"></i> System
+                    @if (!string.IsNullOrWhiteSpace(sys.DemoProfile)) {
+                        <span class="badge bg-warning text-dark ms-2">Demo profile: @sys.DemoProfile</span>
+                    }
+                </summary>
+                <div class="card-body py-2">
+                    <div class="hs-system-grid">
+                        <section>
+                            <h3>Identity</h3>
+                            <dl>
+                                <dt>Machine</dt><dd>@sys.MachineName</dd>
+                                <dt>Domain</dt><dd>@(sys.Domain ?? "—")</dd>
+                                <dt>Time zone</dt><dd>@(sys.TimeZone ?? "—")</dd>
+                            </dl>
+                        </section>
+                        <section>
+                            <h3>Operating system</h3>
+                            <dl>
+                                <dt>Edition</dt><dd>@(sys.OsEdition ?? _summary.OsDescription)</dd>
+                                <dt>Version</dt><dd>@(sys.OsVersion ?? "—")</dd>
+                                <dt>Build</dt><dd>@(sys.OsBuild ?? "—")</dd>
+                                <dt>Installed</dt><dd>@LocalTime(sys.OsInstallDate, "d")</dd>
+                                <dt>Last boot</dt><dd>@LocalTime(_lastBoot)</dd>
+                                <dt>Up time</dt><dd>@Uptime(_latest?.UptimeSeconds ?? _summary.UptimeSeconds)</dd>
+                            </dl>
+                        </section>
+                        <section>
+                            <h3>Hardware</h3>
+                            <dl>
+                                <dt>CPU</dt><dd>@(sys.CpuModel ?? "—")</dd>
+                                <dt>Cores</dt><dd>@(sys.PhysicalCores > 0 ? sys.PhysicalCores + (sys.PhysicalCores == 1 ? " core / " : " cores / ") : "")@sys.LogicalProcessors logical</dd>
+                                <dt>Base speed</dt><dd>@Speed(sys.CpuBaseMHz)</dd>
+                                <dt>Memory</dt><dd>@Helpers.FormatBytes(sys.MemoryTotalBytes)</dd>
+                                <dt>System</dt><dd>@(string.Join(" ", new[] { sys.SystemManufacturer, sys.SystemModel }.Where(x => !string.IsNullOrWhiteSpace(x))) is var hw && hw.Length > 0 ? hw : "—")</dd>
+                            </dl>
+                        </section>
+                        <section>
+                            <h3>Runtimes</h3>
+                            <dl>
+                                <dt>.NET (this app)</dt><dd>@(sys.DotNetRuntime ?? "—")</dd>
+                                <dt>IIS</dt><dd>@(sys.IisVersion ?? "not installed")</dd>
+                                <dt>App pool</dt><dd>@(sys.AppPoolName ?? "— (not hosted in IIS)")</dd>
+                                <dt>Process</dt><dd>@(sys.ProcessBitness ?? "—")</dd>
+                                <dt>App up time</dt><dd>@(sys.AppStartTime > 0 ? Uptime((DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - sys.AppStartTime) / 1000.0) : "—")</dd>
+                                <dt>App memory</dt><dd>@Helpers.FormatBytes(sys.AppWorkingSetBytes) working set · @Helpers.FormatBytes(sys.AppGcHeapBytes) GC heap</dd>
+                            </dl>
+                        </section>
+                        <section>
+                            <h3>Disks</h3>
+                            @foreach (var volume in sys.Volumes) {
+                                double used = volume.TotalBytes > 0 ? (volume.TotalBytes - volume.FreeBytes) / volume.TotalBytes * 100 : 0;
+                                <div class="hs-volume">
+                                    <div class="d-flex justify-content-between gap-2 small">
+                                        <span class="fw-semibold" style="overflow-wrap: anywhere;">@volume.Name @(string.IsNullOrWhiteSpace(volume.Label) ? "" : "(" + volume.Label + ")")</span>
+                                        <span class="text-muted text-nowrap">@Helpers.FormatBytes(volume.FreeBytes) free of @Helpers.FormatBytes(volume.TotalBytes)</span>
+                                    </div>
+                                    <div class="progress" style="height: 8px;" role="progressbar" aria-label="@volume.Name used"
+                                            aria-valuenow="@used.ToString("F0")" aria-valuemin="0" aria-valuemax="100">
+                                        <div class="progress-bar @Helpers.UsageBarClass(used)"
+                                                style="width: @used.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)%"></div>
+                                    </div>
+                                </div>
+                            }
+                            @if (sys.Volumes.Count == 0) {
+                                <div class="small text-muted">No fixed drives found.</div>
+                            }
+                        </section>
+                    </div>
+
+                    @if (_summary.Facts != null) {
+                        var f = _summary.Facts;
+                        <h3 class="hs-facts-title">
+                            Fun facts
+                            @if (f.IncludesSyntheticData) {
+                                <span class="badge bg-warning text-dark ms-1">includes synthetic demo history</span>
+                            }
+                        </h3>
+                        <div class="hs-facts">
+                            <div><span>Peak CPU this week</span><strong>@(f.PeakCpuWeek.HasValue ? Percent(f.PeakCpuWeek.Value) : "—")</strong><small>@LocalTime(f.PeakCpuWeekTime)</small></div>
+                            <div><span>Busiest hour of day</span><strong>@(f.BusiestHour.HasValue ? $"{f.BusiestHour:00}:00–{(f.BusiestHour + 1) % 24:00}:00" : "—")</strong><small>@(f.BusiestHourCpu.HasValue ? "average CPU " + Percent(f.BusiestHourCpu.Value) : "")</small></div>
+                            <div><span>Highest memory use</span><strong>@(f.PeakMemoryBytes.HasValue ? Helpers.FormatBytes(f.PeakMemoryBytes.Value) : "—")</strong><small>@LocalTime(f.PeakMemoryTime)</small></div>
+                            <div><span>Longest up time seen</span><strong>@(f.LongestUptimeSeconds.HasValue ? (f.LongestUptimeSeconds.Value / 86400).ToString("F1") + " days" : "—")</strong><small>&nbsp;</small></div>
+                            <div><span>Network since history began</span><strong>@Helpers.FormatBytes(f.TotalSentBytes, 1) sent</strong><small>@Helpers.FormatBytes(f.TotalReceivedBytes, 1) received · since @LocalTime(f.HistorySince, "d")</small></div>
+                            <div><span>Reboots in the last 30 days</span><strong>@f.RebootsLast30Days</strong><small>&nbsp;</small></div>
+                            <div><span>Days until @(f.DiskEtaVolume ?? "the system disk") is full</span><strong>@(f.DiskEtaDays.HasValue ? (f.DiskEtaDays.Value > 3650 ? "10+ years" : f.DiskEtaDays.Value.ToString("N0")) : "n/a")</strong><small>@(f.DiskEtaDays.HasValue ? "at the current growth rate (linear fit)" : f.DiskEtaNote)</small></div>
+                        </div>
+                    }
+                </div>
+            </details>
+        }
+    }
+
+    @* ── Toolbar: range buttons and live status ── *@
+    <div class="hs-toolbar">
+        <div class="btn-group btn-group-sm flex-wrap" role="group" aria-label="Time range">
+            @foreach (var range in new[] { "live", "1h", "24h", "7d", "30d", "boot", "all" }) {
+                <button type="button" class="btn hs-target @(_range == range ? "btn-primary" : "btn-outline-secondary")"
+                        aria-pressed="@(_range == range ? "true" : "false")"
+                        @onclick="() => SelectRange(range)">
+                    @if (range == "live") { <i class="fa-solid fa-circle-dot me-1" aria-hidden="true"></i> }
+                    @RangeLabel(range)
+                </button>
+            }
+        </div>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <span class="hs-status">
+                @if (_paused) {
+                    <span class="hs-dot paused" aria-hidden="true"></span> <span>Live updates paused</span>
+                } else if (!_visible) {
+                    <span class="hs-dot paused" aria-hidden="true"></span> <span>Paused while this tab is hidden</span>
+                } else if (_range == "live") {
+                    <span class="hs-dot" aria-hidden="true"></span>
+                    <span>Live, 1 s updates via @_transport</span>
+                } else if (_history != null) {
+                    <i class="fa-regular fa-clock" aria-hidden="true"></i>
+                    <span>@_history.Resolution resolution</span>
+                }
+            </span>
+            @* WCAG 2.2.2: auto-updating content can be paused. *@
+            <button type="button" class="btn btn-sm btn-outline-secondary hs-target" aria-pressed="@(_paused ? "true" : "false")" @onclick="TogglePause">
+                @if (_paused) {
+                    <i class="fa-solid fa-play me-1" aria-hidden="true"></i><span>Resume live updates</span>
+                } else {
+                    <i class="fa-solid fa-pause me-1" aria-hidden="true"></i><span>Pause live updates</span>
+                }
+            </button>
+        </div>
+    </div>
+
+    @* Screen reader summary of the selected device, updated at most every 10 seconds. *@
+    <div class="visually-hidden" aria-live="polite" aria-atomic="true">@_liveSummary</div>
+
+    @if (_devices.Count > 0 && device != null) {
+        <div class="hs-layout">
+
+            @* ── Left rail: one tile per device ── *@
+            @* Toolbar pattern: one tab stop, arrow keys / Home / End move between tiles, Enter or Space selects. *@
+            <div class="hs-rail" role="toolbar" aria-label="Devices" aria-orientation="vertical" aria-controls="hs-panel">
+                @foreach (var d in _devices) {
+                    <button type="button" @key="d.Id"
+                            class="hs-tile hs-kind-@d.Kind @(d.Id == device.Id ? "selected" : "")"
+                            aria-pressed="@(d.Id == device.Id ? "true" : "false")"
+                            tabindex="@(d.Id == device.Id ? "0" : "-1")"
+                            @onclick="() => SelectDevice(d.Id)">
+                        @* The sparkline is decorative: the same value is in the tile text. *@
+                        <div class="hs-spark" id="hs-spark-@d.Id" aria-hidden="true"></div>
+                        <div class="hs-tile-text">
+                            <div class="hs-tile-title">@d.Title</div>
+                            <div class="hs-tile-value">@Headline(d)</div>
+                        </div>
+                    </button>
+                }
+            </div>
+
+            @* ── Main panel ── *@
+            <section class="hs-panel hs-kind-@device.Kind" id="hs-panel" aria-label="@device.Title details">
+                <div class="hs-panel-head">
+                    <h2 class="hs-panel-title">@device.Title</h2>
+                    <div class="hs-panel-model">@DeviceModel(device)</div>
+                </div>
+
+                @if (device.Kind == "cpu" && _range == "live") {
+                    <div class="btn-group btn-group-sm mb-2" role="group" aria-label="CPU graph">
+                        <button type="button" class="btn hs-target @(_cpuView == "overall" ? "btn-secondary" : "btn-outline-secondary")"
+                                aria-pressed="@(_cpuView == "overall" ? "true" : "false")" @onclick='() => SetCpuView("overall")'>
+                            Overall utilization
+                        </button>
+                        <button type="button" class="btn hs-target @(_cpuView == "cores" ? "btn-secondary" : "btn-outline-secondary")"
+                                aria-pressed="@(_cpuView == "cores" ? "true" : "false")" @onclick='() => SetCpuView("cores")'>
+                            Logical processors
+                        </button>
+                    </div>
+                }
+
+                <div class="hs-axis-labels">
+                    <span>@ChartLabel(device)</span>
+                    <span id="hs-scale-max">@(device.Percent && _range == "live" ? "100%" : "")</span>
+                </div>
+                <figure class="hs-main-wrap @(device.Kind == "cpu" && _cpuView == "cores" && _range == "live" ? "hs-cores-mode" : "")" aria-labelledby="hs-chart-caption">
+                    @* Updated at most every 5 seconds; the full values are in the stats grid and the chart's data table. *@
+                    <figcaption id="hs-chart-caption" class="visually-hidden">@_chartCaption</figcaption>
+                    <div id="hs-main-chart"></div>
+                    <div id="hs-cores"></div>
+                </figure>
+                @if (_range == "live") {
+                    <div class="hs-axis-labels"><span>60 seconds</span><span>0</span></div>
+                } else {
+                    <div class="hs-axis-labels">
+                        <span>
+                            @if (_historyLoading) {
+                                <span>Loading history...</span>
+                            } else if (_history != null) {
+                                <span>@LocalTime(_history.From) – @LocalTime(_history.To) · @_history.Resolution buckets from @string.Join(", ", _history.SourceTiers) · drag to zoom</span>
+                            }
+                        </span>
+                        <span>Shaded band: min to max · line: average · dashed red: reboot</span>
+                    </div>
+                }
+
+                @* ── Stats grid (also the text equivalent of the chart) ── *@
+                @if (_range != "live") {
+                    var stats = HistoryStats(device);
+                    <dl class="hs-stats">
+                        @if (stats.HasValue) {
+                            <div><dt>Average</dt><dd>@FormatUnit(stats.Value.Avg, device.Unit)</dd></div>
+                            <div><dt>Minimum</dt><dd>@FormatUnit(stats.Value.Min, device.Unit)</dd></div>
+                            <div><dt>Peak</dt><dd>@FormatUnit(stats.Value.Max, device.Unit)</dd></div>
+                            <div><dt>Peak at</dt><dd>@LocalTime(stats.Value.PeakTime)</dd></div>
+                        } else if (!_historyLoading) {
+                            <div><dt>History</dt><dd>No data in this range yet</dd></div>
+                        }
+                        @if (_history != null) {
+                            <div><dt>Resolution</dt><dd>@_history.Resolution</dd></div>
+                            <div><dt>Reboots in range</dt><dd>@_history.BootMarkers.Count</dd></div>
+                        }
+                    </dl>
+                } else if (s != null) {
+                    <dl class="hs-stats">
+                        @switch (device.Kind) {
+                            case "cpu":
+                                <div><dt>Utilization</dt><dd>@Percent(s.CpuPercent)</dd></div>
+                                <div><dt>Speed</dt><dd>@Speed(s.CpuMHz)</dd></div>
+                                <div><dt>Processes</dt><dd>@Count(s.Processes)</dd></div>
+                                <div><dt>Threads</dt><dd>@Count(s.Threads)</dd></div>
+                                <div><dt>Handles</dt><dd>@Count(s.Handles)</dd></div>
+                                <div><dt>Up time</dt><dd>@Uptime(s.UptimeSeconds)</dd></div>
+                                @if (_summary != null) {
+                                    <div><dt>Base speed</dt><dd>@Speed(_summary.CpuBaseMHz)</dd></div>
+                                    <div><dt>Sockets</dt><dd>@(_summary.Sockets > 0 ? _summary.Sockets.ToString() : "—")</dd></div>
+                                    <div><dt>Cores</dt><dd>@(_summary.PhysicalCores > 0 ? _summary.PhysicalCores.ToString() : "—")</dd></div>
+                                    <div><dt>Logical processors</dt><dd>@_summary.LogicalProcessors</dd></div>
+                                }
+                                break;
+
+                            case "mem":
+                                <div><dt>In use</dt><dd>@Helpers.FormatBytes(s.MemoryInUseBytes)</dd></div>
+                                <div><dt>Available</dt><dd>@Helpers.FormatBytes(s.MemoryAvailableBytes)</dd></div>
+                                <div><dt>Committed</dt><dd>@(s.MemoryCommittedBytes >= 0 ? Helpers.FormatBytes(s.MemoryCommittedBytes) + " / " + Helpers.FormatBytes(s.MemoryCommitLimitBytes) : "—")</dd></div>
+                                <div><dt>Cached</dt><dd>@Helpers.FormatBytes(s.MemoryCachedBytes)</dd></div>
+                                <div><dt>Paged pool</dt><dd>@(s.MemoryPagedPoolBytes >= 0 ? Helpers.FormatBytes(s.MemoryPagedPoolBytes) : "n/a on this OS")</dd></div>
+                                <div><dt>Non-paged pool</dt><dd>@(s.MemoryNonPagedPoolBytes >= 0 ? Helpers.FormatBytes(s.MemoryNonPagedPoolBytes) : "n/a on this OS")</dd></div>
+                                break;
+
+                            case "disk":
+                                var disk = device.Index < s.Disks.Count ? s.Disks[device.Index] : null;
+                                var diskInfo = _summary?.Disks.FirstOrDefault(x => x.Name == device.Name);
+                                if (disk != null) {
+                                    <div><dt>Active time</dt><dd>@Percent(disk.ActivePercent)</dd></div>
+                                    <div><dt>Average response time</dt><dd>@(disk.ResponseMs >= 0 ? disk.ResponseMs.ToString("F1") + " ms" : "—")</dd></div>
+                                    <div><dt>Read speed</dt><dd>@BytesPerSec(disk.ReadBytesPerSec)</dd></div>
+                                    <div><dt>Write speed</dt><dd>@BytesPerSec(disk.WriteBytesPerSec)</dd></div>
+                                }
+                                if (diskInfo != null) {
+                                    <div><dt>Capacity</dt><dd>@(diskInfo.CapacityBytes > 0 ? Helpers.FormatBytes(diskInfo.CapacityBytes) : "—")</dd></div>
+                                    <div><dt>Free</dt><dd>@(diskInfo.FreeBytes > 0 ? Helpers.FormatBytes(diskInfo.FreeBytes) : "—")</dd></div>
+                                    <div><dt>System disk</dt><dd>@(diskInfo.IsSystemDisk ? "Yes" : "No")</dd></div>
+                                }
+                                break;
+
+                            case "net":
+                                var adapter = device.Index < s.Adapters.Count ? s.Adapters[device.Index] : null;
+                                var adapterInfo = _summary?.Adapters.FirstOrDefault(x => x.Name == device.Name);
+                                if (adapter != null) {
+                                    <div><dt>Send</dt><dd>@Bits(adapter.SendBytesPerSec * 8)</dd></div>
+                                    <div><dt>Receive</dt><dd>@Bits(adapter.ReceiveBytesPerSec * 8)</dd></div>
+                                }
+                                if (adapterInfo != null) {
+                                    <div><dt>Link speed</dt><dd>@(adapterInfo.LinkSpeedBitsPerSec > 0 ? Bits(adapterInfo.LinkSpeedBitsPerSec) : "—")</dd></div>
+                                    <div><dt>Adapter name</dt><dd>@adapterInfo.Name</dd></div>
+                                    <div><dt>Connection type</dt><dd>@(adapterInfo.AdapterType ?? "—")</dd></div>
+                                }
+                                break;
+
+                            case "iis":
+                                <div><dt>w3wp workers</dt><dd>@(s.IisWorkerCount < 0 ? "—" : s.IisWorkerCount.ToString())</dd></div>
+                                <div><dt>Workers CPU</dt><dd>@Percent(s.IisCpuPercent)</dd></div>
+                                <div><dt>Workers memory</dt><dd>@Helpers.FormatBytes(s.IisWorkingSetBytes)</dd></div>
+                                <div><dt>FreeCICD CPU</dt><dd>@Percent(s.AppCpuPercent)</dd></div>
+                                <div><dt>FreeCICD memory</dt><dd>@Helpers.FormatBytes(s.AppWorkingSetBytes)</dd></div>
+                                <div><dt>App pool</dt><dd>@(string.IsNullOrWhiteSpace(_summary?.AppPoolName) ? "—" : _summary.AppPoolName)</dd></div>
+                                break;
+                        }
+                    </dl>
+
+                    @if (device.Kind == "mem") {
+                        double total = s.MemoryInUseBytes + s.MemoryAvailableBytes;
+                        double cached = Math.Clamp(s.MemoryCachedBytes >= 0 ? s.MemoryCachedBytes : 0, 0, s.MemoryAvailableBytes);
+                        double free = Math.Max(0, s.MemoryAvailableBytes - cached);
+                        if (total > 0) {
+                            <div class="mt-3 small text-muted">Memory composition</div>
+                            <div class="hs-membar" role="img"
+                                    aria-label="In use @Helpers.FormatBytes(s.MemoryInUseBytes), cached @Helpers.FormatBytes(cached), free @Helpers.FormatBytes(free) of @Helpers.FormatBytes(total)">
+                                <div class="inuse" style="width: @((s.MemoryInUseBytes / total * 100).ToString("F2", System.Globalization.CultureInfo.InvariantCulture))%"
+                                        title="In use @Helpers.FormatBytes(s.MemoryInUseBytes)"></div>
+                                <div class="cached" style="width: @((cached / total * 100).ToString("F2", System.Globalization.CultureInfo.InvariantCulture))%"
+                                        title="Cached @Helpers.FormatBytes(cached)"></div>
+                                <div class="free" style="width: @((free / total * 100).ToString("F2", System.Globalization.CultureInfo.InvariantCulture))%"
+                                        title="Free @Helpers.FormatBytes(free)"></div>
+                            </div>
+                            <div class="hs-legend">
+                                <span><span class="hs-swatch inuse"></span>In use @Helpers.FormatBytes(s.MemoryInUseBytes)</span>
+                                <span><span class="hs-swatch cached"></span>Cached @Helpers.FormatBytes(cached)</span>
+                                <span><span class="hs-swatch"></span>Free @Helpers.FormatBytes(free)</span>
+                            </div>
+                        }
+                    }
+                }
+            </section>
+        </div>
+
+        @* ── Processes ── *@
+        <div class="card mt-4">
+            <div class="card-header py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <span><i class="fa-solid fa-list-ol me-1" aria-hidden="true"></i> Processes</span>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Process table">
+                    <button type="button" class="btn hs-target @(_processTab == "cpu" ? "btn-primary" : "btn-outline-secondary")" aria-pressed="@(_processTab == "cpu" ? "true" : "false")" @onclick='() => _processTab = "cpu"'>Top by CPU</button>
+                    <button type="button" class="btn hs-target @(_processTab == "mem" ? "btn-primary" : "btn-outline-secondary")" aria-pressed="@(_processTab == "mem" ? "true" : "false")" @onclick='() => _processTab = "mem"'>Top by memory</button>
+                    <button type="button" class="btn hs-target @(_processTab == "iis" ? "btn-primary" : "btn-outline-secondary")" aria-pressed="@(_processTab == "iis" ? "true" : "false")" @onclick='() => _processTab = "iis"'>
+                        IIS workers <span class="badge bg-secondary ms-1">@(_processes?.IisWorkers.Count ?? 0)</span>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body py-0">
+                @{
+                    var rows = _processTab switch {
+                        "mem" => _processes?.TopByMemory,
+                        "iis" => _processes?.IisWorkers,
+                        _ => _processes?.TopByCpu,
+                    } ?? [];
+                }
+                @if (rows.Count == 0) {
+                    <div class="text-muted text-center py-3 small">
+                        @(_processTab == "iis" ? "No IIS worker processes (w3wp) are running on this server." : "Process data is loading...")
+                    </div>
+                } else {
+                    @* Keyboard users can scroll the table when it is wider than the screen. *@
+                    <div class="table-responsive" tabindex="0" role="region" aria-label="Processes table">
+                        <table class="table table-sm table-hover mb-0 hs-proc-table">
+                            <caption class="visually-hidden">@(_processTab switch { "mem" => "Top processes by memory", "iis" => "IIS worker processes", _ => "Top processes by CPU" })</caption>
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th class="num">PID</th>
+                                    <th class="num">CPU</th>
+                                    <th class="num">Memory</th>
+                                    <th class="num">Threads</th>
+                                    <th class="num">Handles</th>
+                                    <th>App pool</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var p in rows) {
+                                    <tr>
+                                        <td class="fw-semibold">
+                                            @p.Name
+                                            @if (p.IsThisApp) { <span class="badge bg-primary ms-1">this app</span> }
+                                        </td>
+                                        <td class="num text-muted">@p.Pid</td>
+                                        <td class="num">@Percent(p.CpuPercent)</td>
+                                        <td class="num">@Helpers.FormatBytes(p.WorkingSetBytes)</td>
+                                        <td class="num">@p.Threads</td>
+                                        <td class="num">@(p.Handles >= 0 ? p.Handles.ToString("N0") : "—")</td>
+                                        <td>@(string.IsNullOrWhiteSpace(p.AppPool) ? "—" : p.AppPool)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+            @if (_processes?.ProcessesUpdated != null) {
+                <div class="card-footer py-1 small text-muted">
+                    CPU is the share of the whole machine, as in Task Manager. Updated @LocalTime(_processes.ProcessesUpdated, "T").
+                </div>
+            }
+        </div>
+    }
+
+    @* ── Sources that are not available ── *@
+    @if (_summary != null && _summary.Sources.Any(n => !n.Available)) {
+        <div class="alert alert-secondary mt-3 py-2 small">
+            <div class="fw-semibold mb-1"><i class="fa-solid fa-circle-info me-1" aria-hidden="true"></i> Some counters are not available on this server</div>
+            <ul class="mb-0">
+                @foreach (var note in _summary.Sources.Where(n => !n.Available)) {
+                    <li><strong>@note.Source:</strong> @note.Message</li>
+                }
+            </ul>
+        </div>
+    }
+
+    @* ── Storage footer: used vs budget per tier ── *@
+    @if (_summary != null) {
+        double usedPercent = _summary.MaxBytes > 0 ? Math.Min(100, _summary.UsedBytes * 100.0 / _summary.MaxBytes) : 0;
+        <div class="card mt-3">
+            <div class="card-header py-2 d-flex flex-wrap justify-content-between gap-2">
+                <span><i class="fa-solid fa-database me-1" aria-hidden="true"></i> Stored history</span>
+                <span class="small text-muted" style="overflow-wrap: anywhere; min-width: 0;">
+                    @Helpers.FormatBytes(_summary.UsedBytes) of @Helpers.FormatBytes(_summary.MaxBytes, 0) budget
+                    @if (!_summary.MemoryOnly) {
+                        @if (!string.IsNullOrWhiteSpace(_summary.StorageFolder)) {
+                            <span>· @_summary.StorageFolder</span>
+                        }
+                    } else {
+                        <span class="badge bg-warning text-dark ms-1">memory only</span>
+                    }
+                </span>
+            </div>
+            <div class="card-body py-2">
+                <div class="hs-storage-bar mb-2" role="progressbar" aria-label="Storage used"
+                        aria-valuenow="@usedPercent.ToString("F0")" aria-valuemin="0" aria-valuemax="100">
+                    <div style="width: @usedPercent.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)%"></div>
+                </div>
+                <div class="table-responsive" tabindex="0" role="region" aria-label="Stored history by tier">
+                    <table class="table table-sm mb-0 small">
+                        <caption class="visually-hidden">Stored history by tier</caption>
+                        <thead>
+                            <tr>
+                                <th>Tier</th>
+                                <th class="text-end">Records</th>
+                                <th class="text-end">Size</th>
+                                <th>Covers</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var tier in _summary.Tiers) {
+                                <tr>
+                                    <td>@tier.Name</td>
+                                    <td class="text-end">@tier.Records.ToString("N0")</td>
+                                    <td class="text-end">@Helpers.FormatBytes(tier.Bytes)</td>
+                                    <td class="text-muted">@(tier.Records > 0 ? LocalTime(tier.Oldest) + " – " + LocalTime(tier.Newest) : "—")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="small text-muted mt-2">
+                    Everything is kept while it fits in the budget; beyond that the oldest data is rolled up
+                    (1 s → 1 min → 15 min → 6 h, keeping min / average / max) and only the oldest 6-hour data is ever dropped.
+                    @if (_summary.BootMarkers.Count > 0) {
+                        <span>Last boot: @LocalTime(_lastBoot).</span>
+                    }
+                    Collecting since @LocalTime(_summary.DataStart).
+                </div>
+                <div class="small text-muted mt-1" title="Measured inside the collector: thread CPU time and managed allocations per sample, excluding the first minute after start">
+                    <i class="fa-solid fa-gauge-simple me-1" aria-hidden="true"></i>
+                    Collector: @_summary.CollectorCpuPercent.ToString("0.###")% CPU
+                    · @_summary.CollectorMsPerTick.ToString("0.##") ms per sample
+                    · @Helpers.FormatBytes(_summary.CollectorAllocBytesPerSec)/s alloc
+                    · sample every @_summary.SampleSeconds s, processes every @_summary.ProcessSeconds s while viewed
+                    · @(_summary.SubscriberCount) live viewer(s)
+                    @if (_summary.Throttled) {
+                        <span class="badge bg-warning text-dark ms-1" title="@($"Backoff: three samples at or above {_summary.BackoffCpuPercent:0}% CPU or {_summary.BackoffMemoryPercent:0}% memory slow the collector down and stop process lists until the server calms down.")">
+                            server busy: sampling every @_summary.BackoffSampleSeconds s since @LocalTime(_summary.ThrottledSince, "T")
+                        </span>
+                    } else {
+                        <span>· backs off to every @_summary.BackoffSampleSeconds s above @_summary.BackoffCpuPercent.ToString("0")% CPU or @_summary.BackoffMemoryPercent.ToString("0")% memory</span>
+                    }
+                </div>
+
+                @if (_summary.DemoSeedAllowed && Model.User.Admin) {
+                    <div class="border-top mt-2 pt-2 d-flex flex-wrap align-items-center gap-2">
+                        <span class="badge bg-warning text-dark">Development only</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary hs-target" disabled="@_seeding" @onclick="() => SeedDemoHistory(30)">
+                            <i class="fa-solid fa-flask me-1" aria-hidden="true"></i> Seed 30 days of synthetic history
+                        </button>
+                        @if (_summary.ContainsSyntheticData) {
+                            <button type="button" class="btn btn-sm btn-outline-danger hs-target" disabled="@_seeding" @onclick="() => SeedDemoHistory(0)">
+                                Clear synthetic
+                            </button>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(_seedMessage)) {
+                            <span class="small text-muted">@_seedMessage</span>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</section>

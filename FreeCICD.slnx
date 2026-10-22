@@ -7,14 +7,6 @@
     <File Path="Remove Modules from FreeFreeCICD.exe" />
     <File Path="Rename FreeFreeCICD.exe" />
   </Folder>
-  <Folder Name="/Solution Items/docs/">
-    <File Path="docs/CTO-Briefing.md" />
-    <File Path="docs/Feature-Comparison-Log.md" />
-    <File Path="docs/Feature-Request-Wizard-Navigation.md" />
-    <File Path="docs/Meeting-Notes-Migration-Review.md" />
-    <File Path="docs/Migration-Wrapup-Report.md" />
-    <File Path="docs/README.md" />
-  </Folder>
   <Folder Name="/Solution Items/templates/">
     <File Path="Templates/build-template.yml" />
     <File Path="Templates/clean-workspace-template.yml" />
@@ -30,4 +22,5 @@
   <Project Path="FreeCICD.Plugins/FreeCICD.Plugins.csproj" Id="5a6be7bb-0264-4631-9d74-5cc37d0f5c23" />
   <Project Path="FreeCICD/FreeCICD.csproj" />
   <Project Path="Templates/Templates.csproj" />
+  <Project Path="docs/Docs.csproj" />
 </Solution>

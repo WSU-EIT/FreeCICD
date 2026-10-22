@@ -1,0 +1,249 @@
+@* App Atlas: one app on the Portfolio Wall (a list item of the wall). Preview frame (the last deploy's picture, or a placeholder), status glyph, name, *@
+@* FreeCRM badge, PROD URL, version chips with the drift badge, a plain-English note, flags, and links. *@
+
+<li class="at-card @(App.NeedsAttention ? "at-attn" : "")" aria-labelledby="@($"{_id}-name")">
+    @if (!String.IsNullOrWhiteSpace(App.PreviewUrl)) {
+        @* The picture the deploy job took of the primary site, with what it found; a failed verification keeps its picture but says so. *@
+        <figure class="at-thumb @(App.Preview?.IsStale == true ? "at-thumb-stale" : "") @(App.Preview is { Succeeded: false } ? "at-thumb-failed" : "")">
+            <a href="@App.PreviewUrl" target="_blank" rel="noopener noreferrer" aria-label="@($"Open the full capture of {Host} in a new tab")">
+                <img src="@App.PreviewUrl" alt="@($"Capture of {Host}{(App.Preview?.IsLoginPage == true ? ", login page" : "")}")" loading="lazy" />
+            </a>
+            <figcaption class="at-thumb-age">@PreviewCaption</figcaption>
+        </figure>
+    } else if (App.Preview != null && !App.Preview.Succeeded) {
+        <div class="at-thumb at-thumb-empty at-thumb-failed" role="img" aria-label="@($"Deploy verification failed for {Host}: {App.Preview.Error}")">
+            <div class="at-thumb-bar" aria-hidden="true"><i></i><i></i><i></i><span>@(Host.Length > 0 ? Host : "no URL")</span></div>
+            <div class="at-thumb-page" aria-hidden="true">
+                <span class="at-thumb-initials">@Initials</span>
+                <span class="at-thumb-note">Verification failed</span>
+            </div>
+        </div>
+    } else {
+        <div class="at-thumb at-thumb-empty" role="img" aria-label="@($"Preview placeholder for {(Host.Length > 0 ? Host : App.Name)}: no capture yet")">
+            <div class="at-thumb-bar" aria-hidden="true"><i></i><i></i><i></i><span>@(Host.Length > 0 ? Host : "no URL")</span></div>
+            @if (App.PrimaryUrl.Length > 0) {
+                <a class="at-thumb-page at-thumb-link" href="@App.PrimaryUrl" target="_blank" rel="noopener noreferrer" aria-label="@($"Open {Host} in a new tab")">
+                    <span class="at-thumb-initials">@Initials</span>
+                    <span class="at-thumb-note">Open site</span>
+                </a>
+            } else {
+                <div class="at-thumb-page" aria-hidden="true">
+                    <span class="at-thumb-initials">@Initials</span>
+                    <span class="at-thumb-note">No URL</span>
+                </div>
+            }
+        </div>
+    }
+
+    <div class="at-card-head">
+        @FreeCICD_App_Atlas_UI.RenderGlyph(App.Status, showLabel: false, detail: StatusDetail)
+        <h3 id="@($"{_id}-name")" class="at-card-name">@App.Name</h3>
+        @switch (App.FreeCrm.State) {
+            case DataObjects.AtlasFreeCrmState.Yes:
+                <span class="at-badge at-badge-solid" title="@String.Join("; ", App.FreeCrm.Evidence)">FreeCRM</span>
+                break;
+            case DataObjects.AtlasFreeCrmState.Unknown:
+                <span class="at-badge at-badge-ghost" title="@String.Join("; ", App.FreeCrm.Evidence)">FreeCRM?<span class="visually-hidden"> (not known yet)</span></span>
+                break;
+        }
+    </div>
+
+    <p class="at-card-status">
+        <span>Status: @AtlasView.StatusLabel(App.Status)</span>
+        <span class="at-muted">· @StatusDetail</span>
+        @if (App.NeedsAttention) {
+            <span class="at-tag-attn">Needs attention</span>
+        }
+    </p>
+
+    <p class="at-url">
+        @if (App.PrimaryUrl.Length > 0) {
+            <a href="@App.PrimaryUrl" target="_blank" rel="noopener noreferrer">@App.PrimaryUrl.Replace("https://", "")<span class="visually-hidden"> (opens in a new tab)</span></a>
+        } else {
+            <span>No host name in the bindings</span>
+        }
+    </p>
+
+    <ul class="at-chips" aria-label="@($"Versions of {App.Name}")">
+        @foreach (var env in Environments) {
+            var builds = AtlasView.LiveIn(App, env).ToList();
+            if (builds.Count > 0) {
+                <li class="at-vchip">
+                    <b>@env</b>
+                    <span class="at-mono">@AtlasView.BuildText(builds[0])</span>
+                    @if (builds.Count > 1) {
+                        <span class="at-more">+@(builds.Count - 1)<span class="visually-hidden"> more @env @(builds.Count == 2 ? "copy" : "copies")</span></span>
+                    }
+                </li>
+            }
+        }
+        <li class="at-drift at-drift-@PairingClass">
+            <span aria-hidden="true">@AtlasView.PairingLabel(App)</span>
+            <span class="visually-hidden">@AtlasView.PairingText(App)</span>
+        </li>
+    </ul>
+
+    <p class="at-note">@App.Note</p>
+
+    @if (App.Flags.Count > 0) {
+        <ul class="at-flags">
+            @foreach (var flag in App.Flags.Take(3)) {
+                <li>@flag</li>
+            }
+            @if (App.Flags.Count > 3) {
+                <li class="at-muted">and @(App.Flags.Count - 3) more in the matrix</li>
+            }
+        </ul>
+    }
+
+    @if (_reviewed.Count > 0) {
+        <div class="at-rv" role="group" aria-label="@($"Decommission review of {App.Name}")">
+            @foreach (var x in _reviewed) {
+                <div @key="@(x.Item.Key + "|" + VersionOf(x.Item.Key))">
+                    <FreeCICD_App_Atlas_UI_Review Item="x.Item" Label="@AtlasDecommissionView.ReviewLabel(App, x.Deployment)" TrafficAvailable="TrafficAvailable" Saving="Saving" OnDecide="OnDecide" />
+                </div>
+            }
+        </div>
+    }
+
+    <ul class="at-links" aria-label="@($"Links for {App.Name}")">
+        @foreach (var link in SiteLinks) {
+            <li>
+                <a href="@link.Url" target="_blank" rel="noopener noreferrer" title="@link.Url">
+                    @link.Label<span class="visually-hidden"> site of @App.Name, opens in a new tab</span>
+                </a>
+            </li>
+        }
+        <li>
+            @if (!String.IsNullOrWhiteSpace(App.RepoUrl)) {
+                <a href="@App.RepoUrl" target="_blank" rel="noopener noreferrer">Repo<span class="visually-hidden"> of @App.Name in Azure DevOps, opens in a new tab</span></a>
+            } else {
+                <span class="at-link-unknown" title="No linked repository">Repo<span class="visually-hidden"> of @App.Name</span>: unknown</span>
+            }
+        </li>
+        <li>
+            @if (!String.IsNullOrWhiteSpace(App.PipelineUrl)) {
+                <a href="@App.PipelineUrl" target="_blank" rel="noopener noreferrer">Pipeline<span class="visually-hidden"> of @App.Name in Azure DevOps, opens in a new tab</span></a>
+            } else {
+                <span class="at-link-unknown" title="No linked FreeCICD pipeline">Pipeline<span class="visually-hidden"> of @App.Name</span>: unknown</span>
+            }
+        </li>
+        <li class="at-pools-item">
+            <details class="at-pools">
+                <summary>App pool<span class="visually-hidden">s of @App.Name</span></summary>
+                <ul>
+                    @foreach (var d in App.Deployments) {
+                        <li>
+                            <b>@d.Environment</b> <span class="at-mono">@d.AppPool</span>
+                            <span class="@(DataObjects.IisRules.IsPoolStopped(d.AppPoolState) ? "at-warn-text" : "at-muted")">(@(String.IsNullOrWhiteSpace(d.AppPoolState) ? "state unknown" : d.AppPoolState))</span>
+                            @if (d.LegacyCopy) {
+                                <span class="at-muted">old copy</span>
+                            }
+                            <br /><span class="at-muted at-small">@AtlasView.Display(d) · @d.Server</span>
+                        </li>
+                    }
+                </ul>
+            </details>
+        </li>
+    </ul>
+</li>
+
+@code {
+    [Parameter, EditorRequired] public DataObjects.AtlasApp App { get; set; } = new();
+    /// <summary>The decommission review items by key, when loaded: each deployment then shows its evidence and disposition.</summary>
+    [Parameter] public IReadOnlyDictionary<string, DataObjects.AtlasDecommissionItem>? ReviewIndex { get; set; }
+    [Parameter] public bool TrafficAvailable { get; set; }
+    [Parameter] public EventCallback<AtlasDecision> OnDecide { get; set; }
+    [Parameter] public bool Saving { get; set; }
+    /// <summary>Per item: bumped by the host after a failed save, so that item's controls are re-created with the stored values.</summary>
+    [Parameter] public IReadOnlyDictionary<string, int>? ItemVersions { get; set; }
+    /// <summary>Changes whenever the review or an item version changes, so a card knows to re-render.</summary>
+    [Parameter] public int ReviewStamp { get; set; }
+
+    protected static readonly string[] Environments = DataObjects.AtlasEnvironments;
+
+    // Everything below is computed once per parameter change, not once per render. A card re-renders only when
+    // its app, the review, the saving flag or the review stamp changed (ShouldRender), since the parent re-renders
+    // on every search keystroke.
+    protected List<(DataObjects.AtlasDeployment Deployment, DataObjects.AtlasDecommissionItem Item)> _reviewed = [];
+    private DataObjects.AtlasApp? _lastApp;
+    private object? _lastIndex;
+    private bool _lastSaving;
+    private int _lastStamp = -1;
+    private bool _render = true;
+
+    protected override void OnParametersSet()
+    {
+        bool changed = !ReferenceEquals(App, _lastApp) || !ReferenceEquals(ReviewIndex, _lastIndex) || Saving != _lastSaving || ReviewStamp != _lastStamp;
+        _render = changed;
+        if (!changed) {
+            return;
+        }
+        _lastApp = App;
+        _lastIndex = ReviewIndex;
+        _lastSaving = Saving;
+        _lastStamp = ReviewStamp;
+
+        _reviewed = App.Deployments
+            .Select(d => (Deployment: d, Item: AtlasDecommissionView.ItemFor(ReviewIndex, d)))
+            .Where(x => x.Item != null)
+            .Select(x => (x.Deployment, x.Item!))
+            .ToList();
+    }
+
+    protected override bool ShouldRender() => _render;
+
+    protected int VersionOf(string key) => ItemVersions != null && ItemVersions.TryGetValue(key, out var v) ? v : 0;
+
+    protected string _id = "at-" + Guid.NewGuid().ToString("N")[..8];
+
+    protected string Host => App.PrimaryUrl.Replace("https://", "").TrimEnd('/');
+
+    /// <summary>What the picture shows and how it was obtained: build, status, time; a login page; a stale capture.</summary>
+    protected string PreviewCaption
+    {
+        get {
+            var p = App.Preview;
+            if (p == null) {
+                return App.PreviewCapturedUtc.HasValue ? "Captured " + Helpers.FormatDateTime(App.PreviewCapturedUtc) : "";
+            }
+            var parts = new List<string>();
+            if (!p.Succeeded) parts.Add("Verification failed");
+            parts.Add(p.IsLoginPage ? "Login page" : "Captured");
+            parts.Add(Helpers.FormatDateTime(p.CapturedUtc) ?? "");
+            if (p.BuildNumber.Length > 0) parts.Add("build " + p.BuildNumber);
+            if (p.StatusCode > 0) parts.Add($"HTTP {p.StatusCode} in {p.ResponseMs} ms");
+            if (!p.Succeeded && p.Error.Length > 0) parts.Add(p.Error);
+            if (p.IsStale) parts.Add("stale");
+            return String.Join(" · ", parts.Where(x => x.Length > 0));
+        }
+    }
+
+    protected string Initials => new string(App.Name.Split(' ', '-', '_', '.').Where(w => w.Length > 0).Take(2).Select(w => char.ToUpperInvariant(w[0])).ToArray());
+
+    protected string PairingClass => AtlasView.PairingCss(App);
+
+    protected string StatusDetail {
+        get {
+            var check = App.Deployments.Where(d => !d.LegacyCopy && d.Url == App.PrimaryUrl).Select(d => d.UpCheck).FirstOrDefault();
+            if (check == null || check.State == DataObjects.AtlasUpState.NoData) {
+                return "not checked";
+            }
+            return check.Detail + (check.LatencyMs.HasValue ? $", {check.LatencyMs} ms" : "");
+        }
+    }
+
+    /// <summary>Site links, live side first: PROD, CMS, then DEV.</summary>
+    protected List<(string Label, string Url)> SiteLinks {
+        get {
+            var output = new List<(string, string)>();
+            foreach (var env in DataObjects.AtlasEnvironmentsLiveFirst) {
+                var urls = AtlasView.LiveIn(App, env).Where(d => d.Url.Length > 0).Select(d => d.Url).Distinct().ToList();
+                for (int i = 0; i < urls.Count; i++) {
+                    output.Add((urls.Count > 1 ? $"{env} {i + 1}" : env, urls[i]));
+                }
+            }
+            return output;
+        }
+    }
+}

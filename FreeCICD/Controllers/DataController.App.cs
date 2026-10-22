@@ -7,6 +7,17 @@ namespace FreeCICD.Server.Controllers;
 
 public partial class DataController
 {
+    private async Task<bool> SignalRUpdateApp(DataObjects.SignalRUpdate update)
+    {
+        await Task.Delay(0); // Simulate a delay since this method has to be async. This can be removed once you implement your await logic.
+
+        bool processedInApp = false;
+
+        // Do any app-specific SignalR processing here.
+        // If your app handles the sending of the message to the clients, set processedInApp to true.
+
+        return processedInApp;
+    }
     [HttpGet]
     [Authorize]
     [Route("~/api/Data/YourEndpoint/")]
@@ -18,17 +29,5 @@ public partial class DataController
         };
 
         return Ok(output);
-    }
-
-    private async Task<bool> SignalRUpdateApp(DataObjects.SignalRUpdate update)
-    {
-        await Task.Delay(0); // Simulate a delay since this method has to be async. This can be removed once you implement your await logic.
-
-        bool processedInApp = false;
-
-        // Do any app-specific SignalR processing here.
-        // If your app handles the sending of the message to the clients, set processedInApp to true.
-
-        return processedInApp;
     }
 }

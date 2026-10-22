@@ -105,9 +105,9 @@
                             }
                             <div class="@elementClass">
                                 <input type="checkbox"
-                                       id="@elementId"
-                                       checked="@(elementValue.ToLower() == "true")"
-                                       onchange="@((ChangeEventArgs e) => ValueChanged(e, prompt))" />
+                                        id="@elementId"
+                                        checked="@(elementValue.ToLower() == "true")"
+                                        onchange="@((ChangeEventArgs e) => ValueChanged(e, prompt))" />
                                 <label for="@elementId">@prompt.Name</label>
                                 @if (prompt.Required) {
                                     <i class="required-flag"></i>
@@ -144,9 +144,9 @@
 
                                         <div class="prompt-checkboxlist-item">
                                             <input type="checkbox"
-                                                   id="@itemId"
-                                                   checked="@itemChecked"
-                                                   @onchange="@((ChangeEventArgs e) => ValueChanged(e, prompt, currentCounter))" />
+                                                    id="@itemId"
+                                                    checked="@itemChecked"
+                                                    @onchange="@((ChangeEventArgs e) => ValueChanged(e, prompt, currentCounter))" />
                                             <label for="@itemId">@option.Label</label>
                                         </div>
                                     }
@@ -176,10 +176,10 @@
                             }
                             <div class="">
                                 <DateTimePicker TValue="DateOnly?"
-                                                Id="@elementId"
-                                                Class="@elementClass"
-                                                Value="@Helpers.DateTimeToDateOnly(elementValue)"
-                                                OnUpdate="@((DateOnly? d) => ValueChangeDateOnly(d, prompt))" />
+                                        Id="@elementId"
+                                        Class="@elementClass"
+                                        Value="@Helpers.DateTimeToDateOnly(elementValue)"
+                                        OnUpdate="@((DateOnly? d) => ValueChangeDateOnly(d, prompt))" />
                             </div>
                         </div>
                     </div>
@@ -209,10 +209,10 @@
                                 <i class="required-flag"></i>
                             }
                             <DateTimePicker TValue="DateTime?"
-                                            Id="@elementId"
-                                            Class="@elementClass"
-                                            Value="@dt"
-                                            OnUpdate="@((DateTime? d) => ValueChangeDateTime(d, prompt))" />
+                                    Id="@elementId"
+                                    Class="@elementClass"
+                                    Value="@dt"
+                                    OnUpdate="@((DateTime? d) => ValueChangeDateTime(d, prompt))" />
                         </div>
                     </div>
                     break;
@@ -406,11 +406,11 @@
                                 <i class="required-flag"></i>
                             }
                             <input type="number"
-                                   class="@elementClass"
-                                   id="@elementId"
-                                   name="@elementName"
-                                   value="@elementValue"
-                                   onchange="@((ChangeEventArgs e) => ValueChanged(e, prompt))" />
+                                    class="@elementClass"
+                                    id="@elementId"
+                                    name="@elementName"
+                                    value="@elementValue"
+                                    onchange="@((ChangeEventArgs e) => ValueChanged(e, prompt))" />
                         </div>
                     </div>
                     break;
@@ -432,11 +432,11 @@
                                 <i class="required-flag"></i>
                             }
                             <input type="password"
-                                   class="@elementClass"
-                                   id="@elementId"
-                                   name="@elementName"
-                                   value="@elementValue"
-                                   onchange="@((ChangeEventArgs e) => ValueChanged(e, prompt))" />
+                                    class="@elementClass"
+                                    id="@elementId"
+                                    name="@elementName"
+                                    value="@elementValue"
+                                    onchange="@((ChangeEventArgs e) => ValueChanged(e, prompt))" />
                         </div>
                     </div>
                     break;
@@ -464,11 +464,11 @@
                                         var itemId = elementId + "-option-" + counter.ToString();
                                         <div class="prompt-radio-item">
                                             <input type="radio"
-                                                   id="@itemId"
-                                                   name="@elementName"
-                                                   value="@option.Value"
-                                                   checked="@(option.Value == elementValue)"
-                                                   onchange="@((ChangeEventArgs e) => ValueChanged(e, prompt))" />
+                                                    id="@itemId"
+                                                    name="@elementName"
+                                                    value="@option.Value"
+                                                    checked="@(option.Value == elementValue)"
+                                                    onchange="@((ChangeEventArgs e) => ValueChanged(e, prompt))" />
                                             <label for="@itemId">@option.Label</label>
                                         </div>
                                     }
@@ -526,11 +526,11 @@
                                 <i class="required-flag"></i>
                             }
                             <input type="text"
-                                   class="@elementClass"
-                                   id="@elementId"
-                                   name="@elementName"
-                                   value="@elementValue"
-                                   onchange="@((ChangeEventArgs e) => ValueChanged(e, prompt))" />
+                                    class="@elementClass"
+                                    id="@elementId"
+                                    name="@elementName"
+                                    value="@elementValue"
+                                    onchange="@((ChangeEventArgs e) => ValueChanged(e, prompt))" />
                         </div>
                     </div>
                     break;
@@ -552,9 +552,9 @@
                                 <i class="required-flag"></i>
                             }
                             <textarea name="@elementName"
-                                      id="@elementId"
-                                      class="@elementClass"
-                                      onchange="@((ChangeEventArgs e) => ValueChanged(e, prompt))">
+                                    id="@elementId"
+                                    class="@elementClass"
+                                    onchange="@((ChangeEventArgs e) => ValueChanged(e, prompt))">
                                 @elementValue
                                                 </textarea>
                         </div>
@@ -585,10 +585,10 @@
                                 <i class="required-flag"></i>
                             }
                             <DateTimePicker TValue="TimeOnly?"
-                                            Id="@elementId"
-                                            Class="@elementClass"
-                                            Value="@timeOnly"
-                                            OnUpdate="@((TimeOnly? t) => ValueChangeTimeOnly(t, prompt))" />
+                                    Id="@elementId"
+                                    Class="@elementClass"
+                                    Value="@timeOnly"
+                                    OnUpdate="@((TimeOnly? t) => ValueChangeTimeOnly(t, prompt))" />
                         </div>
                     </div>
                     break;
@@ -599,6 +599,10 @@
     SetMissingRequiredValues(missingRequired);
 }
 @code {
+    protected string _lastMissingRequired = String.Empty;
+    protected List<string> _missingRequired = new List<string>();
+    protected List<PluginPrompt>? _prompts;
+    protected List<PluginPromptValue> _promptValues = new List<PluginPromptValue>();
     /// <summary>
     /// If you are going to use any buttons in the prompts, you must provide a method to handle the button click.
     /// </summary>
@@ -615,19 +619,40 @@
     [Parameter] public bool HighlightMissingRequiredFields { get; set; }
 
     /// <summary>
-    /// The Plugin object.
+    /// Indicates if the plugin is configured to highlight missing required items and there are items highlighted.
     /// </summary>
-    [Parameter] public Plugin Plugin { get; set; } = new Plugin();
+    public List<string> MissingRequiredValues {
+        get {
+            return _missingRequired;
+        }
+    }
 
     /// <summary>
     /// An optional Delegate to invoke when the values change. The method should accept a Dictionary&lt;string, object&gt; as a parameter.
     /// </summary>
     [Parameter] public Delegate? OnValuesChange { get; set; }
 
-    protected string _lastMissingRequired = String.Empty;
-    protected List<string> _missingRequired = new List<string>();
-    protected List<PluginPrompt>? _prompts;
-    protected List<PluginPromptValue> _promptValues = new List<PluginPromptValue>();
+    /// <summary>
+    /// The Plugin object.
+    /// </summary>
+    [Parameter] public Plugin Plugin { get; set; } = new Plugin();
+
+    protected async Task ButtonClick(PluginPrompt prompt)
+    {
+        if (ButtonClickHandler.HasDelegate) {
+            // Send a copy of the plugin with the current values.
+            var copy = Helpers.DuplicateObject<Plugin>(Plugin);
+            if (copy != null) {
+                copy.PromptValues = _promptValues;
+
+                var result = await Helpers.ExecutePlugin(copy);
+
+                await ButtonClickHandler.InvokeAsync(result);
+
+                await ValuesUpdated();
+            }
+        }
+    }
 
     public void Dispose() { }
 
@@ -682,32 +707,6 @@
             }
 
             _prompts = prompts;
-        }
-    }
-
-    protected async Task ButtonClick(PluginPrompt prompt)
-    {
-        if (ButtonClickHandler.HasDelegate) {
-            // Send a copy of the plugin with the current values.
-            var copy = Helpers.DuplicateObject<Plugin>(Plugin);
-            if (copy != null) {
-                copy.PromptValues = _promptValues;
-
-                var result = await Helpers.ExecutePlugin(copy);
-
-                await ButtonClickHandler.InvokeAsync(result);
-
-                await ValuesUpdated();
-            }
-        }
-    }
-
-    /// <summary>
-    /// Indicates if the plugin is configured to highlight missing required items and there are items highlighted.
-    /// </summary>
-    public List<string> MissingRequiredValues {
-        get {
-            return _missingRequired;
         }
     }
 

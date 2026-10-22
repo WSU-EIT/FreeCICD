@@ -14,8 +14,7 @@ public partial class DataAccess
     /// </summary>
     private Dictionary<string, string> AppLanguage {
         get {
-            return new Dictionary<string, string>
-            {
+            return new Dictionary<string, string> {
                 //{ "AppTitle", "My Custom App Title" },
                 //{ "YourLanguageItem", "Your Language Item" },
             };
@@ -150,53 +149,6 @@ public partial class DataAccess
     }
 
     /// <summary>
-    /// This method is called to add any app-specific deleted record counts to the output.
-    /// </summary>
-    private async Task<DataObjects.DeletedRecordCounts> GetDeletedRecordCountsApp(Guid TenantId, DataObjects.DeletedRecordCounts deletedRecordCounts)
-    {
-        await Task.Delay(0); // Simulate a delay since this method has to be async. This can be removed once you implement your await logic.
-
-        var output = deletedRecordCounts;
-
-        // Do any lookups for your app-specific deleted record counts here and add them to the output.
-        // output.MyCount = await data.MyTable.CountAsync(x => x.TenantId == TenantId && x.Deleted == true);
-
-        return output;
-    }
-
-    /// <summary>
-    /// This method is called to add any app-specific filter columns to the filter output.
-    /// </summary>
-    /// <param name="Type">The filter type (eg: Users, Invoices, etc.)</param>
-    /// <param name="Position">The position in the column orders (see calling code for details.)</param>
-    /// <param name="CurrentUser">The current user object, if one exists</param>
-    /// <returns>A list of FilterColumn objects</returns>
-    private List<DataObjects.FilterColumn> GetFilterColumnsApp(string Type, string Position, DataObjects.Language Language, DataObjects.User? CurrentUser = null)
-    {
-        var output = new List<DataObjects.FilterColumn>();
-        // Add any app-specific filter columns here.
-        // Example:
-        // if (Type.ToLower() == "users" && Position.ToLower() == "username") {
-        //     output.Add(new DataObjects.FilterColumn { Name = "MyColumn", Type = "string", Title = "My Column", Placeholder = "My Column", Width = 150 });
-        // }
-        return output;
-    }
-
-    /// <summary>
-    /// This method is called to add any app-specific deleted records to the output.
-    /// </summary>
-    private async Task<DataObjects.DeletedRecords> GetDeletedRecordsApp(Guid TenantId, DataObjects.DeletedRecords deletedRecords)
-    {
-        await Task.Delay(0); // Simulate a delay since this method has to be async. This can be removed once you implement your await logic.
-
-        var output = deletedRecords;
-
-        // Do any lookups for your app-specific deleted records here and add them to the output.
-
-        return output;
-    }
-
-    /// <summary>
     /// This is called by various Get methods to map any app-specific fields from the EF model to the data object.
     /// </summary>
     /// <param name="Rec">The EF record object.</param>
@@ -288,6 +240,53 @@ public partial class DataAccess
                 return;
             }
         } catch { }
+    }
+
+    /// <summary>
+    /// This method is called to add any app-specific deleted record counts to the output.
+    /// </summary>
+    private async Task<DataObjects.DeletedRecordCounts> GetDeletedRecordCountsApp(Guid TenantId, DataObjects.DeletedRecordCounts deletedRecordCounts)
+    {
+        await Task.Delay(0); // Simulate a delay since this method has to be async. This can be removed once you implement your await logic.
+
+        var output = deletedRecordCounts;
+
+        // Do any lookups for your app-specific deleted record counts here and add them to the output.
+        // output.MyCount = await data.MyTable.CountAsync(x => x.TenantId == TenantId && x.Deleted == true);
+
+        return output;
+    }
+
+    /// <summary>
+    /// This method is called to add any app-specific deleted records to the output.
+    /// </summary>
+    private async Task<DataObjects.DeletedRecords> GetDeletedRecordsApp(Guid TenantId, DataObjects.DeletedRecords deletedRecords)
+    {
+        await Task.Delay(0); // Simulate a delay since this method has to be async. This can be removed once you implement your await logic.
+
+        var output = deletedRecords;
+
+        // Do any lookups for your app-specific deleted records here and add them to the output.
+
+        return output;
+    }
+
+    /// <summary>
+    /// This method is called to add any app-specific filter columns to the filter output.
+    /// </summary>
+    /// <param name="Type">The filter type (eg: Users, Invoices, etc.)</param>
+    /// <param name="Position">The position in the column orders (see calling code for details.)</param>
+    /// <param name="CurrentUser">The current user object, if one exists</param>
+    /// <returns>A list of FilterColumn objects</returns>
+    private List<DataObjects.FilterColumn> GetFilterColumnsApp(string Type, string Position, DataObjects.Language Language, DataObjects.User? CurrentUser = null)
+    {
+        var output = new List<DataObjects.FilterColumn>();
+        // Add any app-specific filter columns here.
+        // Example:
+        // if (Type.ToLower() == "users" && Position.ToLower() == "username") {
+        //     output.Add(new DataObjects.FilterColumn { Name = "MyColumn", Type = "string", Title = "My Column", Placeholder = "My Column", Width = 150 });
+        // }
+        return output;
     }
 
     /// <summary>

@@ -77,10 +77,30 @@ steps:
                 }
 
                 $webConfigLastModified = $null
+                # Which .NET the app targets: every published .NET app has one <App>.runtimeconfig.json next to its DLL
+                # with the target framework moniker (net8.0) and the shared frameworks it rolls forward on. This is what
+                # tells Host Health which installed runtime is actually used by an app and which can be uninstalled.
+                $targetFramework = $null
+                $runtimeFrameworks = $null
                 if ($physicalPath -and (Test-Path $physicalPath)) {
                     $webConfig = Join-Path $physicalPath "web.config"
                     if (Test-Path $webConfig) {
                         $webConfigLastModified = (Get-Item $webConfig).LastWriteTimeUtc.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                    }
+                    $runtimeConfig = Get-ChildItem -Path $physicalPath -Filter "*.runtimeconfig.json" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+                    if ($runtimeConfig) {
+                        try {
+                            $runtimeOptions = (Get-Content -Path $runtimeConfig.FullName -Raw | ConvertFrom-Json).runtimeOptions
+                            if ($runtimeOptions) {
+                                $targetFramework = $runtimeOptions.tfm
+                                $frameworkList = @()
+                                if ($runtimeOptions.framework) { $frameworkList += ($runtimeOptions.framework.name + " " + $runtimeOptions.framework.version) }
+                                if ($runtimeOptions.frameworks) { foreach ($fw in $runtimeOptions.frameworks) { $frameworkList += ($fw.name + " " + $fw.version) } }
+                                if ($frameworkList.Count -gt 0) { $runtimeFrameworks = ($frameworkList -join "; ") }
+                            }
+                        } catch {
+                            # An unreadable runtimeconfig leaves the fields empty; the app is still listed.
+                        }
                     }
                 }
 
@@ -89,6 +109,8 @@ steps:
                     AppPool               = $appPool
                     PhysicalPath          = $physicalPath
                     WebConfigLastModified = $webConfigLastModified
+                    TargetFramework       = $targetFramework
+                    RuntimeFrameworks     = $runtimeFrameworks
                     IsVirtual             = $isVirtual
                     RootSite              = $rootSite
                 }

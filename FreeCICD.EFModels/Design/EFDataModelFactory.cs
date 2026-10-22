@@ -19,12 +19,20 @@ namespace FreeCICD.EFModels.EFModels
     /// </summary>
     public class EFDataModelFactory : IDesignTimeDbContextFactory<EFDataModel>
     {
+        private static EFDataModel Create(string connectionString)
+        {
+            var optionsBuilder = new DbContextOptionsBuilder<EFDataModel>();
+
+            // Use SQL Server by default and enable retry on failure for reliability
+            optionsBuilder.UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure());
+
+            return new EFDataModel(optionsBuilder.Options);
+        }
         public EFDataModel CreateDbContext(string[] args)
         {
             // 1) Check explicit environment variable
             var conn = Environment.GetEnvironmentVariable("EF_CONNECTIONSTRING");
-            if (!string.IsNullOrWhiteSpace(conn))
-            {
+            if (!string.IsNullOrWhiteSpace(conn)) {
                 return Create(conn);
             }
 
@@ -38,8 +46,7 @@ namespace FreeCICD.EFModels.EFModels
             string migrationsConfigFile = Path.Combine(basePath, "appsettings.migrations.json");
 
             int climbs = 0;
-            while (!File.Exists(configFile) && !File.Exists(migrationsConfigFile) && climbs < 10)
-            {
+            while (!File.Exists(configFile) && !File.Exists(migrationsConfigFile) && climbs < 10) {
                 var parent = Directory.GetParent(basePath);
                 if (parent == null) break;
                 basePath = parent.FullName;
@@ -49,8 +56,7 @@ namespace FreeCICD.EFModels.EFModels
             }
 
             // If still not found, fall back to AppContext.BaseDirectory which is common for tooling
-            if (!File.Exists(configFile) && !File.Exists(migrationsConfigFile))
-            {
+            if (!File.Exists(configFile) && !File.Exists(migrationsConfigFile)) {
                 basePath = AppContext.BaseDirectory;
             }
 
@@ -71,35 +77,22 @@ namespace FreeCICD.EFModels.EFModels
 
             // Try common keys used in this repository
             conn = config.GetConnectionString("AppData");
-            if (string.IsNullOrWhiteSpace(conn))
-            {
+            if (string.IsNullOrWhiteSpace(conn)) {
                 conn = config["ConnectionStrings:AppData"]; // explicit key
             }
 
             // 3) Fallback to environment-style key
-            if (string.IsNullOrWhiteSpace(conn))
-            {
+            if (string.IsNullOrWhiteSpace(conn)) {
                 conn = Environment.GetEnvironmentVariable("ConnectionStrings__AppData");
             }
 
-            if (string.IsNullOrWhiteSpace(conn))
-            {
+            if (string.IsNullOrWhiteSpace(conn)) {
                 throw new InvalidOperationException(
                     "A connection string for EF migrations was not found. Set the environment variable 'EF_CONNECTIONSTRING' or add 'ConnectionStrings:AppData' to appsettings.migrations.json or appsettings.json."
                 );
             }
 
             return Create(conn);
-        }
-
-        private static EFDataModel Create(string connectionString)
-        {
-            var optionsBuilder = new DbContextOptionsBuilder<EFDataModel>();
-
-            // Use SQL Server by default and enable retry on failure for reliability
-            optionsBuilder.UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure());
-
-            return new EFDataModel(optionsBuilder.Options);
         }
     }
 }

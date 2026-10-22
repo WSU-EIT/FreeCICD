@@ -36,6 +36,13 @@
         Model.Subscribers_OnChange.Remove(_pageName);
     }
 
+    protected async Task GetTenantCodes()
+    {
+        if (!Model.TenantList.Any()) {
+            await Helpers.LoadTenantList();
+        }
+    }
+
     protected async override Task OnAfterRenderAsync(bool firstRender)
     {
         if (_loading) {
@@ -59,6 +66,13 @@
         }
     }
 
+    protected void OnDataModelUpdated()
+    {
+        if (Model.View == _pageName) {
+            StateHasChanged();
+        }
+    }
+
     protected override void OnInitialized()
     {
         if (!Model.Subscribers_OnChange.Contains(_pageName)){
@@ -67,19 +81,5 @@
         }
 
         Model.View = _pageName;
-    }
-
-    protected void OnDataModelUpdated()
-    {
-        if (Model.View == _pageName) {
-            StateHasChanged();
-        }
-    }
-
-    protected async Task GetTenantCodes()
-    {
-        if (!Model.TenantList.Any()) {
-            await Helpers.LoadTenantList();
-        }
     }
 }

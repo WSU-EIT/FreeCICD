@@ -15,37 +15,13 @@ public partial class EFDataModel : DbContext
     {
     }
 
-
-    public virtual DbSet<Department> Departments { get; set; }
-
     public virtual DbSet<DepartmentGroup> DepartmentGroups { get; set; }
 
 
+    public virtual DbSet<Department> Departments { get; set; }
+
+
     public virtual DbSet<FileStorage> FileStorages { get; set; }
-
-
-
-
-    public virtual DbSet<PluginCache> PluginCaches { get; set; }
-
-
-    public virtual DbSet<Setting> Settings { get; set; }
-
-    // {{ModuleItemStart:Tags}}
-    public virtual DbSet<Tag> Tags { get; set; }
-
-    public virtual DbSet<TagItem> TagItems { get; set; }
-    // {{ModuleItemEnd:Tags}}
-
-    public virtual DbSet<Tenant> Tenants { get; set; }
-
-    public virtual DbSet<UDFLabel> UDFLabels { get; set; }
-
-    public virtual DbSet<User> Users { get; set; }
-
-    public virtual DbSet<UserGroup> UserGroups { get; set; }
-
-    public virtual DbSet<UserInGroup> UserInGroups { get; set; }
 
     // The OnConfiguring override is only commented out and used to build the migration scripts.
     // protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
@@ -57,8 +33,7 @@ public partial class EFDataModel : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
 
-        modelBuilder.Entity<Department>(entity =>
-        {
+        modelBuilder.Entity<Department>(entity => {
             entity.Property(e => e.DepartmentId).ValueGeneratedNever();
             entity.Property(e => e.ActiveDirectoryNames).HasMaxLength(100);
             entity.Property(e => e.Added).HasColumnType("datetime");
@@ -69,8 +44,7 @@ public partial class EFDataModel : DbContext
             entity.Property(e => e.LastModifiedBy).HasMaxLength(100);
         });
 
-        modelBuilder.Entity<DepartmentGroup>(entity =>
-        {
+        modelBuilder.Entity<DepartmentGroup>(entity => {
             entity.Property(e => e.DepartmentGroupId).ValueGeneratedNever();
             entity.Property(e => e.Added).HasColumnType("datetime");
             entity.Property(e => e.AddedBy).HasMaxLength(100);
@@ -81,8 +55,7 @@ public partial class EFDataModel : DbContext
         });
 
 
-        modelBuilder.Entity<FileStorage>(entity =>
-        {
+        modelBuilder.Entity<FileStorage>(entity => {
             entity.HasKey(e => e.FileId);
 
             entity.ToTable("FileStorage");
@@ -106,8 +79,7 @@ public partial class EFDataModel : DbContext
 
 
 
-        modelBuilder.Entity<PluginCache>(entity =>
-        {
+        modelBuilder.Entity<PluginCache>(entity => {
             entity.HasKey(e => e.RecordId);
 
             entity.ToTable("PluginCache");
@@ -122,8 +94,7 @@ public partial class EFDataModel : DbContext
         });
 
 
-        modelBuilder.Entity<Setting>(entity =>
-        {
+        modelBuilder.Entity<Setting>(entity => {
             entity.HasKey(e => e.SettingId).HasName("PK_Settings_1");
 
             entity.Property(e => e.LastModified).HasColumnType("datetime");
@@ -133,8 +104,7 @@ public partial class EFDataModel : DbContext
         });
 
         // {{ModuleItemStart:Tags}}
-        modelBuilder.Entity<Tag>(entity =>
-        {
+        modelBuilder.Entity<Tag>(entity => {
             entity.Property(e => e.TagId).ValueGeneratedNever();
             entity.Property(e => e.Added).HasColumnType("datetime");
             entity.Property(e => e.AddedBy).HasMaxLength(100);
@@ -144,8 +114,7 @@ public partial class EFDataModel : DbContext
             entity.Property(e => e.Name).HasMaxLength(200);
         });
 
-        modelBuilder.Entity<TagItem>(entity =>
-        {
+        modelBuilder.Entity<TagItem>(entity => {
             entity.Property(e => e.TagItemId).ValueGeneratedNever();
 
             entity.HasOne(d => d.Tag).WithMany(p => p.TagItems)
@@ -155,8 +124,7 @@ public partial class EFDataModel : DbContext
         });
         // {{ModuleItemEnd:Tags}}
 
-        modelBuilder.Entity<Tenant>(entity =>
-        {
+        modelBuilder.Entity<Tenant>(entity => {
             entity.Property(e => e.TenantId).ValueGeneratedNever();
             entity.Property(e => e.Added).HasColumnType("datetime");
             entity.Property(e => e.AddedBy).HasMaxLength(100);
@@ -166,8 +134,7 @@ public partial class EFDataModel : DbContext
             entity.Property(e => e.TenantCode).HasMaxLength(50);
         });
 
-        modelBuilder.Entity<UDFLabel>(entity =>
-        {
+        modelBuilder.Entity<UDFLabel>(entity => {
             entity.Property(e => e.Id).ValueGeneratedNever();
             entity.Property(e => e.LastModified).HasColumnType("datetime");
             entity.Property(e => e.LastModifiedBy).HasMaxLength(100);
@@ -175,8 +142,7 @@ public partial class EFDataModel : DbContext
             entity.Property(e => e.UDF).HasMaxLength(10);
         });
 
-        modelBuilder.Entity<User>(entity =>
-        {
+        modelBuilder.Entity<User>(entity => {
             entity.HasIndex(e => e.DepartmentId, "IX_Users_DepartmentId");
 
             entity.HasIndex(e => e.TenantId, "IX_Users_TenantId");
@@ -220,8 +186,7 @@ public partial class EFDataModel : DbContext
                 .HasConstraintName("IX_Users_TenantId");
         });
 
-        modelBuilder.Entity<UserGroup>(entity =>
-        {
+        modelBuilder.Entity<UserGroup>(entity => {
             entity.HasKey(e => e.GroupId);
 
             entity.Property(e => e.GroupId).ValueGeneratedNever();
@@ -233,8 +198,7 @@ public partial class EFDataModel : DbContext
             entity.Property(e => e.Name).HasMaxLength(100);
         });
 
-        modelBuilder.Entity<UserInGroup>(entity =>
-        {
+        modelBuilder.Entity<UserInGroup>(entity => {
             entity.HasIndex(e => e.GroupId, "IX_UserInGroups_GroupId");
 
             entity.HasIndex(e => e.UserId, "IX_UserInGroups_UserId");
@@ -256,4 +220,28 @@ public partial class EFDataModel : DbContext
     }
 
     partial void OnModelCreatingPartial(ModelBuilder modelBuilder);
+
+
+
+
+    public virtual DbSet<PluginCache> PluginCaches { get; set; }
+
+
+    public virtual DbSet<Setting> Settings { get; set; }
+    // {{ModuleItemStart:Tags}}
+
+    public virtual DbSet<TagItem> TagItems { get; set; }
+
+    public virtual DbSet<Tag> Tags { get; set; }
+    // {{ModuleItemEnd:Tags}}
+
+    public virtual DbSet<Tenant> Tenants { get; set; }
+
+    public virtual DbSet<UDFLabel> UDFLabels { get; set; }
+
+    public virtual DbSet<UserGroup> UserGroups { get; set; }
+
+    public virtual DbSet<UserInGroup> UserInGroups { get; set; }
+
+    public virtual DbSet<User> Users { get; set; }
 }

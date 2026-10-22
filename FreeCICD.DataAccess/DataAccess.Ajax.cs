@@ -68,7 +68,7 @@ public partial class DataAccess
             //	label = "--- Local ---"
             //});
             foreach (var rec in recs) {
-                if(StringValue(rec.Username).ToLower() != "admin") {
+                if (StringValue(rec.Username).ToLower() != "admin") {
                     Local += 1;
                     if (Local < 26) {
                         string deptName = rec.Department != null && !String.IsNullOrEmpty(rec.Department.DepartmentName) ? rec.Department.DepartmentName : String.Empty;

@@ -1,4 +1,4 @@
-﻿namespace FreeCICD;
+namespace FreeCICD;
 
 public partial class DataObjects
 {
@@ -21,25 +21,6 @@ public partial class DataObjects
         public const string UserAttendance = "UserAttendance";
         public const string UserGroup = "UserGroup";
         public const string UserPreferences = "UserPreferences";
-
-        // FreeCICD-specific SignalR update types
-        public const string RegisterSignalR = "RegisterSignalR";
-        public const string LoadingDevOpsInfoStatusUpdate = "LoadingDevOpsInfoStatusUpdate";
-        
-        // Admin alert message sent to specific connection
-        public const string AdminAlert = "AdminAlert";
-        
-        // Progressive Dashboard Loading - Pipeline data updates
-        public const string DashboardPipelinesSkeleton = "DashboardPipelinesSkeleton";
-        public const string DashboardPipelineUpdate = "DashboardPipelineUpdate";
-        public const string DashboardPipelineBatch = "DashboardPipelineBatch";
-        public const string DashboardLoadComplete = "DashboardLoadComplete";
-
-        // Live Pipeline Monitoring - Background service broadcasts
-        public const string PipelineLiveStatusUpdate = "PipelineLiveStatusUpdate";
-
-        // Well-known SignalR group name for live monitoring subscribers
-        public const string PipelineMonitorGroup = "PipelineMonitor";
     }
 
     //public enum SignalRUpdateType
@@ -65,14 +46,14 @@ public partial class DataObjects
 
     public partial class SignalRUpdate
     {
-        public Guid? TenantId { get; set; }
         public Guid? ItemId { get; set; }
-        public Guid? UserId { get; set; }
-        public string? UserDisplayName { get; set; }
-        //public SignalRUpdateType UpdateType { get; set; }
-        public string UpdateType { get; set; } = "Unknown";
         public string Message { get; set; } = "";
         public object? Object { get; set; }
         public string? ObjectAsString { get; set; }
+        public Guid? TenantId { get; set; }
+        //public SignalRUpdateType UpdateType { get; set; }
+        public string UpdateType { get; set; } = "Unknown";
+        public string? UserDisplayName { get; set; }
+        public Guid? UserId { get; set; }
     }
 }

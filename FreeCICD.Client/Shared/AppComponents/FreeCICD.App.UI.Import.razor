@@ -1,10 +1,10 @@
-﻿@* Import Public Git Repository Modal Component *@
+@* Import Public Git Repository Modal Component *@
 @* Allows importing GitHub/GitLab/etc repos into Azure DevOps *@
 @* Simplified flow: Enter URL/ZIP + Project Name → Import as new branch *@
 
 @implements IDisposable
 @inject BlazorDataModel Model
-@inject NavigationManager NavigationManager
+@inject HttpClient Http
 
 @if (_isVisible)
 {
@@ -52,8 +52,6 @@
 
     // === Parameters ===
     [Parameter] public EventCallback OnImportComplete { get; set; }
-    [Parameter] public string? DevOpsPAT { get; set; }
-    [Parameter] public string? OrgName { get; set; }
 
     // === State ===
     private bool _isVisible = false;
@@ -87,9 +85,13 @@
     private int _pollAttempts = 0;
     private const int MaxPollAttempts = 60;
 
+    // Cancelled when the component goes away, so the status poll (up to 5 minutes) stops with it.
+    private readonly CancellationTokenSource _cts = new();
+
     public void Dispose()
     {
-        // No timer to dispose in simplified version
+        _cts.Cancel();
+        _cts.Dispose();
     }
 
     // === Public Methods ===
@@ -200,7 +202,7 @@
                     Found: <strong>@_repoInfo.Name</strong> by @_repoInfo.Owner (@_repoInfo.Source)
                     @if (_repoInfo.SizeKB.HasValue)
                     {
-                        <span class="ms-2 text-muted">• @FormatSize(_repoInfo.SizeKB.Value * 1024)</span>
+                        <span class="ms-2 text-muted">• @Helpers.FormatBytes(_repoInfo.SizeKB.Value * 1024)</span>
                     }
                 </div>
             }
@@ -218,7 +220,7 @@
                 {
                     <div class="border border-2 border-dashed rounded p-4 text-center bg-light">
                         <InputFile OnChange="HandleFileUpload" accept=".zip" disabled="@_isUploading" class="d-none" id="zipFileInput" />
-                        <label for="zipFileInput" class="d-block" style="cursor: pointer;">
+                        <label for="zipFileInput" class="d-block pointer">
                             @if (_isUploading)
                             {
                                 <div class="spinner-border text-primary mb-2"></div>
@@ -228,7 +230,7 @@
                             {
                                 <i class="fa fa-cloud-upload-alt fa-3x text-muted mb-2"></i>
                                 <p class="mb-1">Click to select ZIP file</p>
-                                <small class="text-muted">Max size: 100 MB</small>
+                                <small class="text-muted">Max size: @Helpers.FormatBytes(DataObjects.ImportUploadMaxBytes, 0)</small>
                             }
                         </label>
                     </div>
@@ -243,7 +245,7 @@
                                     <strong>@_uploadedFileName</strong>
                                     <br/>
                                     <small class="text-muted">
-                                        @FormatSize(_uploadedFileSize ?? 0)
+                                        @Helpers.FormatBytes(_uploadedFileSize ?? 0)
                                         @if (_uploadedFileCount > 0)
                                         {
                                             <span> • @_uploadedFileCount files</span>
@@ -399,7 +401,7 @@
                     <p class="text-muted">Branch: <code>@_importResult.ImportedBranch</code></p>
                 }
                 
-                @* === Phase 1: GitHub Sync - Show PR creation option for existing repos === *@
+                @* An existing repo got the import on a new branch: offer the pull request *@
                 @if (_importResult.RepoExisted && !string.IsNullOrWhiteSpace(_importResult.PullRequestCreateUrl))
                 {
                     <div class="alert alert-info text-start mt-3">
@@ -425,7 +427,7 @@
         <div class="d-flex justify-content-center gap-2 mt-4">
             <button class="btn btn-secondary" @onclick="Close">Close</button>
             
-            @* === Phase 1: Show different primary actions based on new vs existing repo === *@
+            @* The primary action: the pull request for an existing repo, the wizard for a new one *@
             @if (_importResult?.RepoExisted == true && !string.IsNullOrWhiteSpace(_importResult.PullRequestCreateUrl))
             {
                 @* Existing repo: Primary action is Create PR *@
@@ -481,7 +483,8 @@
             var parts = uri.AbsolutePath.Trim('/').Split('/');
             if (parts.Length >= 2)
             {
-                var repoName = parts[1].Replace(".git", "");
+                // Only a trailing ".git" is the clone suffix; "my.github.io" must stay as it is.
+                var repoName = parts[1].EndsWith(".git", StringComparison.OrdinalIgnoreCase) ? parts[1][..^4] : parts[1];
                 if (string.IsNullOrWhiteSpace(_projectName))
                 {
                     _projectName = repoName;
@@ -518,9 +521,13 @@
                     _projectName = result.Name;
                 }
             }
+            else if (result == null)
+            {
+                Model.UnknownError();
+            }
             else
             {
-                _errorMessage = result?.ErrorMessage ?? "Failed to validate repository URL.";
+                _errorMessage = result.ErrorMessage ?? Helpers.Text("ErrorUnknown");
             }
         }
         catch (Exception ex)
@@ -543,28 +550,32 @@
         try
         {
             var file = e.File;
-            if (file.Size > 100 * 1024 * 1024)
+            if (file.Size > DataObjects.ImportUploadMaxBytes)
             {
-                _errorMessage = "File size exceeds 100MB limit.";
+                _errorMessage = $"File size exceeds {Helpers.FormatBytes(DataObjects.ImportUploadMaxBytes, 0)} limit.";
                 return;
             }
 
+            // The browser stream goes straight into the request; copying it first held the whole upload twice in memory.
             using var content = new MultipartFormDataContent();
-            using var stream = file.OpenReadStream(maxAllowedSize: 100 * 1024 * 1024);
-            using var memoryStream = new MemoryStream();
-            await stream.CopyToAsync(memoryStream);
-            memoryStream.Position = 0;
-            
-            content.Add(new StreamContent(memoryStream), "file", file.Name);
+            using var stream = file.OpenReadStream(maxAllowedSize: DataObjects.ImportUploadMaxBytes);
+            content.Add(new StreamContent(stream), "file", file.Name);
 
-            using var httpClient = new HttpClient();
-            var baseUrl = Model?.ApplicationUrl ?? "";
-            if (!baseUrl.EndsWith("/")) baseUrl += "/";
-            
-            var response = await httpClient.PostAsync(
-                $"{baseUrl}{DataObjects.Endpoints.Import.UploadZip}", 
-                content
-            );
+            // The app's HttpClient (base address and auth cookie) with the same headers Helpers.GetOrPost sends,
+            // because the upload endpoint is [Authorize] and checks the Token, TenantId and Fingerprint headers.
+            using var request = new HttpRequestMessage(HttpMethod.Post, DataObjects.Endpoints.Import.UploadZip) { Content = content };
+            request.Headers.Add("TenantId", Model.User.TenantId.ToString());
+            if (string.IsNullOrWhiteSpace(Model.User.AuthToken)) {
+                Model.User.AuthToken = await Helpers.Token();
+            }
+            if (!string.IsNullOrWhiteSpace(Model.User.AuthToken)) {
+                request.Headers.Add("Token", Model.User.AuthToken);
+            }
+            if (!string.IsNullOrWhiteSpace(Model.Fingerprint)) {
+                request.Headers.Add("Fingerprint", Model.Fingerprint);
+            }
+
+            var response = await Http.SendAsync(request, _cts.Token);
 
             if (response.IsSuccessStatusCode)
             {
@@ -583,9 +594,13 @@
                         _projectName = _detectedRepoName;
                     }
                 }
+                else if (result == null)
+                {
+                    Model.UnknownError();
+                }
                 else
                 {
-                    _errorMessage = result?.ErrorMessage ?? "Upload failed.";
+                    _errorMessage = result.ErrorMessage ?? Helpers.Text("ErrorUnknown");
                 }
             }
             else
@@ -670,9 +685,15 @@
                 request
             );
 
-            if (result == null || !result.Success)
+            if (result == null)
             {
-                _errorMessage = result?.ErrorMessage ?? "Failed to start import.";
+                Model.UnknownError();
+                _currentStep = ImportStep.SourceInput;
+            }
+            else if (!result.Success)
+            {
+                // The server's reason (missing field, bad PAT, name taken) rather than a generic "failed to start".
+                _errorMessage = result.ErrorMessage ?? Helpers.Text("ErrorUnknown");
                 _currentStep = ImportStep.Error;
             }
             else
@@ -714,12 +735,19 @@
                _importResult.Status != DataObjects.ImportStatus.Completed &&
                _importResult.Status != DataObjects.ImportStatus.Failed)
         {
-            await Task.Delay(5000);
+            try
+            {
+                await Task.Delay(5000, _cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return; // the modal was disposed; nobody is waiting for the result
+            }
             _pollAttempts++;
 
             try
             {
-                var statusUrl = $"{DataObjects.Endpoints.Import.GetStatus}/{_importResult.ProjectId}/{_importResult.RepoId}/{_importResult.ImportRequestId}";
+                var statusUrl = StatusUrl(_importResult);
                 var status = await Helpers.GetOrPost<DataObjects.ImportPublicRepoResponse>(statusUrl);
 
                 if (status != null)
@@ -750,6 +778,20 @@
         }
     }
 
+    /// <summary>
+    /// The status poll's URL. A snapshot import has no ImportRequestId: it is polled with 0 and the imported branch,
+    /// which the server checks in the repository.
+    /// </summary>
+    public static string StatusUrl(DataObjects.ImportPublicRepoResponse import)
+    {
+        var url = $"{DataObjects.Endpoints.Import.GetStatus}/{import.ProjectId}/{import.RepoId}/{import.ImportRequestId ?? 0}";
+        if (import.ImportRequestId.GetValueOrDefault() <= 0 && !string.IsNullOrWhiteSpace(import.ImportedBranch))
+        {
+            url += "?branch=" + Uri.EscapeDataString(import.ImportedBranch);
+        }
+        return url;
+    }
+
     private void LaunchWizard()
     {
         if (_importResult != null)
@@ -760,14 +802,6 @@
     }
 
     // === Helpers ===
-    private string FormatSize(long sizeBytes)
-    {
-        if (sizeBytes < 1024) return $"{sizeBytes} B";
-        if (sizeBytes < 1024 * 1024) return $"{sizeBytes / 1024.0:F1} KB";
-        if (sizeBytes < 1024 * 1024 * 1024) return $"{sizeBytes / (1024.0 * 1024.0):F1} MB";
-        return $"{sizeBytes / (1024.0 * 1024.0 * 1024.0):F1} GB";
-    }
-
     private string GetDefaultRepoName()
     {
         // When creating a new project, Azure DevOps creates an empty repo with the project name.

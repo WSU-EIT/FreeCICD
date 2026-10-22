@@ -1,21 +1,14 @@
-﻿@* SignalR Connections Admin UI Component *@
-@* Page routing handled by FreeCICD.App.Pages.SignalRConnections.razor *@
-@implements IDisposable
-@inject BlazorDataModel Model
-@inject NavigationManager Navigation
+@* SignalR Connections Admin UI Component *@
+@* Page routing and the admin-only gate are FreeCICD.App.Pages.SignalRConnections.razor's. *@
+@inherits AppLoadingPageBase
+@using Humanizer
 
-@if (!Model.User.Admin) {
-    <div class="alert alert-danger">
-        <i class="fa fa-exclamation-triangle me-2"></i>
-        Access Denied - Admin privileges required.
-    </div>
-} else {
+@{
     <div class="container-fluid px-0" style="max-width: 1400px;">
         @* Page Header *@
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h1 class="page-title mb-0">
-                <i class="fa fa-plug me-2"></i>
-                SignalR Connections
+                <Icon Name="SignalR" /> SignalR Connections
             </h1>
             <div class="d-flex gap-2">
                 <button class="btn btn-outline-primary" @onclick="OpenBroadcastModal" title="Send message to all users">
@@ -29,80 +22,40 @@
             </div>
         </div>
 
-        @* Loading State *@
         @if (_loading) {
-            <div class="d-flex flex-column justify-content-center align-items-center my-5">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Loading...</span>
+            <FreeCICD_App_UI_Loading Message="@_loadingMessage" />
+        } else {
+            @* Error State: shown above the last list loaded, if any *@
+            @if (!string.IsNullOrWhiteSpace(_errorMessage)) {
+                <div class="alert alert-danger" role="alert">
+                    <i class="fa fa-exclamation-triangle me-2"></i>
+                    @_errorMessage
+                    <button class="btn btn-sm btn-outline-danger ms-3" @onclick="RefreshConnections">
+                        Try Again
+                    </button>
                 </div>
-                <div class="mt-3 text-muted">Loading connections...</div>
-            </div>
-        }
-        @* Error State *@
-        else if (!string.IsNullOrWhiteSpace(_errorMessage)) {
-            <div class="alert alert-danger" role="alert">
-                <i class="fa fa-exclamation-triangle me-2"></i>
-                @_errorMessage
-                <button class="btn btn-sm btn-outline-danger ms-3" @onclick="RefreshConnections">
-                    Try Again
-                </button>
-            </div>
-        }
-        @* Success Message *@
-        @if (!string.IsNullOrWhiteSpace(_successMessage)) {
-            <div class="alert alert-success alert-dismissible fade show" role="alert">
-                <i class="fa fa-check-circle me-2"></i>
-                @_successMessage
-                <button type="button" class="btn-close" @onclick="() => _successMessage = null"></button>
-            </div>
-        }
-        @* Content *@
-            else if (_response != null) {
+            }
+
+            @* Content *@
+            @if (_response != null) {
                 @* Summary Cards *@
                 <div class="row mb-4">
-                    <div class="col-md-3">
-                        <div class="card shadow-sm border-0 text-center">
-                            <div class="card-body">
-                                <div class="h2 mb-0 text-primary">@_response.TotalConnectionCount</div>
-                                <div class="text-muted">Total Connections</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card shadow-sm border-0 text-center">
-                            <div class="card-body">
-                                <div class="h2 mb-0 text-info">@_response.Hubs.Count</div>
-                                <div class="text-muted">Active Hubs</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card shadow-sm border-0 text-center">
-                            <div class="card-body">
-                                <div class="h2 mb-0 text-success">@GetUniqueUserCount()</div>
-                                <div class="text-muted">Unique Users</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card shadow-sm border-0 text-center">
-                            <div class="card-body">
-                                <div class="h5 mb-0 text-secondary" style="font-family: monospace;">
-                                    @TruncateId(Model?.SignalrClientRegistration?.ConnectionId, 12)
-                                </div>
-                                <div class="text-muted small">Your Connection</div>
-                            </div>
-                        </div>
-                    </div>
+                    <FreeCICD_App_UI_StatTile ColumnClass="col-md-3" CardClass="shadow-sm border-0" BodyClass="" ValueClass="h2 mb-0"
+                            Value="@_response.TotalConnectionCount.ToString()" Label="Total Connections" ColorClass="text-primary" />
+                    <FreeCICD_App_UI_StatTile ColumnClass="col-md-3" CardClass="shadow-sm border-0" BodyClass="" ValueClass="h2 mb-0"
+                            Value="@_response.Hubs.Count.ToString()" Label="Active Hubs" ColorClass="text-info" />
+                    <FreeCICD_App_UI_StatTile ColumnClass="col-md-3" CardClass="shadow-sm border-0" BodyClass="" ValueClass="h2 mb-0"
+                            Value="@GetUniqueUserCount().ToString()" Label="Unique Users" ColorClass="text-success" />
+                    <FreeCICD_App_UI_StatTile ColumnClass="col-md-3" CardClass="shadow-sm border-0" BodyClass="" ValueClass="h5 mb-0 font-monospace"
+                            Value="@Truncate(Helpers.CurrentConnectionId(), 12)" Label="Your Connection" ColorClass="text-secondary" />
                 </div>
 
                 @* Hubs List *@
                 @if (_response.Hubs.Any()) {
                     @foreach (var hub in _response.Hubs) {
                         <div class="card shadow-sm border-0 mb-3">
-                            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center"
-                                 style="cursor: pointer;"
-                                 @onclick="() => ToggleHubExpanded(hub.HubName)">
+                            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center pointer"
+                                    @onclick="() => Helpers.ToggleSet(_expandedHubs, hub.HubName)">
                                 <div>
                                     <i class="fa @(IsHubExpanded(hub.HubName) ? "fa-chevron-down" : "fa-chevron-right") me-2"></i>
                                     <i class="fa fa-server me-2"></i>
@@ -132,18 +85,18 @@
                                                 </thead>
                                                 <tbody>
                                                     @foreach (var conn in hub.Connections.OrderByDescending(c => c.HasFocus).ThenByDescending(c => c.LastActivityAt ?? c.ConnectedAt)) {
-                                                        var isCurrentUser = conn.ConnectionId == Model?.SignalrClientRegistration?.ConnectionId;
+                                                        var isCurrentUser = conn.ConnectionId == Helpers.CurrentConnectionId();
                                                         var fingerprintColor = GetFingerprintColor(conn.Fingerprint);
                                                         <tr class="@(isCurrentUser ? "table-info" : "") @(!conn.IsVisible ? "text-muted" : "")">
                                                             <td>
-                                                                <code class="small" title="@conn.ConnectionId">@TruncateId(conn.ConnectionId, 10)</code>
+                                                                <code class="small" title="@conn.ConnectionId">@Truncate(conn.ConnectionId, 10)</code>
                                                                 @if (isCurrentUser) {
                                                                     <span class="badge bg-success ms-1">You</span>
                                                                 }
                                                             </td>
                                                             <td>
                                                                 @if (!string.IsNullOrWhiteSpace(conn.UserId)) {
-                                                                    <span title="@conn.UserId">@TruncateName(conn.UserId, 10)</span>
+                                                                    <span title="@conn.UserId">@Truncate(conn.UserId, 10)</span>
                                                                 } else {
                                                                     <span class="text-muted">Anon</span>
                                                                 }
@@ -156,25 +109,16 @@
                                                                 }
                                                             </td>
                                                             <td>
-                                                                @if (conn.HasFocus && conn.IsVisible) {
-                                                                    <span class="badge bg-success" title="Active - Window has focus">
-                                                                        <i class="fa fa-circle me-1"></i>Active
-                                                                    </span>
-                                                                } else if (conn.IsVisible) {
-                                                                    <span class="badge bg-warning text-dark" title="Idle - Tab visible but not focused">
-                                                                        <i class="fa fa-circle-o me-1"></i>Idle
-                                                                    </span>
-                                                                } else {
-                                                                    <span class="badge bg-secondary" title="Away - Tab hidden or minimized">
-                                                                        <i class="fa fa-moon-o me-1"></i>Away
-                                                                    </span>
-                                                                }
+                                                                @{ var focus = Focus(conn); }
+                                                                <span class="badge @focus.BadgeClass" title="@focus.Title">
+                                                                    <i class="@focus.Icon me-1"></i>@focus.Label
+                                                                </span>
                                                             </td>
                                                             <td>
                                                                 @if (!string.IsNullOrWhiteSpace(conn.Fingerprint)) {
                                                                     <span class="badge" style="background-color: @fingerprintColor; color: white;" 
-                                                                          title="@conn.Fingerprint">
-                                                                        @TruncateId(conn.Fingerprint, 6)
+                                                                            title="@conn.Fingerprint">
+                                                                        @Truncate(conn.Fingerprint, 6)
                                                                     </span>
                                                                 } else {
                                                                     <span class="text-muted">—</span>
@@ -191,19 +135,19 @@
                                                             </td>
                                                             <td>
                                                                 @if (!string.IsNullOrWhiteSpace(conn.IpAddress)) {
-                                                                    <code class="small" title="@conn.IpAddress">@TruncateName(conn.IpAddress, 12)</code>
+                                                                    <code class="small" title="@conn.IpAddress">@Truncate(conn.IpAddress, 12)</code>
                                                                 } else {
                                                                     <span class="text-muted">—</span>
                                                                 }
                                                             </td>
                                                             <td>
                                                                 @if (conn.LastActivityAt.HasValue) {
-                                                                    <span title="Connected: @conn.ConnectedAt.ToString("HH:mm:ss")&#10;Last Activity: @conn.LastActivityAt.Value.ToString("HH:mm:ss")">
-                                                                        @FormatTimeAgo(conn.LastActivityAt.Value)
+                                                                    <span title="Connected: @Helpers.FormatTime(conn.ConnectedAt)&#10;Last Activity: @Helpers.FormatTime(conn.LastActivityAt)">
+                                                                        @conn.LastActivityAt.Value.Humanize()
                                                                     </span>
                                                                 } else {
-                                                                    <span title="Connected: @conn.ConnectedAt.ToString("HH:mm:ss")">
-                                                                        @FormatTimeAgo(conn.ConnectedAt)
+                                                                    <span title="Connected: @Helpers.FormatTime(conn.ConnectedAt)">
+                                                                        @conn.ConnectedAt.Humanize()
                                                                     </span>
                                                                 }
                                                             </td>
@@ -211,7 +155,7 @@
                                                                 @if (conn.Groups?.Any() == true) {
                                                                     @foreach (var group in conn.Groups.Take(2)) {
                                                                         <span class="badge bg-outline-secondary border me-1" title="@group">
-                                                                            @TruncateName(group, 8)
+                                                                            @Truncate(group, 8)
                                                                         </span>
                                                                     }
                                                                     @if (conn.Groups.Count > 2) {
@@ -259,10 +203,11 @@
 
                 @* Footer Info *@
                 <div class="mt-4 text-muted small text-end">
-                    <i class="fa fa-clock-o me-1"></i>
-                    Last refreshed: @_lastRefreshed?.ToString("HH:mm:ss") ?? "Never"
+                    <i class="fa-regular fa-clock me-1"></i>
+                    Last refreshed: @(_lastRefreshed.HasValue ? Helpers.FormatDateTime(_lastRefreshed) : "Never")
                 </div>
             }
+        }
         </div>
 
         @* Send Alert Modal *@
@@ -283,36 +228,10 @@
                                 <div class="d-flex align-items-center">
                                     <i class="fa fa-user me-2"></i>
                                     <strong>@(_selectedConnection.UserId ?? "Anonymous")</strong>
-                                    <code class="ms-2 small text-muted">@TruncateId(_selectedConnection.ConnectionId, 12)</code>
+                                    <code class="ms-2 small text-muted">@Truncate(_selectedConnection.ConnectionId, 12)</code>
                                 </div>
                             </div>
-                            <div class="mb-3">
-                                <label class="form-label">Message</label>
-                                <textarea class="form-control" rows="3" 
-                                          placeholder="Enter your message..."
-                                          @bind="_alertMessage"></textarea>
-                            </div>
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label">Message Type</label>
-                                    <select class="form-select" @bind="_alertMessageType">
-                                        <option value="Info">ℹ️ Info (Blue)</option>
-                                        <option value="Success">✅ Success (Green)</option>
-                                        <option value="Warning">⚠️ Warning (Yellow)</option>
-                                        <option value="Danger">❌ Danger (Red)</option>
-                                        <option value="Primary">🔵 Primary</option>
-                                        <option value="Secondary">⚪ Secondary</option>
-                                        <option value="Dark">⬛ Dark</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label">Auto-hide</label>
-                                    <select class="form-select" @bind="_alertAutoHide">
-                                        <option value="true">Yes (5 seconds)</option>
-                                        <option value="false">No (manual close)</option>
-                                    </select>
-                                </div>
-                            </div>
+                            @AlertForm("Enter your message...")
                         </div>
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" @onclick="CloseSendAlertModal">Cancel</button>
@@ -346,33 +265,7 @@
                                 <i class="fa fa-exclamation-triangle me-2"></i>
                                 This will send a message to <strong>all @_response?.TotalConnectionCount connected users</strong>.
                             </div>
-                            <div class="mb-3">
-                                <label class="form-label">Message</label>
-                                <textarea class="form-control" rows="3" 
-                                          placeholder="Enter your broadcast message..."
-                                          @bind="_alertMessage"></textarea>
-                            </div>
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label">Message Type</label>
-                                    <select class="form-select" @bind="_alertMessageType">
-                                        <option value="Info">ℹ️ Info (Blue)</option>
-                                        <option value="Success">✅ Success (Green)</option>
-                                        <option value="Warning">⚠️ Warning (Yellow)</option>
-                                        <option value="Danger">❌ Danger (Red)</option>
-                                        <option value="Primary">🔵 Primary</option>
-                                        <option value="Secondary">⚪ Secondary</option>
-                                        <option value="Dark">⬛ Dark</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label">Auto-hide</label>
-                                    <select class="form-select" @bind="_alertAutoHide">
-                                        <option value="true">Yes (5 seconds)</option>
-                                        <option value="false">No (manual close)</option>
-                                    </select>
-                                </div>
-                            </div>
+                            @AlertForm("Enter your broadcast message...")
                         </div>
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" @onclick="CloseBroadcastModal">Cancel</button>
@@ -439,11 +332,11 @@
                                         </tr>
                                         <tr>
                                             <th class="text-muted">Connected At</th>
-                                            <td>@_selectedConnection.ConnectedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
+                                            <td>@Helpers.FormatDateTime(_selectedConnection.ConnectedAt)</td>
                                         </tr>
                                         <tr>
                                             <th class="text-muted">Connection Duration</th>
-                                            <td>@FormatDuration(_selectedConnection.ConnectionDuration)</td>
+                                            <td>@(_selectedConnection.ConnectionDuration.HasValue ? DashboardView.FormatDuration(_selectedConnection.ConnectionDuration) : "—")</td>
                                         </tr>
                                     </table>
                                 </div>
@@ -462,18 +355,13 @@
                                         <tr>
                                             <th class="text-muted">Focus State</th>
                                             <td>
-                                                @if (_selectedConnection.HasFocus && _selectedConnection.IsVisible) {
-                                                    <span class="badge bg-success"><i class="fa fa-circle me-1"></i>Active (focused)</span>
-                                                } else if (_selectedConnection.IsVisible) {
-                                                    <span class="badge bg-warning text-dark"><i class="fa fa-circle-o me-1"></i>Idle (visible)</span>
-                                                } else {
-                                                    <span class="badge bg-secondary"><i class="fa fa-moon-o me-1"></i>Away (hidden)</span>
-                                                }
+                                                @{ var selectedFocus = Focus(_selectedConnection); }
+                                                <span class="badge @selectedFocus.BadgeClass"><i class="@selectedFocus.Icon me-1"></i>@selectedFocus.Label (@selectedFocus.State)</span>
                                             </td>
                                         </tr>
                                         <tr>
                                             <th class="text-muted">Last Activity</th>
-                                            <td>@(_selectedConnection.LastActivityAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</td>
+                                            <td>@(_selectedConnection.LastActivityAt.HasValue ? Helpers.FormatDateTime(_selectedConnection.LastActivityAt) : "—")</td>
                                         </tr>
                                         <tr>
                                             <th class="text-muted">Message Count</th>
@@ -552,7 +440,7 @@
                                         </tr>
                                         <tr>
                                             <th class="text-muted">State Updated</th>
-                                            <td>@(_selectedConnection.LastStateUpdate?.ToLocalTime().ToString("HH:mm:ss") ?? "—")</td>
+                                            <td>@(_selectedConnection.LastStateUpdate.HasValue ? Helpers.FormatTime(_selectedConnection.LastStateUpdate) : "—")</td>
                                         </tr>
                                     </table>
                                 </div>
@@ -581,10 +469,10 @@
     }
 
 @code {
-    protected bool _loadedData = false;
-    protected bool _loading = true;
-    protected string? _errorMessage;
-    protected string? _successMessage;
+    protected override string PageName => AppViews.SignalRConnections;
+    protected override Task LoadAsync() => LoadConnections();
+    protected override string InitialLoadingMessage => "Loading connections...";
+
     protected DataObjects.SignalRConnectionsResponse? _response;
     protected DateTime? _lastRefreshed;
     protected HashSet<string> _expandedHubs = new() { "freecicdHub" };
@@ -596,81 +484,63 @@
     protected DataObjects.SignalRConnectionInfo? _selectedConnection;
     protected string _alertMessage = "";
     protected string _alertMessageType = "Info";
-    protected string _alertAutoHide = "true";
+    protected bool _alertAutoHide = true;
     protected bool _sendingAlert = false;
 
-    public void Dispose()
-    {
-        Model.OnChange -= OnDataModelUpdated;
-    }
+    // The message, type and auto-hide fields, shared by the send and broadcast dialogs.
+    protected RenderFragment AlertForm(string placeholder) => __builder => {
+        <div class="mb-3">
+            <label class="form-label">Message</label>
+            <textarea class="form-control" rows="3"
+                      placeholder="@placeholder"
+                      @bind="_alertMessage"></textarea>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Message Type</label>
+                <select class="form-select" @bind="_alertMessageType">
+                    <option value="Info">ℹ️ Info (Blue)</option>
+                    <option value="Success">✅ Success (Green)</option>
+                    <option value="Warning">⚠️ Warning (Yellow)</option>
+                    <option value="Danger">❌ Danger (Red)</option>
+                    <option value="Primary">🔵 Primary</option>
+                    <option value="Secondary">⚪ Secondary</option>
+                    <option value="Dark">⬛ Dark</option>
+                </select>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Auto-hide</label>
+                <select class="form-select" value="@(_alertAutoHide ? "true" : "false")" @onchange='e => _alertAutoHide = (string?)e.Value == "true"'>
+                    <option value="true">Yes (5 seconds)</option>
+                    <option value="false">No (manual close)</option>
+                </select>
+            </div>
+        </div>
+    };
 
-    protected override void OnInitialized()
-    {
-        Model.OnChange += OnDataModelUpdated;
-    }
+    /// <summary>A connection's focus state: active (focused), idle (visible, not focused) or away (hidden).</summary>
+    protected readonly record struct FocusStyle(string BadgeClass, string Icon, string Label, string State, string Title);
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (Model.Loaded && Model.LoggedIn) {
-            if (!Model.User.Admin) {
-                _loading = false;
-                StateHasChanged();
-                return;
+    protected static FocusStyle Focus(DataObjects.SignalRConnectionInfo conn) =>
+        conn.HasFocus && conn.IsVisible ? new FocusStyle("bg-success", "fa fa-circle", "Active", "focused", "Active - Window has focus")
+        : conn.IsVisible ? new FocusStyle("bg-warning text-dark", "fa-regular fa-circle", "Idle", "visible", "Idle - Tab visible but not focused")
+        : new FocusStyle("bg-secondary", "fa-regular fa-moon", "Away", "hidden", "Away - Tab hidden or minimized");
+
+    protected Task LoadConnections() => RunLoadAsync("Loading connections...", "Error loading connections", async () => {
+        var response = await Helpers.GetOrPost<DataObjects.SignalRConnectionsResponse>(DataObjects.Endpoints.Admin.SignalRConnections);
+
+        if (response != null) {
+            _response = response;
+            if (!response.Success && !string.IsNullOrWhiteSpace(response.ErrorMessage)) {
+                _errorMessage = response.ErrorMessage;
             }
-
-            if (!_loadedData) {
-                _loadedData = true;
-                await LoadConnections();
-            }
-        }
-    }
-
-    protected void OnDataModelUpdated()
-    {
-        StateHasChanged();
-    }
-
-    protected async Task LoadConnections()
-    {
-        _loading = true;
-        _errorMessage = null;
-        StateHasChanged();
-
-        try {
-            var response = await Helpers.GetOrPost<DataObjects.SignalRConnectionsResponse>(
-                "api/Admin/SignalRConnections");
-
-            if (response != null) {
-                _response = response;
-                if (!response.Success && !string.IsNullOrWhiteSpace(response.ErrorMessage)) {
-                    _errorMessage = response.ErrorMessage;
-                }
-                _lastRefreshed = DateTime.Now;
-            } else {
-                _errorMessage = "Failed to load connections. Please try again.";
-            }
-        } catch (Exception ex) {
-            _errorMessage = $"Error loading connections: {ex.Message}";
-        } finally {
-            _loading = false;
-            StateHasChanged();
-        }
-    }
-
-    protected async Task RefreshConnections()
-    {
-        _loadedData = false;
-        await LoadConnections();
-    }
-
-    protected void ToggleHubExpanded(string hubName)
-    {
-        if (_expandedHubs.Contains(hubName)) {
-            _expandedHubs.Remove(hubName);
+            _lastRefreshed = DateTime.Now;
         } else {
-            _expandedHubs.Add(hubName);
+            _errorMessage = "Failed to load connections. Please try again.";
         }
-    }
+    });
+
+    protected Task RefreshConnections() => LoadConnections();
 
     protected bool IsHubExpanded(string hubName) => _expandedHubs.Contains(hubName);
 
@@ -689,11 +559,16 @@
     protected void OpenSendAlertModal(DataObjects.SignalRConnectionInfo connection)
     {
         _selectedConnection = connection;
-        _alertMessage = "";
-        _alertMessageType = "Info";
-        _alertAutoHide = "true";
+        ResetAlertForm();
         _showSendAlertModal = true;
         StateHasChanged();
+    }
+
+    protected void ResetAlertForm()
+    {
+        _alertMessage = "";
+        _alertMessageType = "Info";
+        _alertAutoHide = true;
     }
 
     protected void CloseSendAlertModal()
@@ -705,9 +580,7 @@
 
     protected void OpenBroadcastModal()
     {
-        _alertMessage = "";
-        _alertMessageType = "Info";
-        _alertAutoHide = "true";
+        ResetAlertForm();
         _showBroadcastModal = true;
         StateHasChanged();
     }
@@ -733,38 +606,21 @@
 
     protected async Task SendAlert()
     {
-        if (_selectedConnection == null || string.IsNullOrWhiteSpace(_alertMessage)) return;
-
-        _sendingAlert = true;
-        _errorMessage = null;
-        StateHasChanged();
-
-        try {
-            var request = new DataObjects.SendAlertRequest {
-                ConnectionId = _selectedConnection.ConnectionId,
-                Message = _alertMessage,
-                MessageType = _alertMessageType,
-                AutoHide = _alertAutoHide == "true"
-            };
-
-            var result = await Helpers.GetOrPost<DataObjects.SendAlertResponse>(
-                "api/Admin/SendAlert", request);
-
-            if (result?.Success == true) {
-                _successMessage = $"Alert sent to {_selectedConnection.UserId ?? "user"}!";
-                CloseSendAlertModal();
-            } else {
-                _errorMessage = result?.ErrorMessage ?? "Failed to send alert.";
-            }
-        } catch (Exception ex) {
-            _errorMessage = $"Error sending alert: {ex.Message}";
-        } finally {
-            _sendingAlert = false;
-            StateHasChanged();
-        }
+        if (_selectedConnection == null) return;
+        var recipient = _selectedConnection.UserId ?? "user";
+        await SubmitAlert(DataObjects.Endpoints.Admin.SendAlert, _selectedConnection.ConnectionId,
+            $"Alert sent to {recipient}!", "Failed to send alert.", "Error sending alert", CloseSendAlertModal);
     }
 
-    protected async Task BroadcastAlert()
+    protected Task BroadcastAlert() =>
+        SubmitAlert(DataObjects.Endpoints.Admin.BroadcastAlert, null,
+            $"Broadcast sent to {_response?.TotalConnectionCount ?? 0} users!", "Failed to broadcast alert.", "Error broadcasting alert", CloseBroadcastModal);
+
+    /// <summary>
+    /// Sends the alert form's message to one connection (<paramref name="connectionId"/>) or, when it is null, to
+    /// everyone, then closes the dialog on success or shows the server's reason as an error message.
+    /// </summary>
+    protected async Task SubmitAlert(string url, string? connectionId, string successMessage, string failureMessage, string errorPrefix, Action closeModal)
     {
         if (string.IsNullOrWhiteSpace(_alertMessage)) return;
 
@@ -774,22 +630,24 @@
 
         try {
             var request = new DataObjects.SendAlertRequest {
+                ConnectionId = connectionId ?? "",
                 Message = _alertMessage,
                 MessageType = _alertMessageType,
-                AutoHide = _alertAutoHide == "true"
+                AutoHide = _alertAutoHide
             };
 
-            var result = await Helpers.GetOrPost<DataObjects.SendAlertResponse>(
-                "api/Admin/BroadcastAlert", request);
+            var result = await Helpers.GetOrPost<DataObjects.SendAlertResponse>(url, request);
 
             if (result?.Success == true) {
-                _successMessage = $"Broadcast sent to {_response?.TotalConnectionCount ?? 0} users!";
-                CloseBroadcastModal();
+                Model.AddMessage(successMessage, MessageType.Success);
+                closeModal();
+            } else if (result == null) {
+                Model.UnknownError();
             } else {
-                _errorMessage = result?.ErrorMessage ?? "Failed to broadcast alert.";
+                Model.ErrorMessage(result.ErrorMessage ?? failureMessage);
             }
         } catch (Exception ex) {
-            _errorMessage = $"Error broadcasting alert: {ex.Message}";
+            _errorMessage = $"{errorPrefix}: {ex.Message}";
         } finally {
             _sendingAlert = false;
             StateHasChanged();
@@ -797,38 +655,9 @@
     }
 
     // Helper methods
-    protected string TruncateId(string? id, int maxLength = 20)
-    {
-        if (string.IsNullOrWhiteSpace(id)) return "—";
-        return id.Length > maxLength ? id.Substring(0, maxLength) + "..." : id;
-    }
-
-    protected string TruncateName(string? name, int maxLength)
-    {
-        if (string.IsNullOrWhiteSpace(name)) return "—";
-        return name.Length > maxLength ? name.Substring(0, maxLength) + "..." : name;
-    }
-
-    protected string FormatTimeAgo(DateTime utcTime)
-    {
-        var localTime = utcTime.ToLocalTime();
-        var diff = DateTime.Now - localTime;
-
-        if (diff.TotalSeconds < 60) return $"{(int)diff.TotalSeconds}s ago";
-        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
-        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
-        return $"{(int)diff.TotalDays}d ago";
-    }
-
-    protected string FormatDuration(TimeSpan? duration)
-    {
-        if (!duration.HasValue) return "—";
-        var d = duration.Value;
-        if (d.TotalSeconds < 60) return $"{(int)d.TotalSeconds} seconds";
-        if (d.TotalMinutes < 60) return $"{(int)d.TotalMinutes} minutes";
-        if (d.TotalHours < 24) return $"{d.Hours}h {d.Minutes}m";
-        return $"{(int)d.TotalDays}d {d.Hours}h";
-    }
+    // A dash for a missing value, otherwise the stock truncation.
+    protected static string Truncate(string? value, int maxLength) =>
+        string.IsNullOrWhiteSpace(value) ? "—" : Helpers.MaxStringLength(value, maxLength);
 
     protected string GetTransportBadgeClass(string? transport)
     {
@@ -883,9 +712,12 @@
         
         // Map internal view names to friendly names
         return page.ToLower() switch {
-            "pipelines" => "Dashboard",
-            "home" => "Wizard",
-            "signalr-connections" => "SignalR",
+            AppViews.Pipelines => "Dashboard",
+            AppViews.Wizard => "Wizard",
+            AppViews.SignalRConnections => "SignalR",
+            AppViews.NuGetInventory => "NuGet",
+            AppViews.HostEnvironment => "Host Env",
+            AppViews.Atlas => "Atlas",
             "appsettings" => "Settings",
             "login" => "Login",
             "users" => "Users",

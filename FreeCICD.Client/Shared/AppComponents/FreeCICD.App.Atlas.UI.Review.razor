@@ -1,0 +1,51 @@
+@* App Atlas: one decommission decision in place, on a Wall card, a Matrix row or the pool list: the evidence chips, *@
+@* the disposition and (unless compact) the note and who decided. The host saves; this only reports the choice. *@
+
+<div class="at-rv-row @(Compact ? "at-rv-compact" : "")">
+    <div class="at-rv-top">
+        <span class="at-rv-env">@Label</span>
+        <ul class="at-dc-chips" aria-label="@($"Evidence for {Name}")">
+            @foreach (var c in AtlasDecommissionView.Chips(Item, TrafficAvailable)) {
+                <li class="@c.Css">@c.Text</li>
+            }
+        </ul>
+    </div>
+    <div class="at-rv-decide">
+        <select id="@($"{_id}-disp")" class="form-select at-dc-disp at-dc-disp-@AtlasDecommissionView.Css(Item.Disposition)" value="@Item.Disposition" @onchange="OnDisposition" aria-label="@($"Disposition for {Name}")" disabled="@Saving">
+            @foreach (var d in AtlasDecommissionView.Dispositions) {
+                <option value="@d">@AtlasDecommissionView.Label(d)</option>
+            }
+        </select>
+        @if (!Compact && (Item.Disposition != DataObjects.AtlasDisposition.NotReviewed || Item.Note.Length > 0)) {
+            <input id="@($"{_id}-note")" class="form-control at-dc-note" type="text" placeholder="Note: who confirmed, why" value="@Item.Note" @onchange="OnNote" aria-label="@($"Note for {Name}")" disabled="@Saving" />
+        }
+    </div>
+    @if (Item.DecidedBy.Length > 0) {
+        <small class="at-muted at-rv-by">@(Compact && Item.Note.Length > 0 ? Item.Note + " · " : "")@Item.DecidedBy@(Item.DecidedUtc.HasValue ? ", " + Helpers.FormatDate(Item.DecidedUtc) : "")</small>
+    }
+</div>
+
+@code {
+    protected string _id = "at-rv-" + Guid.NewGuid().ToString("N")[..8];
+    /// <summary>Matrix rows: no note field; the note shows as text next to who decided.</summary>
+    [Parameter] public bool Compact { get; set; }
+    [Parameter, EditorRequired] public DataObjects.AtlasDecommissionItem Item { get; set; } = new();
+    /// <summary>What the row is about, for the chips and the controls' accessible names: usually the environment.</summary>
+    [Parameter] public string Label { get; set; } = "";
+
+    protected string Name => (Label.Length > 0 ? Label + " " : "") + AtlasDecommissionView.Title(Item);
+    [Parameter] public EventCallback<AtlasDecision> OnDecide { get; set; }
+    [Parameter] public bool Saving { get; set; }
+    [Parameter] public bool TrafficAvailable { get; set; }
+
+    protected Task OnDisposition(ChangeEventArgs e) =>
+        Enum.TryParse<DataObjects.AtlasDisposition>(e.Value?.ToString(), out var to) && to != Item.Disposition
+            ? OnDecide.InvokeAsync(new AtlasDecision(Item, to, null))
+            : Task.CompletedTask;
+
+    protected Task OnNote(ChangeEventArgs e)
+    {
+        var text = (e.Value?.ToString() ?? "").Trim();
+        return text == Item.Note ? Task.CompletedTask : OnDecide.InvokeAsync(new AtlasDecision(Item, Item.Disposition, text));
+    }
+}

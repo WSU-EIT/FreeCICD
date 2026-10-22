@@ -1,8 +1,8 @@
-# Templates/playwright-visual-tests.yml
+﻿# Templates/playwright-visual-tests.yml
 parameters:
   - name: testUrl
     type: string
-    default: 'https://prod.em.wsu.edu/FreeCICD'
+    default: 'https:///FreeCICD'
   - name: baseImageName
     type: string
     default: 'playwright-dotnet-pwsh'

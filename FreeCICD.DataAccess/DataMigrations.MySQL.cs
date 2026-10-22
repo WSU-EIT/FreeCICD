@@ -1,4 +1,5 @@
 namespace FreeCICD;
+
 public partial class DataMigrations
 {
     public List<DataObjects.DataMigration> GetMigrationsMySQL()

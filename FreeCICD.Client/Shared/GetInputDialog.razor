@@ -2,15 +2,15 @@
 @inject IJSRuntime jsRuntime
 @inject Radzen.DialogService DialogService
 <GetInput Class="@Class"
-          DefaultValue="@DefaultValue"
-          Id="@Id"
-          Instructions="@Instructions"
-          MultiselectRows="@MultiselectRows"
-          OnInputAccepted="TextValueChanged"
-          PlaceholderText="@PlaceholderText"
-          SetFocus="@SetFocus"
-          UserInputOptions="@UserInputOptions"
-          UserInputType="@UserInputType" />
+        DefaultValue="@DefaultValue"
+        Id="@Id"
+        Instructions="@Instructions"
+        MultiselectRows="@MultiselectRows"
+        OnInputAccepted="TextValueChanged"
+        PlaceholderText="@PlaceholderText"
+        SetFocus="@SetFocus"
+        UserInputOptions="@UserInputOptions"
+        UserInputType="@UserInputType" />
 <div class="btn-group mt-2 mb-2" role="group">
     <button type="button" class="btn btn-dark" @onclick="Cancel">
         <i class="fa-solid fa-xmark"></i> Cancel
@@ -73,12 +73,12 @@
     /// </summary>
     [Parameter] public FreeBlazor.GetInput.InputType? UserInputType { get; set; }
 
-    public void Dispose() { }
-
     protected void Cancel()
     {
         DialogService.Close();
     }
+
+    public void Dispose() { }
 
     protected void ReturnValue()
     {

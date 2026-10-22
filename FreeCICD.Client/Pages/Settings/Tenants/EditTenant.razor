@@ -94,14 +94,14 @@
                 <label for="edit-tenant-jwtRsaPrivateKey"><Language Tag="JwtRsaPrivateKey" /></label>
                 <span class="note"><Language Tag="JwtRsaPrivateKeyInfo" /></span>
                 <textarea class="form-control fixed-width" id="edit-tenant-jwtRsaPrivateKey"
-                @bind="_tenant.TenantSettings.JwtRsaPrivateKey" rows="@TextareaHeightRSA" @bind:event="oninput"></textarea>
+                        @bind="_tenant.TenantSettings.JwtRsaPrivateKey" rows="@TextareaHeightRSA" @bind:event="oninput"></textarea>
             </div>
 
             <div class="col col-sm-12 col-md-6">
                 <label for="edit-tenant-jwtRsaPublicKey"><Language Tag="JwtRsaPublicKey" /></label>
                 <span class="note"><Language Tag="JwtRsaPublicKeyInfo" /></span>
                 <textarea class="form-control fixed-width" id="edit-tenant-jwtRsaPublicKey"
-                @bind="_tenant.TenantSettings.JwtRsaPublicKey" rows="@TextareaHeightRSA" @bind:event="oninput"></textarea>
+                        @bind="_tenant.TenantSettings.JwtRsaPublicKey" rows="@TextareaHeightRSA" @bind:event="oninput"></textarea>
             </div>
         </div>    
         <div class="mb-2">
@@ -250,7 +250,7 @@ namespace CustomAuthenticationProvider {
                     <div class="mb-2">
                         <label for="edit-tenant-customAuthenticationCode"><Language Tag="LoginTypeCustomAuthenticationButtonCSharpCode" /></label>
                         <textarea id="edit-tenant-customAuthenticationCode" class="form-control" rows="@TextareaHeightCustomAuthenticationCode" 
-                        @bind="_tenant.TenantSettings.CustomAuthenticationCode" @bind:event="oninput"></textarea>
+                                @bind="_tenant.TenantSettings.CustomAuthenticationCode" @bind:event="oninput"></textarea>
                     </div>
                 </div>
             </div>

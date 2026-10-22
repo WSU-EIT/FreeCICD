@@ -194,8 +194,7 @@ namespace Plugins
             List<string>? additionalAssemblies,
             string Namespace,
             string Classname,
-            string invokerFunction)
-        {
+            string invokerFunction){
             T? output = default(T);
 
             // If this code was encrypted decrypt it now.
@@ -382,18 +381,6 @@ namespace Plugins
             return output;
         }
 
-        private string GetPluginNamespace(string code)
-        {
-            string output = String.Empty;
-
-            var line = FindFirstLineStartingWith(code, "namespace");
-            if (!String.IsNullOrWhiteSpace(line)) {
-                output = line.Replace("namespace ", "").Replace(";", "").Replace("{", "").Trim();
-            }
-
-            return output;
-        }
-
         private string GetPluginClass(string code)
         {
             string output = String.Empty;
@@ -411,6 +398,18 @@ namespace Plugins
                 }
             }
 
+
+            return output;
+        }
+
+        private string GetPluginNamespace(string code)
+        {
+            string output = String.Empty;
+
+            var line = FindFirstLineStartingWith(code, "namespace");
+            if (!String.IsNullOrWhiteSpace(line)) {
+                output = line.Replace("namespace ", "").Replace(";", "").Replace("{", "").Trim();
+            }
 
             return output;
         }
@@ -556,6 +555,14 @@ namespace Plugins
             get { return _pluginFolder; }
         }
 
+        /// <summary>
+        /// <inheritdoc/>
+        /// </summary>
+        public List<string> ServerReferences {
+            get { return _serverReferences; }
+            set { _serverReferences = value != null && value.Count > 0 ? value : new List<string>(); }
+        }
+
         private List<string> SplitStringIntoLines(string? input)
         {
             var output = new List<string>();
@@ -568,14 +575,6 @@ namespace Plugins
             }
 
             return output;
-        }
-
-        /// <summary>
-        /// <inheritdoc/>
-        /// </summary>
-        public List<string> ServerReferences {
-            get { return _serverReferences; }
-            set { _serverReferences = value != null && value.Count > 0 ? value : new List<string>(); }
         }
 
         /// <summary>
@@ -621,9 +620,10 @@ namespace Plugins
     public class Plugin
     {
         /// <summary>
-        /// The unique Guid Id for this plugin.
+        /// Holds the values for any additional assemblies that need to be loaded for this plugin, detected
+        /// during startup and should not be set manually.
         /// </summary>
-        public Guid Id { get; set; }
+        public List<string> AdditionalAssemblies { get; set; } = new List<string>();
         /// <summary>
         /// The name of the Author of this plugin.
         /// </summary>
@@ -647,6 +647,14 @@ namespace Plugins
         /// </summary>
         public string Description { get; set; } = "";
         /// <summary>
+        /// The unique Guid Id for this plugin.
+        /// </summary>
+        public Guid Id { get; set; }
+        /// <summary>
+        /// The main invoker function for this plugin (defaults to "Execute".)
+        /// </summary>
+        public string Invoker { get; set; } = "Execute";
+        /// <summary>
         /// An option to limit this plugin to specific tenants.
         /// If this is not set, the plugin will be available to all tenants.
         /// Otherwise, the plugin will only be available if the tenant Id matches one of the Ids in this list.
@@ -660,10 +668,6 @@ namespace Plugins
         /// The namespace in which the plugin resides. This is detected at startup and should not be set manually.
         /// </summary>
         public string Namespace { get; set; } = "";
-        /// <summary>
-        /// The main invoker function for this plugin (defaults to "Execute".)
-        /// </summary>
-        public string Invoker { get; set; } = "Execute";
         /// <summary>
         /// An optional collection of Prompts that can be used to collect data for this plugin.
         /// </summary>
@@ -696,11 +700,6 @@ namespace Plugins
         /// The version of the plugin.
         /// </summary>
         public string Version { get; set; } = "";
-        /// <summary>
-        /// Holds the values for any additional assemblies that need to be loaded for this plugin, detected
-        /// during startup and should not be set manually.
-        /// </summary>
-        public List<string> AdditionalAssemblies { get; set; } = new List<string>();
     }
 
     /// <summary>
@@ -709,13 +708,13 @@ namespace Plugins
     public class PluginExecuteRequest
     {
         /// <summary>
-        /// The plugin to be executed.
-        /// </summary>
-        public Plugin Plugin { get; set; } = new Plugin();
-        /// <summary>
         /// Any objects to pass along to the invoker function.
         /// </summary>
         public object[]? Objects { get; set; }
+        /// <summary>
+        /// The plugin to be executed.
+        /// </summary>
+        public Plugin Plugin { get; set; } = new Plugin();
     }
 
     /// <summary>
@@ -724,10 +723,6 @@ namespace Plugins
     public class PluginExecuteResult
     {
         /// <summary>
-        /// Indicates if the result was a success or failure.
-        /// </summary>
-        public bool Result { get; set; }
-        /// <summary>
         /// Contains any messages returned from the code.
         /// </summary>
         public List<string> Messages { get; set; } = new List<string>();
@@ -735,6 +730,10 @@ namespace Plugins
         /// Contains any objects returned from the code.
         /// </summary>
         public List<object> Objects { get; set; } = new List<object>();
+        /// <summary>
+        /// Indicates if the result was a success or failure.
+        /// </summary>
+        public bool Result { get; set; }
     }
 
     /// <summary>
@@ -756,25 +755,21 @@ namespace Plugins
         /// </summary>
         public string ElementClass { get; set; } = "";
         /// <summary>
+        /// An optional function to call to load Options for this prompt.
+        /// You can either specific Options directly in the Options property or use this
+        /// function to load them dynamically with a matching function in your plugin.
+        /// </summary>
+        public string Function { get; set; } = "";
+        /// <summary>
         /// Indicates if this prompt element should be initially hidden.
         /// Can be updated by using the PromptValuesOnUpdate property of the plugin
         /// to call a function that will be used to update the plugin and/or prompts.
         /// </summary>
         public bool Hidden { get; set; }
         /// <summary>
-        /// The type of this prompt.
-        /// </summary>
-        public PluginPromptType Type { get; set; }
-        /// <summary>
         /// The name for this prompt. Must be unique within the plugin prompt collection.
         /// </summary>
         public string Name { get; set; } = "";
-        /// <summary>
-        /// An optional function to call to load Options for this prompt.
-        /// You can either specific Options directly in the Options property or use this
-        /// function to load them dynamically with a matching function in your plugin.
-        /// </summary>
-        public string Function { get; set; } = "";
         /// <summary>
         /// Options for this prompt.
         /// </summary>
@@ -784,6 +779,10 @@ namespace Plugins
         /// PluginPrompts component, this element will be marked as required.
         /// </summary>
         public bool Required { get; set; }
+        /// <summary>
+        /// The type of this prompt.
+        /// </summary>
+        public PluginPromptType Type { get; set; }
     }
 
     /// <summary>

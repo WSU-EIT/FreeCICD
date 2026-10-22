@@ -21,19 +21,19 @@ public enum MessageType
 
 public class Message
 {
-    public string Id { get; set; } = "";
     public bool AutoHide { get; set; }
+    public string Id { get; set; } = "";
+    public MessageType MessageType { get; set; } = MessageType.Dark;
+    public bool ReplaceLineBreaks { get; set; }
     public DateTime Shown { get; set; } = DateTime.UtcNow;
     public string Text { get; set; } = "";
     public string TimeLabel { get; set; } = "";
-    public MessageType MessageType { get; set; } = MessageType.Dark;
-    public bool ReplaceLineBreaks { get; set; }
 }
 
 public class NewMessage
 {
-    public string Text { get; set; } = "";
     public MessageType MessageType { get; set; } = MessageType.Dark;
+    public string Text { get; set; } = "";
 }
 
 public enum TextCase

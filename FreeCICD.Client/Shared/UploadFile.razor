@@ -5,9 +5,9 @@
 <div class="@(_uploading ? "hidden" : "mt-3")">
     <MudBlazor.MudStack Style="width: 100%;">
         <MudBlazor.MudFileUpload T="UploadType" OnFilesChanged="UploaderOnInputFileChanged" Hidden="false"
-            Accept="@SupportedFileTypesList" AppendMultipleFiles="true" MaximumFileCount="10"
-            Class="flex-1" InputClass="absolute mud-width-full mud-height-full overflow-hidden z-20" InputStyle="opacity:0"
-            @ondragenter="@UploaderSetDragClass" @ondragleave="@UploaderClearDragClass" @ondragend="@UploaderClearDragClass">
+                Accept="@SupportedFileTypesList" AppendMultipleFiles="true" MaximumFileCount="10"
+                Class="flex-1" InputClass="absolute mud-width-full mud-height-full overflow-hidden z-20" InputStyle="opacity:0"
+                @ondragenter="@UploaderSetDragClass" @ondragleave="@UploaderClearDragClass" @ondragend="@UploaderClearDragClass">
             <ActivatorContent>
                 <MudBlazor.MudPaper Height="200px" Outlined="true" Class="@UploaderDragClass">
                     @if (!String.IsNullOrWhiteSpace(UploadInstructions)) {
@@ -30,6 +30,10 @@
     </div>
 }
 @code {
+    private static string UploaderDefaultDragClass = "drag-and-drop-upload";
+    private string UploaderDragClass = UploaderDefaultDragClass;
+
+    protected bool _uploading = false;
     [Parameter]
     public bool? AllowMultipleUploads { get; set; } = false;
 
@@ -41,16 +45,6 @@
 
     [Parameter]
     public List<string>? SupportedFileTypes { get; set; }
-
-    [Parameter]
-    public string? UploadInstructions { get; set; }
-
-    private static string UploaderDefaultDragClass = "drag-and-drop-upload";
-    private string UploaderDragClass = UploaderDefaultDragClass;
-
-    protected bool _uploading = false;
-
-    public void Dispose() { }
 
     protected string SupportedFileTypesList
     {
@@ -75,6 +69,11 @@
             return output;
         }
     }
+
+    [Parameter]
+    public string? UploadInstructions { get; set; }
+
+    public void Dispose() { }
 
     private void UploaderClearDragClass()
     {

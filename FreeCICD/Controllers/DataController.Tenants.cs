@@ -64,15 +64,6 @@ public partial class DataController
     }
 
     [HttpGet]
-    [AllowAnonymous]
-    [Route("~/api/Data/GetTenantsForLogin")]
-    public async Task<ActionResult<DataObjects.LoginTenantListing>> GetTenantsForLogin()
-    {
-        var output = await da.GetTenantsForLogin();
-        return Ok(output);
-    }
-
-    [HttpGet]
     [Authorize]
     [Route("~/api/Data/GetTenantSettings/{id}")]
     public ActionResult<DataObjects.TenantSettings> GetTenantSettings(Guid id)
@@ -83,6 +74,15 @@ public partial class DataController
         } else {
             return Unauthorized(_returnCodeAccessDenied);
         }
+    }
+
+    [HttpGet]
+    [AllowAnonymous]
+    [Route("~/api/Data/GetTenantsForLogin")]
+    public async Task<ActionResult<DataObjects.LoginTenantListing>> GetTenantsForLogin()
+    {
+        var output = await da.GetTenantsForLogin();
+        return Ok(output);
     }
 
     [HttpGet]

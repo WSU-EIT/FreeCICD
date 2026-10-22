@@ -23,13 +23,13 @@ public partial interface IDataAccess
     Task<DataObjects.User> GetUserByUsername(Guid TenantId, string Username, bool AddIfNotFound = false);
     Task<DataObjects.User> GetUserByUsernameOrEmail(Guid TenantId, string search, bool AddIfNotFound = true);
     Task<string> GetUserDisplayName(Guid? UserId);
-    Task<DataObjects.FilterUsers> GetUsersFiltered(DataObjects.FilterUsers filter, DataObjects.User? CurrentUser = null);
     Task<DataObjects.User> GetUserFromToken(string? Token, string fingerprint = "");
     Task<DataObjects.User> GetUserFromToken(Guid TenantId, string? Token, string fingerprint = "");
     Task<List<DataObjects.UserListing>> GetUserListing(Guid TenantId);
     Task<Guid?> GetUserPhoto(Guid UserId);
     Task<DataObjects.SimpleResponse> GetUserPhotoId(Guid UserId);
     Task<List<DataObjects.User>> GetUsers(Guid TenantId);
+    Task<DataObjects.FilterUsers> GetUsersFiltered(DataObjects.FilterUsers filter, DataObjects.User? CurrentUser = null);
     Task<List<DataObjects.User>> GetUsersForEmailAddress(string? EmailAddress, string fingerprint = "", bool sudoLogin = false);
     Task<List<DataObjects.User>> GetUsersInDepartment(Guid TenantId, Guid DepartmentId, DataObjects.User? CurrentUser = null);
     Task<List<DataObjects.UserTenant>> GetUserTenantList(string? username, string? email, bool enabledUsersOnly = true);
@@ -82,7 +82,7 @@ public partial class DataAccess
             } else {
                 output.ActionResponse.Messages.Add("User Already Exists");
             }
-            
+
             return output;
         }
 
@@ -133,7 +133,7 @@ public partial class DataAccess
             var tenantSettings = GetTenantSettings(tenantId);
 
             // First, fix or delete all relational user records
-            if(ForceDeleteImmediately || tenantSettings.DeletePreference == DataObjects.DeletePreference.Immediate) {
+            if (ForceDeleteImmediately || tenantSettings.DeletePreference == DataObjects.DeletePreference.Immediate) {
                 try {
                     var deleteAppRecords = await DeleteRecordsApp(rec, CurrentUser);
                     if (!deleteAppRecords.Result) {
@@ -171,7 +171,7 @@ public partial class DataAccess
                     await data.Database.ExecuteSqlRawAsync("UPDATE Tenants SET AddedBy={0} WHERE AddedBy={1}", displayName, UserId.ToString());
 
                     await data.Database.ExecuteSqlRawAsync("UPDATE UDFLabels SET LastModifiedBy={0} WHERE LastModifiedBy={1}", displayName, UserId.ToString());
-                    
+
                     await data.Database.ExecuteSqlRawAsync("UPDATE UserGroups SET LastModifiedBy={0} WHERE LastModifiedBy={1}", displayName, UserId.ToString());
                     await data.Database.ExecuteSqlRawAsync("UPDATE UserGroups SET AddedBy={0} WHERE AddedBy={1}", displayName, UserId.ToString());
 
@@ -189,17 +189,17 @@ public partial class DataAccess
                     return output;
                 }
             }
-            
+
 
             // Now, delete the main user record
-            if (ForceDeleteImmediately ||tenantSettings.DeletePreference == DataObjects.DeletePreference.Immediate) {
+            if (ForceDeleteImmediately || tenantSettings.DeletePreference == DataObjects.DeletePreference.Immediate) {
                 data.Users.Remove(rec);
             } else {
 
                 rec.Deleted = true;
                 rec.DeletedAt = now;
                 rec.LastModified = now;
-                if(CurrentUser != null) {
+                if (CurrentUser != null) {
                     rec.LastModifiedBy = CurrentUserIdString(CurrentUser);
                 }
             }
@@ -421,7 +421,7 @@ public partial class DataAccess
         var output = new DataObjects.ActiveUser();
 
         var rec = await data.Users.FirstOrDefaultAsync(x => x.UserId == userId && x.LastLogin != null && x.LastLogin > DateTime.UtcNow.AddMinutes(-1));
-        if(rec != null) {
+        if (rec != null) {
             var preferences = DeserializeObject<DataObjects.UserPreferences>(rec.Preferences);
             if (preferences == null) {
                 preferences = new DataObjects.UserPreferences();
@@ -499,12 +499,12 @@ public partial class DataAccess
         if (UserId.HasValue && UserId != Guid.Empty) {
             User? rec = null;
 
-            if(AdminUser(CurrentUser)) {
+            if (AdminUser(CurrentUser)) {
                 rec = await data.Users.FirstOrDefaultAsync(x => x.UserId == (Guid)UserId);
             } else {
                 rec = await data.Users.FirstOrDefaultAsync(x => x.UserId == (Guid)UserId && x.Deleted != true);
             }
-            
+
             if (rec != null) {
                 if (LastNameFirst) {
                     string deptName = String.Empty;
@@ -531,12 +531,12 @@ public partial class DataAccess
         if (UserId.HasValue && UserId != Guid.Empty) {
             User? rec = null;
 
-            if(AdminUser(CurrentUser)) {
+            if (AdminUser(CurrentUser)) {
                 rec = await data.Users.FirstOrDefaultAsync(x => x.UserId == (Guid)UserId);
             } else {
                 rec = await data.Users.FirstOrDefaultAsync(x => x.UserId == (Guid)UserId && x.Deleted != true);
             }
-            
+
             if (rec != null && !String.IsNullOrEmpty(rec.Email)) {
                 output = rec.Email;
             }
@@ -634,7 +634,7 @@ public partial class DataAccess
 
         User? rec = null;
 
-        if(AdminUser(CurrentUser)) {
+        if (AdminUser(CurrentUser)) {
             rec = await data.Users
                 .Include(x => x.Department)
                 .Include(x => x.UserInGroups)
@@ -722,7 +722,7 @@ public partial class DataAccess
 
             output.DisplayName = DisplayNameFromLastAndFirst(output.LastName, output.FirstName, output.Email, output.DepartmentName, output.Location);
 
-            if(_inMemoryDatabase && output.DepartmentId.HasValue && String.IsNullOrEmpty(output.DepartmentName)) {
+            if (_inMemoryDatabase && output.DepartmentId.HasValue && String.IsNullOrEmpty(output.DepartmentName)) {
                 output.DepartmentName = GetDepartmentName(output.TenantId, GuidValue(output.DepartmentId));
             }
 
@@ -804,9 +804,254 @@ public partial class DataAccess
             var rec = await data.Users
                 .Select(x => new { x.UserId, x.FirstName, x.LastName, x.Deleted })
                 .FirstOrDefaultAsync(x => x.UserId == UserId && x.Deleted != true);
-                    
-            if(rec != null) {
+
+            if (rec != null) {
                 output = rec.FirstName + " " + rec.LastName;
+            }
+        }
+
+        return output;
+    }
+
+    public async Task<DataObjects.User> GetUserFromToken(string? Token, string fingerprint = "")
+    {
+        DataObjects.User output = new DataObjects.User();
+
+        if (!String.IsNullOrWhiteSpace(Token)) {
+            // Need to try each active Tenant to see which key can decrypt this token.
+            // Since all RSA keys are unique, the first that decrypts the token and finds a valid user is the valid tenant.
+            var tenants = await GetTenants();
+            if (tenants.Any()) {
+                foreach (var tenant in tenants.Where(x => x.Enabled == true)) {
+                    Guid UserId = Guid.Empty;
+                    string tokenFingerprint = String.Empty;
+                    bool sudoLogin = false;
+
+                    Dictionary<string, object> decrypted = JwtDecode(tenant.TenantId, Token);
+                    if (decrypted != null && decrypted.Any()) {
+                        if (decrypted.ContainsKey("UserId")) {
+                            try {
+                                string guid = decrypted["UserId"] + String.Empty;
+                                UserId = new Guid(guid);
+                            } catch { }
+                        }
+
+                        if (decrypted.ContainsKey("Fingerprint")) {
+                            try {
+                                tokenFingerprint += decrypted["Fingerprint"];
+                            } catch { }
+                        }
+
+                        if (decrypted.ContainsKey("SudoLogin")) {
+                            try {
+                                var sl = decrypted["SudoLogin"];
+                                if (sl != null) {
+                                    sudoLogin = (bool)sl;
+                                }
+                            } catch { }
+                        }
+
+                        if (UserId != Guid.Empty) {
+                            if (!String.IsNullOrWhiteSpace(fingerprint) || !String.IsNullOrWhiteSpace(tokenFingerprint)) {
+                                // Make sure the fingerprint matches
+                                if (fingerprint != tokenFingerprint) {
+                                    return output;
+                                }
+                            }
+
+                            output = await GetUser(UserId);
+                            output.Sudo = sudoLogin;
+                            return output;
+                        }
+                    }
+                }
+            }
+        }
+
+        return output;
+    }
+
+    public async Task<DataObjects.User> GetUserFromToken(Guid TenantId, string? Token, string fingerprint = "")
+    {
+        DataObjects.User output = new DataObjects.User();
+
+        if (!String.IsNullOrWhiteSpace(Token)) {
+            var cachedUser = CacheStore.GetCachedItem<DataObjects.User>(TenantId, "user-from-token-" + Token);
+            if (cachedUser != null && cachedUser.TenantId == TenantId && cachedUser.ActionResponse.Result) {
+                return cachedUser;
+            }
+
+            Guid UserId = Guid.Empty;
+            string tokenFingerprint = String.Empty;
+            bool sudoLogin = false;
+
+            Dictionary<string, object> decrypted = JwtDecode(TenantId, Token);
+
+            if (decrypted.ContainsKey("UserId")) {
+                try {
+                    string guid = decrypted["UserId"] + String.Empty;
+                    UserId = new Guid(guid);
+                } catch { }
+            }
+
+            if (decrypted.ContainsKey("Fingerprint")) {
+                try {
+                    tokenFingerprint += decrypted["Fingerprint"];
+                } catch { }
+            }
+
+            if (decrypted.ContainsKey("SudoLogin")) {
+                try {
+                    var sl = decrypted["SudoLogin"];
+                    if (sl != null) {
+                        sudoLogin = (bool)sl;
+                    }
+                } catch { }
+            }
+
+            if (UserId != Guid.Empty) {
+                if (!String.IsNullOrWhiteSpace(fingerprint) || !String.IsNullOrWhiteSpace(tokenFingerprint)) {
+                    // Make sure the fingerprint matches
+                    if (fingerprint != tokenFingerprint) {
+                        return output;
+                    }
+                }
+
+                output = await GetUser(UserId);
+                output.Sudo = sudoLogin;
+
+                // Cache this response for a while so that multiple calls to this by the API call to get the current user
+                // and the CustomAuthenticationHandler will not result in multiple lookups in the database.
+                CacheStore.SetCacheItem(TenantId, "user-from-token-" + Token, output, DateTimeOffset.Now.AddSeconds(5));
+            }
+        }
+
+        return output;
+    }
+
+    public async Task<List<DataObjects.UserListing>> GetUserListing(Guid TenantId)
+    {
+        List<DataObjects.UserListing> output = new List<DataObjects.UserListing>();
+
+        var recs = await data.Users
+            .Where(x => x.TenantId == TenantId && x.Username.ToLower() != "admin" && x.Deleted != true)
+            .Select(x => new { x.UserId, x.FirstName, x.LastName, x.Email, x.Username, x.Enabled, x.Admin, x.Deleted, x.DeletedAt, x.Location })
+            .OrderBy(x => x.FirstName).ThenBy(x => x.LastName).ToListAsync();
+
+        if (recs != null && recs.Any()) {
+            foreach (var rec in recs) {
+                var admin = BooleanValue(rec.Admin);
+                var appAdmin = await UserIsMainAdmin(rec.UserId);
+
+                var u = new DataObjects.UserListing {
+                    UserId = rec.UserId,
+                    FirstName = rec.FirstName,
+                    LastName = rec.LastName,
+                    Email = rec.Email,
+                    Username = rec.Username,
+                    Enabled = BooleanValue(rec.Enabled),
+                    Admin = admin || appAdmin,
+                    Deleted = BooleanValue(rec.Deleted),
+                    DeletedAt = rec.DeletedAt,
+                    Location = rec.Location,
+                };
+
+                GetDataApp(rec, u);
+
+                output.Add(u);
+            }
+        }
+
+        return output;
+    }
+
+    public async Task<Guid?> GetUserPhoto(Guid UserId)
+    {
+        Guid? output = (Guid?)null;
+        try {
+            var rec = await data.FileStorages.FirstOrDefaultAsync(x => x.ItemId == null && x.UserId == UserId && x.Deleted != true);
+            if (rec != null) {
+                output = rec.FileId;
+            }
+        } catch (Exception ex) {
+            if (ex != null) {
+
+            }
+        }
+        return output;
+    }
+
+    public async Task<DataObjects.SimpleResponse> GetUserPhotoId(Guid UserId)
+    {
+        DataObjects.SimpleResponse output = new DataObjects.SimpleResponse();
+
+        var rec = await data.FileStorages.FirstOrDefaultAsync(x => x.ItemId == null && x.UserId == UserId && x.Deleted != true);
+        if (rec != null) {
+            output = new DataObjects.SimpleResponse {
+                Result = true,
+                Message = rec.FileId.ToString(),
+            };
+        }
+
+        return output;
+    }
+
+    public async Task<List<DataObjects.User>> GetUsers(Guid TenantId)
+    {
+        List<DataObjects.User> output = new List<DataObjects.User>();
+
+        var recs = await data.Users.Where(x => x.TenantId == TenantId && x.Deleted != true)
+            .OrderBy(x => x.LastName).ThenBy(x => x.FirstName).ToListAsync();
+        if (recs != null && recs.Count() > 0) {
+            foreach (var rec in recs) {
+                var u = new DataObjects.User {
+                    ActionResponse = GetNewActionResponse(true),
+                    Added = rec.Added,
+                    AddedBy = LastModifiedDisplayName(rec.AddedBy),
+                    TenantId = TenantId,
+                    Admin = rec.Admin,
+                    CanBeScheduled = rec.CanBeScheduled,
+                    DepartmentId = rec.DepartmentId.HasValue ? (Guid)rec.DepartmentId : (Guid?)null,
+                    DepartmentName = rec.DepartmentId.HasValue && rec.Department != null ? rec.Department.DepartmentName : String.Empty,
+                    Email = rec.Email,
+                    Phone = rec.Phone,
+                    Enabled = rec.Enabled,
+                    Deleted = rec.Deleted,
+                    DeletedAt = rec.DeletedAt,
+                    FirstName = rec.FirstName,
+                    LastLogin = rec.LastLogin,
+                    LastLoginSource = rec.LastLoginSource,
+                    LastName = rec.LastName,
+                    ManageAppointments = rec.ManageAppointments,
+                    ManageFiles = rec.ManageFiles,
+                    Photo = await GetUserPhoto(rec.UserId),
+                    UserId = rec.UserId,
+                    Username = rec.Username,
+                    EmployeeId = rec.EmployeeId,
+                    Password = String.Empty,
+                    PreventPasswordChange = rec.PreventPasswordChange,
+                    HasLocalPassword = !String.IsNullOrWhiteSpace(rec.Password),
+                    LastLockoutDate = rec.LastLockoutDate,
+                    LastModified = rec.LastModified,
+                    LastModifiedBy = LastModifiedDisplayName(rec.LastModifiedBy),
+                    Source = rec.Source,
+                    udf01 = rec.UDF01,
+                    udf02 = rec.UDF02,
+                    udf03 = rec.UDF03,
+                    udf04 = rec.UDF04,
+                    udf05 = rec.UDF05,
+                    udf06 = rec.UDF06,
+                    udf07 = rec.UDF07,
+                    udf08 = rec.UDF08,
+                    udf09 = rec.UDF09,
+                    udf10 = rec.UDF10
+                };
+
+                u.DisplayName = DisplayNameFromLastAndFirst(u.LastName, u.FirstName, u.Email, u.DepartmentName, u.Location);
+
+                GetDataApp(rec, u);
+
+                output.Add(u);
             }
         }
 
@@ -933,7 +1178,7 @@ public partial class DataAccess
 
         output.Columns.AddRange(GetFilterColumnsApp("Users", "LastLogin", language, CurrentUser));
 
-        output.Columns.Add(new DataObjects.FilterColumn { 
+        output.Columns.Add(new DataObjects.FilterColumn {
             Align = "center",
             Label = "#",
             TipText = GetLanguageItem("FailedLoginAttempts", language),
@@ -971,7 +1216,7 @@ public partial class DataAccess
 
         IQueryable<User>? recs = null;
 
-        if(AdminUser(CurrentUser)) {
+        if (AdminUser(CurrentUser)) {
             recs = data.Users
                 .Include(x => x.Department)
                 .Where(x => x.TenantId == output.TenantId && x.Username != null && x.Username.ToLower() != "admin");
@@ -1292,7 +1537,7 @@ public partial class DataAccess
 
                 if (_inMemoryDatabase && u.DepartmentId.HasValue && String.IsNullOrEmpty(u.DepartmentName)) {
                     var dept = departments.FirstOrDefault(x => x.DepartmentId == u.DepartmentId);
-                    if(dept != null) {
+                    if (dept != null) {
                         u.DepartmentName = dept.DepartmentName;
                     }
                 }
@@ -1306,251 +1551,6 @@ public partial class DataAccess
         }
 
         output.ActionResponse.Result = true;
-
-        return output;
-    }
-
-    public async Task<DataObjects.User> GetUserFromToken(string? Token, string fingerprint = "")
-    {
-        DataObjects.User output = new DataObjects.User();
-
-        if (!String.IsNullOrWhiteSpace(Token)) {
-            // Need to try each active Tenant to see which key can decrypt this token.
-            // Since all RSA keys are unique, the first that decrypts the token and finds a valid user is the valid tenant.
-            var tenants = await GetTenants();
-            if (tenants.Any()) { 
-                foreach(var tenant in tenants.Where(x => x.Enabled == true)) {
-                    Guid UserId = Guid.Empty;
-                    string tokenFingerprint = String.Empty;
-                    bool sudoLogin = false;
-
-                    Dictionary<string, object> decrypted = JwtDecode(tenant.TenantId, Token);
-                    if(decrypted != null && decrypted.Any()) {
-                        if (decrypted.ContainsKey("UserId")) {
-                            try {
-                                string guid = decrypted["UserId"] + String.Empty;
-                                UserId = new Guid(guid);
-                            } catch { }
-                        }
-
-                        if (decrypted.ContainsKey("Fingerprint")) {
-                            try {
-                                tokenFingerprint += decrypted["Fingerprint"];
-                            } catch { }
-                        }
-
-                        if (decrypted.ContainsKey("SudoLogin")) {
-                            try {
-                                var sl = decrypted["SudoLogin"];
-                                if (sl != null) {
-                                    sudoLogin = (bool)sl;
-                                }
-                            } catch { }
-                        }
-
-                        if (UserId != Guid.Empty) {
-                            if (!String.IsNullOrWhiteSpace(fingerprint) || !String.IsNullOrWhiteSpace(tokenFingerprint)) {
-                                // Make sure the fingerprint matches
-                                if (fingerprint != tokenFingerprint) {
-                                    return output;
-                                }
-                            }
-
-                            output = await GetUser(UserId);
-                            output.Sudo = sudoLogin;
-                            return output;
-                        }
-                    }
-                }
-            }
-        }
-
-        return output;
-    }
-
-    public async Task<DataObjects.User> GetUserFromToken(Guid TenantId, string? Token, string fingerprint = "")
-    {
-        DataObjects.User output = new DataObjects.User();
-
-        if (!String.IsNullOrWhiteSpace(Token)) {
-            var cachedUser = CacheStore.GetCachedItem<DataObjects.User>(TenantId, "user-from-token-" + Token);
-            if (cachedUser != null && cachedUser.TenantId == TenantId && cachedUser.ActionResponse.Result) {
-                return cachedUser;
-            }
-
-            Guid UserId = Guid.Empty;
-            string tokenFingerprint = String.Empty;
-            bool sudoLogin = false;
-
-            Dictionary<string, object> decrypted = JwtDecode(TenantId, Token);
-
-            if (decrypted.ContainsKey("UserId")) {
-                try {
-                    string guid = decrypted["UserId"] + String.Empty;
-                    UserId = new Guid(guid);
-                } catch { }
-            }
-
-            if (decrypted.ContainsKey("Fingerprint")) {
-                try {
-                    tokenFingerprint += decrypted["Fingerprint"];
-                } catch { }
-            }
-
-            if (decrypted.ContainsKey("SudoLogin")) {
-                try {
-                    var sl = decrypted["SudoLogin"];
-                    if (sl != null) {
-                        sudoLogin = (bool)sl;
-                    }
-                } catch { }
-            }
-
-            if (UserId != Guid.Empty) {
-                if (!String.IsNullOrWhiteSpace(fingerprint) || !String.IsNullOrWhiteSpace(tokenFingerprint)) {
-                    // Make sure the fingerprint matches
-                    if (fingerprint != tokenFingerprint) {
-                        return output;
-                    }
-                }
-
-                output = await GetUser(UserId);
-                output.Sudo = sudoLogin;
-
-                // Cache this response for a while so that multiple calls to this by the API call to get the current user
-                // and the CustomAuthenticationHandler will not result in multiple lookups in the database.
-                CacheStore.SetCacheItem(TenantId, "user-from-token-" + Token, output, DateTimeOffset.Now.AddSeconds(5));
-            }
-        }
-
-        return output;
-    }
-
-    public async Task<List<DataObjects.UserListing>> GetUserListing(Guid TenantId)
-    {
-        List<DataObjects.UserListing> output = new List<DataObjects.UserListing>();
-
-        var recs = await data.Users
-            .Where(x => x.TenantId == TenantId && x.Username.ToLower() != "admin" && x.Deleted != true)
-            .Select(x => new { x.UserId, x.FirstName, x.LastName, x.Email, x.Username, x.Enabled, x.Admin, x.Deleted, x.DeletedAt, x.Location })
-            .OrderBy(x => x.FirstName).ThenBy(x => x.LastName).ToListAsync();
-
-        if (recs != null && recs.Any()) {
-            foreach (var rec in recs) {
-                var admin = BooleanValue(rec.Admin);
-                var appAdmin = await UserIsMainAdmin(rec.UserId);
-
-                var u = new DataObjects.UserListing {
-                    UserId = rec.UserId,
-                    FirstName = rec.FirstName,
-                    LastName = rec.LastName,
-                    Email = rec.Email,
-                    Username = rec.Username,
-                    Enabled = BooleanValue(rec.Enabled),
-                    Admin = admin || appAdmin,
-                    Deleted = BooleanValue(rec.Deleted),
-                    DeletedAt = rec.DeletedAt,
-                    Location = rec.Location,
-                };
-
-                GetDataApp(rec, u);
-
-                output.Add(u);
-            }
-        }
-
-        return output;
-    }
-
-    public async Task<Guid?> GetUserPhoto(Guid UserId)
-    {
-        Guid? output = (Guid?)null;
-        try {
-            var rec = await data.FileStorages.FirstOrDefaultAsync(x => x.ItemId == null && x.UserId == UserId && x.Deleted != true);
-            if (rec != null) {
-                output = rec.FileId;
-            }
-        } catch (Exception ex) {
-            if (ex != null) {
-
-            }
-        }
-        return output;
-    }
-
-    public async Task<DataObjects.SimpleResponse> GetUserPhotoId(Guid UserId)
-    {
-        DataObjects.SimpleResponse output = new DataObjects.SimpleResponse();
-
-        var rec = await data.FileStorages.FirstOrDefaultAsync(x => x.ItemId == null && x.UserId == UserId && x.Deleted != true);
-        if(rec != null) {
-            output = new DataObjects.SimpleResponse { 
-                Result = true,
-                Message = rec.FileId.ToString(),
-            };
-        }
-
-        return output;
-    }
-
-    public async Task<List<DataObjects.User>> GetUsers(Guid TenantId)
-    {
-        List<DataObjects.User> output = new List<DataObjects.User>();
-
-        var recs = await data.Users.Where(x => x.TenantId == TenantId && x.Deleted != true)
-            .OrderBy(x => x.LastName).ThenBy(x => x.FirstName).ToListAsync();
-        if (recs != null && recs.Count() > 0) {
-            foreach (var rec in recs) {
-                var u = new DataObjects.User {
-                    ActionResponse = GetNewActionResponse(true),
-                    Added = rec.Added,
-                    AddedBy = LastModifiedDisplayName(rec.AddedBy),
-                    TenantId = TenantId,
-                    Admin = rec.Admin,
-                    CanBeScheduled = rec.CanBeScheduled,
-                    DepartmentId = rec.DepartmentId.HasValue ? (Guid)rec.DepartmentId : (Guid?)null,
-                    DepartmentName = rec.DepartmentId.HasValue && rec.Department != null ? rec.Department.DepartmentName : String.Empty,
-                    Email = rec.Email,
-                    Phone = rec.Phone,
-                    Enabled = rec.Enabled,
-                    Deleted = rec.Deleted,
-                    DeletedAt = rec.DeletedAt,
-                    FirstName = rec.FirstName,
-                    LastLogin = rec.LastLogin,
-                    LastLoginSource = rec.LastLoginSource,
-                    LastName = rec.LastName,
-                    ManageAppointments = rec.ManageAppointments,
-                    ManageFiles = rec.ManageFiles,
-                    Photo = await GetUserPhoto(rec.UserId),
-                    UserId = rec.UserId,
-                    Username = rec.Username,
-                    EmployeeId = rec.EmployeeId,
-                    Password = String.Empty,
-                    PreventPasswordChange = rec.PreventPasswordChange,
-                    HasLocalPassword = !String.IsNullOrWhiteSpace(rec.Password),
-                    LastLockoutDate = rec.LastLockoutDate,
-                    LastModified = rec.LastModified,
-                    LastModifiedBy = LastModifiedDisplayName(rec.LastModifiedBy),
-                    Source = rec.Source,
-                    udf01 = rec.UDF01,
-                    udf02 = rec.UDF02,
-                    udf03 = rec.UDF03,
-                    udf04 = rec.UDF04,
-                    udf05 = rec.UDF05,
-                    udf06 = rec.UDF06,
-                    udf07 = rec.UDF07,
-                    udf08 = rec.UDF08,
-                    udf09 = rec.UDF09,
-                    udf10 = rec.UDF10
-                };
-
-                u.DisplayName = DisplayNameFromLastAndFirst(u.LastName, u.FirstName, u.Email, u.DepartmentName, u.Location);
-
-                GetDataApp(rec, u);
-
-                output.Add(u);
-            }
-        }
 
         return output;
     }
@@ -1584,7 +1584,7 @@ public partial class DataAccess
 
         List<User>? recs = null;
 
-        if(AdminUser(CurrentUser)) {
+        if (AdminUser(CurrentUser)) {
             recs = await data.Users.Where(x => x.TenantId == TenantId && x.DepartmentId == DepartmentId)
                 .OrderBy(x => x.LastName).ThenBy(x => x.FirstName).ToListAsync();
         } else {
@@ -1592,7 +1592,7 @@ public partial class DataAccess
                 .OrderBy(x => x.LastName).ThenBy(x => x.FirstName).ToListAsync();
         }
 
-        
+
         if (recs != null && recs.Count() > 0) {
             foreach (var rec in recs) {
                 var u = await GetUser(rec.UserId, false, CurrentUser);
@@ -1726,8 +1726,8 @@ public partial class DataAccess
                     .Select(x => new { x.UserId, x.FirstName, x.LastName })
                     .FirstOrDefault(x => x.UserId == guidTest);
 
-                if(rec != null) {
-                    if(!String.IsNullOrWhiteSpace(rec.FirstName) || !String.IsNullOrWhiteSpace(rec.LastName)) {
+                if (rec != null) {
+                    if (!String.IsNullOrWhiteSpace(rec.FirstName) || !String.IsNullOrWhiteSpace(rec.LastName)) {
                         output = rec.FirstName + " " + rec.LastName;
                     }
                 }
@@ -1739,7 +1739,7 @@ public partial class DataAccess
 
     public string LastModifiedDisplayName(DataObjects.User? CurrentUser)
     {
-        if(CurrentUser != null) {
+        if (CurrentUser != null) {
             return LastModifiedDisplayName(CurrentUser.UserId.ToString());
         } else {
             return String.Empty;
@@ -1755,15 +1755,15 @@ public partial class DataAccess
         }
 
         bool validatePassword = true;
-        if(currentUser.Admin && currentUser.UserId != reset.UserId) {
+        if (currentUser.Admin && currentUser.UserId != reset.UserId) {
             validatePassword = false;
         }
 
         if (validatePassword) {
-            if(String.IsNullOrWhiteSpace(reset.CurrentPassword) || String.IsNullOrWhiteSpace(reset.NewPassword)) {
+            if (String.IsNullOrWhiteSpace(reset.CurrentPassword) || String.IsNullOrWhiteSpace(reset.NewPassword)) {
                 output.Messages.Add("Missing Current or New Password");
             }
-        }else if (String.IsNullOrWhiteSpace(reset.NewPassword)) {
+        } else if (String.IsNullOrWhiteSpace(reset.NewPassword)) {
             output.Messages.Add("Missing New Password");
         }
         if (output.Messages.Any()) {
@@ -1854,14 +1854,14 @@ public partial class DataAccess
             originalUsername = StringValue(rec.Username);
         }
 
-        if(String.IsNullOrWhiteSpace(output.Username) && !String.IsNullOrWhiteSpace(output.Email)) {
+        if (String.IsNullOrWhiteSpace(output.Username) && !String.IsNullOrWhiteSpace(output.Email)) {
             output.Username = output.Email;
         }
 
         // If this is a new record make sure the username or email are not already in use.
         if (newRecord || StringValue(output.Email).ToLower() != originalEmail.ToLower()) {
             var emailInUse = await data.Users.FirstOrDefaultAsync(x => x.TenantId == output.TenantId && x.Email != null && x.Email.ToLower() == StringValue(output.Email).ToLower());
-            if(emailInUse != null) {
+            if (emailInUse != null) {
                 output.ActionResponse.Messages.Add("Email '" + output.Email + "' Already in use.");
                 return output;
             }
@@ -2092,7 +2092,7 @@ public partial class DataAccess
 
         rec.LastModified = now;
 
-        if(CurrentUser != null) {
+        if (CurrentUser != null) {
             rec.LastModifiedBy = CurrentUserIdString(CurrentUser);
         }
 
@@ -2108,7 +2108,7 @@ public partial class DataAccess
             // Clear any cached items.
             CacheStore.ClearAllUserItems();
 
-            await SignalRUpdate(new DataObjects.SignalRUpdate { 
+            await SignalRUpdate(new DataObjects.SignalRUpdate {
                 TenantId = user.TenantId,
                 ItemId = user.UserId,
                 UpdateType = DataObjects.SignalRUpdateType.User,
@@ -2134,7 +2134,7 @@ public partial class DataAccess
                 var tenantId = rec.TenantId;
 
                 var previousPreferences = DeserializeObject<DataObjects.UserPreferences>(rec.Preferences);
-                if(previousPreferences == null) {
+                if (previousPreferences == null) {
                     previousPreferences = new DataObjects.UserPreferences();
                 }
 
@@ -2142,7 +2142,7 @@ public partial class DataAccess
                 await data.SaveChangesAsync();
 
                 // Any time a user preference is saved push out the update to all clients via SignalR.
-                if(previousPreferences.LastNavigationId != userPreferences.LastNavigationId ||
+                if (previousPreferences.LastNavigationId != userPreferences.LastNavigationId ||
                     previousPreferences.LastView != userPreferences.LastView ||
                     previousPreferences.LastUrl != userPreferences.LastUrl) {
 
@@ -2220,7 +2220,7 @@ public partial class DataAccess
         var plugins = GetPlugins_UserUpdate();
         if (plugins.Count > 0) {
             foreach (var plugin in plugins) {
-                var result = ExecutePlugin(new Plugins.PluginExecuteRequest { 
+                var result = ExecutePlugin(new Plugins.PluginExecuteRequest {
                     Plugin = plugin,
                     Objects = null,
                 }, user);
@@ -2246,9 +2246,9 @@ public partial class DataAccess
                                     errorEncountered = true;
                                 }
                             }
-                            
+
                         }
-                        
+
                         userUpdated = true;
                     }
                 } else {
@@ -2285,7 +2285,7 @@ public partial class DataAccess
 
             await data.SaveChangesAsync();
 
-            await SignalRUpdate(new DataObjects.SignalRUpdate { 
+            await SignalRUpdate(new DataObjects.SignalRUpdate {
                 TenantId = rec.TenantId,
                 UserId = UserId,
                 UpdateType = DataObjects.SignalRUpdateType.LastAccessTime,

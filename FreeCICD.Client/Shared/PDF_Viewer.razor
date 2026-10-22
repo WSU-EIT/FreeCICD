@@ -21,12 +21,12 @@
     [Parameter]
     public string? PdfFile { get; set; }
 
-    public void Dispose() { }
-
     protected void Close()
     {
         DialogService.Close();
     }
+
+    public void Dispose() { }
 
     protected async Task Download()
     {

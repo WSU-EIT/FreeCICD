@@ -35,68 +35,6 @@ public class AuthorizationController : ControllerBase
         _requestedUrl = da.CookieRead("requested-url");
     }
 
-    [HttpPost]
-    [Route("~/Authorization/Custom")]
-    public IActionResult CustomLogin()
-    {
-        string tenantId = da.Request("TenantId");
-        string ssoToken = da.Request("sso-token");
-
-        return Redirect(_baseUrl + "Authorization/Custom?TenantId=" + tenantId + "&sso-token=" + ssoToken + "&Fingerprint=" + _fingerprint);
-    }
-
-    [HttpPost]
-    [Route("~/Authorization/Plugin")]
-    public IActionResult PluginLogin()
-    {
-        string tenantId = da.Request("TenantId");
-        string ssoToken = da.Request("sso-token");
-        string pluginName = da.Request("Name");
-
-        return Redirect(_baseUrl + "Authorization/Plugin?Name=" + pluginName + "&TenantId=" + tenantId + "&sso-token=" + ssoToken + "&Fingerprint=" + _fingerprint);
-    }
-
-    private void CookieWrite(string cookieName, string value)
-    {
-        if (context != null) {
-            DateTime now = DateTime.Now;
-            if (String.IsNullOrEmpty(cookieName)) { return; }
-
-            Microsoft.AspNetCore.Http.CookieOptions option = new Microsoft.AspNetCore.Http.CookieOptions();
-            option.Expires = now.AddYears(1);
-
-            context.Response.Cookies.Append(da.CookiePrefix + cookieName, value, option);
-        }
-    }
-
-    private string QueryStringValue(string valueName)
-    {
-        string output = "";
-
-        if (context != null) {
-            try {
-                output += context.Request.Query[valueName].ToString();
-            } catch { }
-        }
-
-        return output;
-    }
-
-    private string RequestValue(string parameter)
-    {
-        string output = "";
-
-        if (context != null) {
-            output = QueryStringValue(parameter);
-
-            if (String.IsNullOrWhiteSpace(output)) {
-                output += context.Request.Form[parameter].ToString();
-            }
-        }
-
-        return output;
-    }
-
     [Authorize(AuthenticationSchemes = "Apple")]
     [Route("~/Authorization/Apple/{id}")]
     public IActionResult Apple(Guid id)
@@ -125,6 +63,29 @@ public class AuthorizationController : ControllerBase
         }
     }
 
+    private void CookieWrite(string cookieName, string value)
+    {
+        if (context != null) {
+            DateTime now = DateTime.Now;
+            if (String.IsNullOrEmpty(cookieName)) { return; }
+
+            Microsoft.AspNetCore.Http.CookieOptions option = new Microsoft.AspNetCore.Http.CookieOptions();
+            option.Expires = now.AddYears(1);
+
+            context.Response.Cookies.Append(da.CookiePrefix + cookieName, value, option);
+        }
+    }
+
+    [HttpPost]
+    [Route("~/Authorization/Custom")]
+    public IActionResult CustomLogin()
+    {
+        string tenantId = da.Request("TenantId");
+        string ssoToken = da.Request("sso-token");
+
+        return Redirect(_baseUrl + "Authorization/Custom?TenantId=" + tenantId + "&sso-token=" + ssoToken + "&Fingerprint=" + _fingerprint);
+    }
+
     [Authorize(AuthenticationSchemes = "Facebook")]
     [Route("~/Authorization/Facebook/{id}")]
     public IActionResult Facebook(Guid id)
@@ -151,6 +112,24 @@ public class AuthorizationController : ControllerBase
                 return Redirect(_baseUrl + "Authorization/InvalidUser?AuthMethod=Facebook");
             }
         }
+    }
+
+    private string GetClaimType(string claimType)
+    {
+        string output = claimType;
+
+        if (!String.IsNullOrWhiteSpace(claimType)) {
+            if (claimType.Contains(@"\")) {
+                claimType = claimType.Replace(@"\", "/");
+            }
+
+            if (claimType.Contains("/")) {
+                int pos = claimType.LastIndexOf("/");
+                output = claimType.Substring(pos + 1);
+            }
+        }
+
+        return output;
     }
 
     [Authorize(AuthenticationSchemes = "Google")]
@@ -235,6 +214,17 @@ public class AuthorizationController : ControllerBase
                 return Redirect(_baseUrl + "Authorization/InvalidUser?AuthMethod=OpenId");
             }
         }
+    }
+
+    [HttpPost]
+    [Route("~/Authorization/Plugin")]
+    public IActionResult PluginLogin()
+    {
+        string tenantId = da.Request("TenantId");
+        string ssoToken = da.Request("sso-token");
+        string pluginName = da.Request("Name");
+
+        return Redirect(_baseUrl + "Authorization/Plugin?Name=" + pluginName + "&TenantId=" + tenantId + "&sso-token=" + ssoToken + "&Fingerprint=" + _fingerprint);
     }
 
     private async Task<DataObjects.SimpleResponse> ProcessClaims(string Source, Guid TenantId)
@@ -360,18 +350,28 @@ public class AuthorizationController : ControllerBase
         return output;
     }
 
-    private string GetClaimType(string claimType)
+    private string QueryStringValue(string valueName)
     {
-        string output = claimType;
+        string output = "";
 
-        if (!String.IsNullOrWhiteSpace(claimType)) {
-            if (claimType.Contains(@"\")) {
-                claimType = claimType.Replace(@"\", "/");
-            }
+        if (context != null) {
+            try {
+                output += context.Request.Query[valueName].ToString();
+            } catch { }
+        }
 
-            if (claimType.Contains("/")) {
-                int pos = claimType.LastIndexOf("/");
-                output = claimType.Substring(pos + 1);
+        return output;
+    }
+
+    private string RequestValue(string parameter)
+    {
+        string output = "";
+
+        if (context != null) {
+            output = QueryStringValue(parameter);
+
+            if (String.IsNullOrWhiteSpace(output)) {
+                output += context.Request.Form[parameter].ToString();
             }
         }
 

@@ -1,0 +1,52 @@
+@* A pipeline's "more actions" menu: run it, open it in Azure DevOps, copy its YAML. *@
+@* Shared by the pipeline card and the table row. *@
+
+@if (Pipeline != null) {
+    <div class="@WrapperClass">
+        <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle"
+                data-bs-toggle="dropdown" aria-expanded="false" title="More actions">
+            <i class="fa fa-ellipsis-v"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+            <li>
+                <button class="dropdown-item" @onclick="RunClicked" @onclick:stopPropagation="true">
+                    <i class="fa fa-play text-success me-2"></i>Run Pipeline
+                </button>
+            </li>
+            <li><hr class="dropdown-divider" /></li>
+            <li>
+                <a class="dropdown-item" href="@Pipeline.ResourceUrl" target="_blank">
+                    <i class="fa fa-external-link me-2"></i>View in Azure DevOps
+                </a>
+            </li>
+            <li>
+                <button class="dropdown-item" @onclick="CopyYamlClicked" @onclick:stopPropagation="true">
+                    <i class="fa fa-clipboard me-2"></i>Copy YAML
+                </button>
+            </li>
+        </ul>
+    </div>
+}
+
+@code {
+    [Parameter] public EventCallback<DataObjects.PipelineListItem> OnCopyYaml { get; set; }
+    [Parameter] public EventCallback<DataObjects.PipelineListItem> OnRunPipeline { get; set; }
+    [Parameter] public DataObjects.PipelineListItem? Pipeline { get; set; }
+
+    /// <summary>The menu's container: "dropdown" on its own, "btn-group btn-group-sm" inside a button group.</summary>
+    [Parameter] public string WrapperClass { get; set; } = "dropdown";
+
+    private async Task CopyYamlClicked()
+    {
+        if (OnCopyYaml.HasDelegate && Pipeline != null) {
+            await OnCopyYaml.InvokeAsync(Pipeline);
+        }
+    }
+
+    private async Task RunClicked()
+    {
+        if (OnRunPipeline.HasDelegate && Pipeline != null) {
+            await OnRunPipeline.InvokeAsync(Pipeline);
+        }
+    }
+}

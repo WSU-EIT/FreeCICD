@@ -51,7 +51,7 @@
             <div class="mb-2">
                 <label for="edit-group-name"><Language Tag="Name" Required="true" /></label>
                 <input type="text" id="edit-group-name" @bind="_userGroup.Name" @bind:event="oninput"
-                       class="@Helpers.MissingValue(_userGroup.Name, "form-control")" />
+                        class="@Helpers.MissingValue(_userGroup.Name, "form-control")" />
             </div>
 
             <div class="mb-2">
@@ -61,15 +61,15 @@
             <div class="mb-2">
                 <label for="edit-user-group-lookup"><Language Tag="AddUsersToGroup" /></label>
                 <AutoComplete Class="form-control"
-                    Disabled="false"
-                    GetAutoCompleteItems="UserLookup"
-                    HighlightFirstMatch="true"
-                    Id="edit-user-group-lookup"
-                    LookupDelay="300"
-                    MatchParentWidth="true"
-                    MinimumCharacters="1"
-                    OnSelected="AutoCompleteItemSelected"
-                    PlaceholderText="@UserLookupPlaceholderText" />
+                        Disabled="false"
+                        GetAutoCompleteItems="UserLookup"
+                        HighlightFirstMatch="true"
+                        Id="edit-user-group-lookup"
+                        LookupDelay="300"
+                        MatchParentWidth="true"
+                        MinimumCharacters="1"
+                        OnSelected="AutoCompleteItemSelected"
+                        PlaceholderText="@UserLookupPlaceholderText" />
             </div>
 
             <div class="mb-2">

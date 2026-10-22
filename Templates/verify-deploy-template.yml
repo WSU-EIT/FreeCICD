@@ -1,0 +1,542 @@
+﻿# templates/verify-deploy-template.yml
+# ---------------------------------------------------------------
+# App Atlas deploy verification (docs/105_feature_app_atlas_deploy_verification.md).
+# Runs in its own Verify{ENV} stage on the build pool after the
+# deploy stage, never on the web server, so the browser and its
+# downloads stay off production boxes and the site is reached the
+# way a user reaches it:
+#   1. waits until the freshly deployed site answers (warm-up),
+#   2. screenshots each public page with the Playwright command
+#      line (Chromium, 1280x800) and measures it: status code,
+#      response time, final URL after redirects, title, login page,
+#   3. posts one AtlasDeployReport to FreeCICD's api/Atlas/Report as
+#      multipart/form-data: a "report" field with the JSON and one
+#      file part per picture (part name = the page's ImageFile),
+#      with the shared key as "Authorization: Bearer <key>".
+# Node may not be installed on the agent, so UseNode@1 provides
+# Node 20 and Playwright runs through npx with a pinned version.
+# The browser is cached in $(Agent.ToolsDirectory)\playwright.
+# Every capture/post task has continueOnError: true, so a capture
+# problem never fails the run. When reportUrl or reportKey is
+# empty (or an undefined $(variable)), everything is skipped.
+# Server caps (DataObjects.AtlasReportLimits): at most 8 pages,
+# 5 MB per picture, 50 MB per request, .png/.webp/.jpg parts.
+# Each inline script stays under the Azure DevOps 21 000-character
+# limit.
+# ---------------------------------------------------------------
+
+parameters:
+  - name: environment
+    type: string
+    default: 'DEV'     # DEV, PROD or CMS
+  - name: projectName
+    type: string
+    default: ''        # the pipeline's CI_ProjectName
+  - name: siteUrl
+    type: string
+    default: ''        # the site root, e.g. https:///FreeCICD/
+  - name: publicPaths
+    type: string
+    default: '/'       # comma-separated paths under the site root (at most 8 are used)
+  - name: reportUrl
+    type: string
+    default: ''        # the absolute URL of api/Atlas/Report
+  - name: reportKey
+    type: string
+    default: ''        # the shared report key (Atlas page, Sources panel); never logged
+  - name: warmupSeconds
+    type: number
+    default: 120
+  - name: playwrightVersion
+    type: string
+    default: '1.47.2'
+
+steps:
+  # -- 1/7: Check the settings and decide whether to run at all --
+  - task: PowerShell@2
+    displayName: "Atlas verify: check settings"
+    continueOnError: true
+    env:
+      ATLAS_REPORT_URL: '${{ parameters.reportUrl }}'
+      ATLAS_REPORT_KEY: '${{ parameters.reportKey }}'
+      ATLAS_SITE_URL: '${{ parameters.siteUrl }}'
+      ATLAS_PROJECT_NAME: '${{ parameters.projectName }}'
+      ATLAS_ENVIRONMENT: '${{ parameters.environment }}'
+      ATLAS_PUBLIC_PATHS: '${{ parameters.publicPaths }}'
+    inputs:
+      targetType: 'inline'
+      script: |
+        $ErrorActionPreference = 'Continue'
+        Write-Host "##vso[task.setvariable variable=AtlasVerifyEnabled]false"
+
+        # An undefined pipeline variable arrives as its literal "$(Name)"; treat that as empty.
+        function Get-Setting([string]$Value) {
+            $v = "$Value".Trim()
+            if ($v -match '^\$\([^)]*\)$') { return '' }
+            return $v
+        }
+
+        $reportUrl   = Get-Setting $env:ATLAS_REPORT_URL
+        $reportKey   = Get-Setting $env:ATLAS_REPORT_KEY
+        $siteUrl     = Get-Setting $env:ATLAS_SITE_URL
+        $projectName = Get-Setting $env:ATLAS_PROJECT_NAME
+        $environment = (Get-Setting $env:ATLAS_ENVIRONMENT).ToUpperInvariant()
+
+        $work = Join-Path "$(Agent.TempDirectory)" "AtlasVerify"
+        if (Test-Path $work) { Remove-Item -Path $work -Recurse -Force -ErrorAction SilentlyContinue }
+        New-Item -ItemType Directory -Path $work -Force | Out-Null
+
+        $problems = @()
+        if (-not $reportUrl) { $problems += "reportUrl is empty (the pipeline's report URL variable is not set)" }
+        if (-not $reportKey) { $problems += "reportKey is empty (the pipeline's report key variable is not set)" }
+        # The report carries the key: it only ever goes to an https URL whose host is a plain DNS name.
+        $report = $null
+        if (-not [Uri]::TryCreate($reportUrl, [UriKind]::Absolute, [ref]$report) -or $report.Scheme -ne 'https' -or [Uri]::CheckHostName($report.Host) -ne [UriHostNameType]::Dns) {
+            $problems += "reportUrl is not an absolute https URL with a DNS host name"
+        }
+        $site = $null
+        if (-not [Uri]::TryCreate($siteUrl, [UriKind]::Absolute, [ref]$site) -or ($site.Scheme -ne 'http' -and $site.Scheme -ne 'https') -or [Uri]::CheckHostName($site.Host) -ne [UriHostNameType]::Dns) {
+            $problems += "siteUrl '$siteUrl' is not an absolute http(s) URL with a DNS host name"
+        }
+        if (-not $projectName) { $problems += "projectName is empty" }
+        if (@('DEV', 'PROD', 'CMS') -notcontains $environment) { $problems += "environment '$environment' is not DEV, PROD or CMS" }
+
+        # The public paths: each with one leading slash, no duplicates, at most 8 (the server's cap). Only plain URL
+        # characters are allowed: the URL is later passed to a command line, and nothing there may expand or break out.
+        $paths = @()
+        foreach ($raw in ("$env:ATLAS_PUBLIC_PATHS" -split ',')) {
+            if ($raw.Trim().Length -eq 0) { continue }
+            $p = '/' + $raw.Trim().Replace('\', '/').Trim('/')
+            if ($p -notmatch '^[A-Za-z0-9/._~-]+$') { $problems += "public path '$p' has characters other than letters, digits, / . _ ~ -"; continue }
+            if ($paths -notcontains $p) { $paths += $p }
+        }
+
+        if ($problems.Count -gt 0) {
+            Write-Host "Atlas deploy verification SKIPPED:"
+            foreach ($p in $problems) { Write-Host "  - $($p -replace '##', '# #')" }
+            exit 0
+        }
+        if ($paths.Count -eq 0) { $paths = @('/') }
+        if ($paths.Count -gt 8) {
+            Write-Host "Only the first 8 of $($paths.Count) public paths are verified (server cap)."
+            $paths = @($paths | Select-Object -First 8)
+        }
+
+        $settings = [ordered]@{
+            ProjectName = $projectName
+            Environment = $environment
+            SiteUrl     = $site.AbsoluteUri
+            Paths       = @($paths)
+        }
+        $json = ConvertTo-Json -InputObject $settings -Depth 4
+        [System.IO.File]::WriteAllText((Join-Path $work "settings.json"), $json, (New-Object System.Text.UTF8Encoding $false))
+
+        Write-Host "Atlas deploy verification ENABLED"
+        Write-Host "  Project:     $projectName"
+        Write-Host "  Environment: $environment"
+        Write-Host "  Site:        $($site.AbsoluteUri)"
+        Write-Host "  Paths:       $($paths -join ', ')"
+        Write-Host "  Report to:   $reportUrl"
+        Write-Host "  Key:         (set, $($reportKey.Length) characters)"
+        Write-Host "##vso[task.setvariable variable=AtlasVerifyEnabled]true"
+        exit 0
+
+  # -- 2/7: Node 20 for npx (the server may not have Node) --
+  - task: UseNode@1
+    displayName: "Atlas verify: use Node 20"
+    continueOnError: true
+    condition: and(succeeded(), eq(variables['AtlasVerifyEnabled'], 'true'))
+    inputs:
+      version: '20.x'
+
+  # -- 3/7: Make sure Playwright's Chromium is in the agent's tool cache --
+  - task: PowerShell@2
+    displayName: "Atlas verify: ensure Playwright Chromium"
+    continueOnError: true
+    condition: and(succeeded(), eq(variables['AtlasVerifyEnabled'], 'true'))
+    inputs:
+      targetType: 'inline'
+      script: |
+        $ErrorActionPreference = 'Continue'
+        $pin = '${{ parameters.playwrightVersion }}'
+        $browsers = Join-Path "$(Agent.ToolsDirectory)" "playwright"
+        $env:PLAYWRIGHT_BROWSERS_PATH = $browsers
+        if (!(Test-Path $browsers)) { New-Item -ItemType Directory -Path $browsers -Force | Out-Null }
+
+        if (-not (Get-Command npx -ErrorAction SilentlyContinue)) {
+            Write-Host "##vso[task.logissue type=warning]Atlas verify: npx was not found (UseNode@1 did not provide Node), so no pictures will be taken."
+            exit 1
+        }
+        $nodeVersion = & node --version
+        Write-Host "Node $nodeVersion, Playwright $pin, browsers in $browsers"
+
+        # Prime the npx cache once, so later calls do not download the package again.
+        & npx --yes "playwright@$pin" --version
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "##vso[task.logissue type=warning]Atlas verify: npx could not run playwright@$pin (exit $LASTEXITCODE)."
+            exit 1
+        }
+
+        $chromium = @(Get-ChildItem -Path $browsers -Directory -Filter 'chromium-*' -ErrorAction SilentlyContinue)
+        $marker = Join-Path $browsers ".atlas-playwright-$pin"
+        if ($chromium.Count -gt 0 -and (Test-Path $marker)) {
+            Write-Host "Chromium is cached: $(($chromium | ForEach-Object { $_.Name }) -join ', ')"
+            exit 0
+        }
+
+        Write-Host "Installing Chromium for playwright@$pin into $browsers ..."
+        & npx --yes "playwright@$pin" install chromium
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "##vso[task.logissue type=warning]Atlas verify: 'playwright install chromium' failed (exit $LASTEXITCODE)."
+            exit 1
+        }
+        Set-Content -Path $marker -Value (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ") -Encoding ASCII
+        Write-Host "Chromium installed."
+        exit 0
+
+  # -- 4/7: Warm-up: wait until the site answers --
+  - task: PowerShell@2
+    displayName: "Atlas verify: warm up the site"
+    continueOnError: true
+    condition: and(succeeded(), eq(variables['AtlasVerifyEnabled'], 'true'))
+    inputs:
+      targetType: 'inline'
+      script: |
+        $ErrorActionPreference = 'Continue'
+        $ProgressPreference = 'SilentlyContinue'
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+        $work = Join-Path "$(Agent.TempDirectory)" "AtlasVerify"
+        $settings = Get-Content (Join-Path $work "settings.json") -Raw | ConvertFrom-Json
+        $limit = [int]'${{ parameters.warmupSeconds }}'
+        if ($limit -lt 1) { $limit = 1 }
+
+        Write-Host "Waiting up to $limit s for $($settings.SiteUrl) to answer..."
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $warmupMs = $null
+        $attempt = 0
+        while ($true) {
+            $attempt++
+            $remaining = $limit - [int]$sw.Elapsed.TotalSeconds
+            $timeout = [Math]::Max(5, [Math]::Min(30, $remaining))
+            $code = 0
+            $detail = ''
+            try {
+                $resp = Invoke-WebRequest -Uri $settings.SiteUrl -UseBasicParsing -MaximumRedirection 5 -TimeoutSec $timeout -ErrorAction Stop
+                $code = [int]$resp.StatusCode
+            }
+            catch {
+                $wr = $_.Exception.Response
+                if ($wr) { $code = [int]$wr.StatusCode } else { $detail = $_.Exception.Message }
+            }
+            # Any answer below 500 means the app is up (a 401/403/404 is still an answer).
+            if ($code -gt 0 -and $code -lt 500) {
+                $warmupMs = [int]$sw.ElapsedMilliseconds
+                Write-Host "Attempt ${attempt}: HTTP $code after $warmupMs ms - the site answered."
+                break
+            }
+            if ($code -gt 0) { Write-Host "Attempt ${attempt}: HTTP $code" } else { Write-Host "Attempt ${attempt}: $detail" }
+            if ($sw.Elapsed.TotalSeconds -ge $limit) {
+                Write-Host "##vso[task.logissue type=warning]Atlas verify: $($settings.SiteUrl) did not answer within $limit s."
+                break
+            }
+            Start-Sleep -Seconds 5
+        }
+
+        $json = ConvertTo-Json -InputObject ([ordered]@{ WarmupMs = $warmupMs }) -Depth 2
+        [System.IO.File]::WriteAllText((Join-Path $work "warmup.json"), $json, (New-Object System.Text.UTF8Encoding $false))
+        exit 0
+
+  # -- 5/7: Screenshot and measure each public page --
+  - task: PowerShell@2
+    displayName: "Atlas verify: capture pages"
+    continueOnError: true
+    condition: and(succeeded(), eq(variables['AtlasVerifyEnabled'], 'true'))
+    inputs:
+      targetType: 'inline'
+      script: |
+        $ErrorActionPreference = 'Continue'
+        $ProgressPreference = 'SilentlyContinue'
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+        $pin = '${{ parameters.playwrightVersion }}'
+        $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path "$(Agent.ToolsDirectory)" "playwright"
+        $work = Join-Path "$(Agent.TempDirectory)" "AtlasVerify"
+        $pictures = Join-Path $work "pictures"
+        New-Item -ItemType Directory -Path $pictures -Force | Out-Null
+        $settings = Get-Content (Join-Path $work "settings.json") -Raw | ConvertFrom-Json
+        $maxImageBytes = 5MB
+        $hardMs = 60000
+
+        function Limit-Text([string]$Text, [int]$Max) {
+            if ($null -eq $Text) { return '' }
+            if ($Text.Length -gt $Max) { return $Text.Substring(0, $Max) }
+            return $Text
+        }
+
+        # Page content goes into the log: the agent would obey a "##vso[...]" command in a title or redirect, so none may remain.
+        function Safe-Log([string]$Text) { return ("$Text" -replace '##', '# #') }
+
+        # Where the request ended up: HttpWebResponse (Windows PowerShell) or HttpResponseMessage (PowerShell 7).
+        function Get-FinalUri($Response) {
+            if ($null -eq $Response) { return '' }
+            try { if ($Response.ResponseUri) { return $Response.ResponseUri.AbsoluteUri } } catch { }
+            try { if ($Response.RequestMessage -and $Response.RequestMessage.RequestUri) { return $Response.RequestMessage.RequestUri.AbsoluteUri } } catch { }
+            return ''
+        }
+
+        function Measure-Page([string]$Url, [int]$TimeoutSec) {
+            $result = [ordered]@{ StatusCode = 0; ResponseMs = 0; FinalUrl = $Url; Title = ''; IsLoginPage = $false; Error = '' }
+            $html = ''
+            $sw = [System.Diagnostics.Stopwatch]::StartNew()
+            try {
+                $resp = Invoke-WebRequest -Uri $Url -UseBasicParsing -MaximumRedirection 5 -TimeoutSec $TimeoutSec -ErrorAction Stop
+                $result.StatusCode = [int]$resp.StatusCode
+                $html = [string]$resp.Content
+                $final = Get-FinalUri $resp.BaseResponse
+                if ($final) { $result.FinalUrl = $final }
+            }
+            catch {
+                $err = $_
+                $wr = $err.Exception.Response
+                if ($wr) {
+                    $result.StatusCode = [int]$wr.StatusCode
+                    $final = Get-FinalUri $wr
+                    if ($final) { $result.FinalUrl = $final }
+                    if ($err.ErrorDetails -and $err.ErrorDetails.Message) { $html = [string]$err.ErrorDetails.Message }
+                }
+                else {
+                    $result.Error = Limit-Text ("Request failed: " + $err.Exception.Message) 1900
+                }
+            }
+            $sw.Stop()
+            $result.ResponseMs = [int]$sw.ElapsedMilliseconds
+            $m = [regex]::Match($html, '(?is)<title[^>]*>(.*?)</title>')
+            if ($m.Success) {
+                $result.Title = Limit-Text (([System.Net.WebUtility]::HtmlDecode($m.Groups[1].Value) -replace '\s+', ' ').Trim()) 500
+            }
+            $result.IsLoginPage = [bool](($result.FinalUrl -match '/Login') -or ($result.Title -match 'Login') -or ($html -match 'class\s*=\s*["''][^"'']*\blogin-page\b'))
+            $result.FinalUrl = Limit-Text $result.FinalUrl 1900
+            return $result
+        }
+
+        # One Playwright screenshot through cmd (npx is a .cmd); output goes to a log file. '' on success, else why not.
+        # The URL was built from a validated host and validated paths, and is checked once more here, because cmd
+        # expands %NAME% and reads " & | as its own syntax.
+        function Invoke-Capture([string]$Url, [string]$File, [string]$Log) {
+            if ($Url -notmatch '^https?://[A-Za-z0-9.-]+(:[0-9]+)?[A-Za-z0-9/._~-]*$') { return "URL has characters that cannot be passed to the command line" }
+            $safeUrl = $Url
+            $cmd = 'npx --yes playwright@' + $pin + ' screenshot --browser chromium --viewport-size 1280,800 --wait-for-timeout 3000 --timeout 20000 "' + $safeUrl + '" "' + $File + '" > "' + $Log + '" 2>&1'
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = 'cmd.exe'
+            $psi.Arguments = '/d /s /c "' + $cmd + '"'
+            $psi.UseShellExecute = $false
+            $psi.CreateNoWindow = $true
+            try { $proc = [System.Diagnostics.Process]::Start($psi) } catch { return "Could not start Playwright: $($_.Exception.Message)" }
+            if (-not $proc.WaitForExit($hardMs)) {
+                & taskkill.exe /PID $proc.Id /T /F 2>&1 | Out-Null
+                return "Playwright did not finish within $($hardMs / 1000) s"
+            }
+            $proc.WaitForExit()
+            if ($proc.ExitCode -ne 0 -or -not (Test-Path $File) -or (Get-Item $File).Length -eq 0) {
+                $last = @(Get-Content -Path $Log -ErrorAction SilentlyContinue | Where-Object { $_.Trim() } | Select-Object -Last 1)
+                $why = if ($last.Count -gt 0) { Safe-Log $last[0].Trim() } else { "no output" }
+                return "Playwright exited with $($proc.ExitCode): $why"
+            }
+            return ''
+        }
+
+        $haveNpx = [bool](Get-Command npx -ErrorAction SilentlyContinue)
+        if (-not $haveNpx) { Write-Host "##vso[task.logissue type=warning]Atlas verify: npx is not available; pages are measured without pictures." }
+
+        $root = $settings.SiteUrl.TrimEnd('/')
+        $pages = New-Object System.Collections.ArrayList
+        $index = 0
+        foreach ($path in @($settings.Paths)) {
+            $index++
+            $url = if ($path -eq '/') { $root + '/' } else { $root + $path }
+            Write-Host ""
+            Write-Host "[$index] $url"
+            $m = Measure-Page $url 20
+            Write-Host "    HTTP $($m.StatusCode) in $($m.ResponseMs) ms -> $(Safe-Log $m.FinalUrl)"
+            if ($m.Title) { Write-Host "    Title: $(Safe-Log $m.Title)" }
+            if ($m.IsLoginPage) { Write-Host "    (login page)" }
+            if ($m.Error) { Write-Host "    $(Safe-Log $m.Error)" }
+
+            $imageFile = ''
+            $captureError = ''
+            if ($haveNpx) {
+                $name = "page$index.png"
+                $file = Join-Path $pictures $name
+                $log = Join-Path $work "page$index.log"
+                $captureError = Invoke-Capture $url $file $log
+                if (-not $captureError) {
+                    $size = (Get-Item $file).Length
+                    if ($size -gt $maxImageBytes) {
+                        $captureError = "Picture is $size bytes, over the 5 MB cap"
+                    }
+                    else {
+                        $imageFile = $name
+                        Write-Host "    Picture: $name ($size bytes)"
+                    }
+                }
+                if ($captureError) {
+                    Write-Host "    No picture: $(Safe-Log $captureError)"
+                    Get-Content -Path $log -Tail 5 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "      $(Safe-Log $_)" }
+                }
+            }
+            else {
+                $captureError = "Playwright is not available on the agent"
+            }
+
+            $error1 = $m.Error
+            if ($captureError) { $error1 = if ($error1) { "$error1; No picture: $captureError" } else { "No picture: $captureError" } }
+            [void]$pages.Add([ordered]@{
+                Path        = $path
+                StatusCode  = $m.StatusCode
+                ResponseMs  = $m.ResponseMs
+                FinalUrl    = $m.FinalUrl
+                Title       = $m.Title
+                IsLoginPage = $m.IsLoginPage
+                ImageFile   = $imageFile
+                Error       = Limit-Text $error1 1900
+            })
+        }
+
+        $json = ConvertTo-Json -InputObject @($pages) -Depth 4
+        [System.IO.File]::WriteAllText((Join-Path $work "pages.json"), $json, (New-Object System.Text.UTF8Encoding $false))
+        Write-Host ""
+        Write-Host "Captured $($pages.Count) page(s)."
+        exit 0
+
+  # -- 6/7: Build the report and post it to FreeCICD --
+  - task: PowerShell@2
+    displayName: "Atlas verify: post report"
+    continueOnError: true
+    condition: and(succeeded(), eq(variables['AtlasVerifyEnabled'], 'true'))
+    env:
+      ATLAS_REPORT_URL: '${{ parameters.reportUrl }}'
+      ATLAS_REPORT_KEY: '${{ parameters.reportKey }}'
+    inputs:
+      targetType: 'inline'
+      script: |
+        $ErrorActionPreference = 'Continue'
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+        $work = Join-Path "$(Agent.TempDirectory)" "AtlasVerify"
+        $pictures = Join-Path $work "pictures"
+        $reportUrl = "$env:ATLAS_REPORT_URL".Trim()
+        $reportKey = "$env:ATLAS_REPORT_KEY".Trim()
+        $settings = Get-Content (Join-Path $work "settings.json") -Raw | ConvertFrom-Json
+
+        function To-IntOrNull([string]$Value) {
+            $n = 0
+            if ([int]::TryParse("$Value".Trim(), [ref]$n)) { return $n }
+            return $null
+        }
+
+        $warmupMs = $null
+        $warmupFile = Join-Path $work "warmup.json"
+        if (Test-Path $warmupFile) { $warmupMs = (Get-Content $warmupFile -Raw | ConvertFrom-Json).WarmupMs }
+
+        # The pages from the capture task; when it did not run, report each path as not captured. Windows PowerShell
+        # gives a JSON array back as one object, so it is unrolled into one page per element.
+        $pages = @()
+        $pagesFile = Join-Path $work "pages.json"
+        if (Test-Path $pagesFile) {
+            $pages = @(Get-Content $pagesFile -Raw | ConvertFrom-Json | ForEach-Object { $_ })
+        }
+        else {
+            foreach ($path in @($settings.Paths)) {
+                $pages += [pscustomobject][ordered]@{ Path = $path; StatusCode = 0; ResponseMs = 0; FinalUrl = ''; Title = ''; IsLoginPage = $false; ImageFile = ''; Error = 'The capture task did not run' }
+            }
+        }
+
+        # Only pictures that exist go up; a page whose picture is missing loses its ImageFile.
+        $uploads = @()
+        $reportPages = @()
+        foreach ($p in $pages) {
+            $imageFile = "$($p.ImageFile)"
+            if ($imageFile) {
+                $file = Join-Path $pictures $imageFile
+                if ((Test-Path $file) -and $uploads.Count -lt 8) { $uploads += [pscustomobject]@{ Name = $imageFile; Path = $file } } else { $imageFile = '' }
+            }
+            $reportPages += [ordered]@{
+                Path        = "$($p.Path)"
+                StatusCode  = [int]$p.StatusCode
+                ResponseMs  = [int]$p.ResponseMs
+                FinalUrl    = "$($p.FinalUrl)"
+                Title       = "$($p.Title)"
+                IsLoginPage = [bool]$p.IsLoginPage
+                ImageFile   = $imageFile
+                Error       = "$($p.Error)"
+            }
+        }
+
+        $report = [ordered]@{
+            ProjectName = "$($settings.ProjectName)"
+            Environment = "$($settings.Environment)"
+            SiteUrl     = "$($settings.SiteUrl)"
+            BuildNumber = "$env:BUILD_BUILDNUMBER"
+            BuildId     = To-IntOrNull $env:BUILD_BUILDID
+            PipelineId  = To-IntOrNull $env:SYSTEM_DEFINITIONID
+            AgentName   = "$env:AGENT_MACHINENAME"
+            CapturedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+            WarmupMs    = $warmupMs
+            Pages       = @($reportPages)
+        }
+        $json = ConvertTo-Json -InputObject $report -Depth 6
+        # The same report goes into the run's artifact (step 7), so the evidence is on the run even when the post is refused.
+        [System.IO.File]::WriteAllText((Join-Path $work "report.json"), $json, (New-Object System.Text.UTF8Encoding $false))
+        Write-Host "Report:"
+        Write-Host ($json -replace '##', '# #')
+
+        $streams = @()
+        $client = $null
+        try {
+            Add-Type -AssemblyName System.Net.Http
+            $content = New-Object System.Net.Http.MultipartFormDataContent
+            $content.Add((New-Object System.Net.Http.StringContent($json, [System.Text.Encoding]::UTF8, 'application/json')), 'report')
+            foreach ($u in $uploads) {
+                $fs = [System.IO.File]::OpenRead($u.Path)
+                $streams += $fs
+                $part = New-Object System.Net.Http.StreamContent($fs)
+                $part.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse('image/png')
+                $content.Add($part, $u.Name, $u.Name)
+                Write-Host "Attaching $($u.Name) ($($fs.Length) bytes)"
+            }
+
+            $request = New-Object System.Net.Http.HttpRequestMessage([System.Net.Http.HttpMethod]::Post, $reportUrl)
+            $request.Headers.Authorization = New-Object System.Net.Http.Headers.AuthenticationHeaderValue('Bearer', $reportKey)
+            $request.Content = $content
+
+            $client = New-Object System.Net.Http.HttpClient
+            $client.Timeout = [TimeSpan]::FromSeconds(120)
+            Write-Host "Posting to $reportUrl ..."
+            $response = $client.SendAsync($request).GetAwaiter().GetResult()
+            $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+            Write-Host "HTTP $([int]$response.StatusCode) $($response.ReasonPhrase)"
+            Write-Host ("$body" -replace '##', '# #')
+            if (-not $response.IsSuccessStatusCode) {
+                Write-Host "##vso[task.logissue type=warning]Atlas verify: the report was refused (HTTP $([int]$response.StatusCode))."
+            }
+            else {
+                Write-Host "Atlas report stored."
+            }
+        }
+        catch {
+            Write-Host "##vso[task.logissue type=warning]Atlas verify: the report could not be posted: $($_.Exception.GetBaseException().Message)"
+        }
+        finally {
+            foreach ($s in $streams) { try { $s.Dispose() } catch { } }
+            if ($client) { $client.Dispose() }
+        }
+        exit 0
+
+  # -- 7/7: Keep the evidence on the run: settings, warm-up, pages, pictures, capture logs and the posted report --
+  # Nothing in the folder holds the key (it only ever reaches the post step through its environment), so the artifact is
+  # safe to publish. Runs even when a capture or the post failed: that is when the evidence matters most.
+  - task: PublishBuildArtifacts@1
+    displayName: "Atlas verify: publish evidence artifact"
+    continueOnError: true
+    condition: and(succeededOrFailed(), eq(variables['AtlasVerifyEnabled'], 'true'))
+    inputs:
+      PathtoPublish: '$(Agent.TempDirectory)\AtlasVerify'
+      ArtifactName: 'AtlasVerify_${{ parameters.environment }}_$(System.JobAttempt)'

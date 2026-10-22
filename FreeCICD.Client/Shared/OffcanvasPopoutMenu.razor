@@ -234,13 +234,6 @@
 </div>
 
 @code {
-    public void Dispose() { }
-
-    protected override void OnInitialized()
-    {
-        Model.OnChange += StateHasChanged;
-    }
-
     protected bool AllowManageProfile {
         get {
             bool output = false;
@@ -252,10 +245,16 @@
             return output;
         }
     }
+    public void Dispose() { }
 
     protected string FormatCultureCode(DataObjects.Language language) {
         string output = language.Description + " [" + language.Culture + "]";
         return output;
+    }
+
+    protected override void OnInitialized()
+    {
+        Model.OnChange += StateHasChanged;
     }
 
     protected async Task QuickActionClose() {

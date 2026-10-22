@@ -1,0 +1,31 @@
+@* A summary number with its label, in its own grid column (Host Environment, NuGet Inventory, SignalR Connections). *@
+@* Clickable when OnClick is set, e.g. to switch to the tab the number counts. *@
+
+<div class="@ColumnClass">
+    <div class="card text-center h-100 @CardClass" style="@(OnClick.HasDelegate ? "cursor: pointer;" : null)" title="@Title" @onclick="OnClick">
+        <div class="card-body @BodyClass">
+            <div class="@ValueClass @ColorClass">@Value</div>
+            <small class="text-muted">@Label</small>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string BodyClass { get; set; } = "py-2";
+
+    [Parameter] public string CardClass { get; set; } = "";
+
+    /// <summary>The value's text colour, e.g. text-primary.</summary>
+    [Parameter] public string ColorClass { get; set; } = "text-primary";
+
+    /// <summary>The grid column class; "col" fills a row-cols-* row.</summary>
+    [Parameter] public string ColumnClass { get; set; } = "col";
+    [Parameter] public string Label { get; set; } = "";
+
+    [Parameter] public EventCallback OnClick { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Value { get; set; }
+
+    /// <summary>The value's size and weight.</summary>
+    [Parameter] public string ValueClass { get; set; } = "fs-4 fw-bold";
+}

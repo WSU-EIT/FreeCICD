@@ -52,12 +52,12 @@
                     </label>
                     <br />
                     <DateTimePicker 
-                        Class="form-control full-width"
-                        OnUpdate="@((DateTime? v) => Helpers.OnChangeHandler(Filter, "Start", v, LoadFilter))"
-                        TableClass="datetime-picker full-width"
-                        TValue="DateTime?"
-                        Value="Filter.Start"
-                    />
+                            Class="form-control full-width"
+                            OnUpdate="@((DateTime? v) => Helpers.OnChangeHandler(Filter, "Start", v, LoadFilter))"
+                            TableClass="datetime-picker full-width"
+                            TValue="DateTime?"
+                            Value="Filter.Start"
+                            />
                 </div>
 
                 <div class="col col-lg-3 col-md-4 col-sm-4 col-12 mb-2">
@@ -66,12 +66,12 @@
                     </label>
                     <br />
                     <DateTimePicker 
-                        Class="form-control full-width"
-                        OnUpdate="@((DateTime? v) => Helpers.OnChangeHandler(Filter, "End", v, LoadFilter))"
-                        TableClass="datetime-picker full-width"
-                        TValue="DateTime?"
-                        Value="Filter.End"
-                    />
+                            Class="form-control full-width"
+                            OnUpdate="@((DateTime? v) => Helpers.OnChangeHandler(Filter, "End", v, LoadFilter))"
+                            TableClass="datetime-picker full-width"
+                            TValue="DateTime?"
+                            Value="Filter.End"
+                            />
                 </div>
 
                 @if (Filter.AvailableExtensions.Any()) {
@@ -95,11 +95,11 @@
             <div class="mb-2">
                 <div class="form-check form-switch">
                     <input type="checkbox"
-                        id="files-IncludeDeletedRecords"
-                        class="form-check-input"
-                        @bind="Model.User.UserPreferences.IncludeDeletedItems" 
-                        @bind:after="LoadFilter"
-                    />
+                            id="files-IncludeDeletedRecords"
+                            class="form-check-input"
+                            @bind="Model.User.UserPreferences.IncludeDeletedItems" 
+                            @bind:after="LoadFilter"
+                            />
                     <label for="files-IncludeDeletedRecords" class="form-check-label"><Language Tag="IncludeDeletedItems" /></label>
                 </div>
             </div>
@@ -112,14 +112,14 @@
                 <Language Tag="NoItemsToShow" />
             } else {
                 <PagedRecordset ActionHandlers="ActionHandlers"
-                    BooleanIcon="@Helpers.Icon("Ok", true)"
-                    Configuration="Config"
-                    Formatters="Formatters"
-                    NavigationCallbackHander="NavigationCallbackHander"
-                    NavigationLocation="PagedRecordset.NavLocation.Both"
-                    RecordData="Data"
-                    RowClasses="_rowClasses"
-                    UseBootstrap="true" />
+                        BooleanIcon="@Helpers.Icon("Ok", true)"
+                        Configuration="Config"
+                        Formatters="Formatters"
+                        NavigationCallbackHander="NavigationCallbackHander"
+                        NavigationLocation="PagedRecordset.NavLocation.Both"
+                        RecordData="Data"
+                        RowClasses="_rowClasses"
+                        UseBootstrap="true" />
             }
         }
     }

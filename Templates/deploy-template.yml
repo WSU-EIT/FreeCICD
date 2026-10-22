@@ -70,6 +70,12 @@ parameters:
     type: boolean
     default: false
 
+  # Adds the app pool identity to the local "Performance Monitor Users" group, so the app can read performance
+  # counters (per-disk activity, the app pool of each w3wp worker). Only FreeCICD's Host Environment page needs it.
+  - name: GrantPerformanceCounterAccess
+    type: boolean
+    default: false
+
   # New parameter for specifying files/folders for permission updates
   - name: GrantAccessToFilesAndFolders
     type: string
@@ -587,6 +593,67 @@ steps:
       AppPoolPasswordForApplication:    '${{ parameters.AuthPassword }}'
       AnonymousAuthenticationForApplication: true
       WindowsAuthenticationForApplication:  false
+
+  #
+  # 4.f) Performance counter access for the app pool identity (opt-in; FreeCICD's Host Environment page)
+  #
+  - task: PowerShell@2
+    displayName: "Grant Performance Monitor Users to the app pool identity"
+    condition: and(succeeded(), eq('${{ parameters.GrantPerformanceCounterAccess }}', 'true'))
+    continueOnError: true
+    env:
+      APP_POOL_NAME: ${{ parameters.AppPoolName }}
+      APP_POOL_IDENTITY: ${{ parameters.AppPoolIdentity }}
+      AUTH_USERNAME: ${{ parameters.AuthUsername }}
+    inputs:
+      targetType: inline
+      script: |
+        $ErrorActionPreference = 'Continue'
+        $deployType = "$env:DEPLOY_TYPE"
+        $poolName = "$env:APP_POOL_NAME"
+        $identity = "$env:APP_POOL_IDENTITY"
+        $account = ''
+        if ($deployType -like '*Auth') {
+            $account = "$env:AUTH_USERNAME"
+        } elseif ($identity -eq 'ApplicationPoolIdentity') {
+            $account = "IIS APPPOOL\$poolName"
+        } elseif ($identity -eq 'NetworkService') {
+            $account = 'NT AUTHORITY\NETWORK SERVICE'
+        } elseif ($identity -eq 'LocalService') {
+            $account = 'NT AUTHORITY\LOCAL SERVICE'
+        }
+        if (-not $account) {
+            Write-Host "No account to grant for app pool identity '$identity'; skipping."
+            exit 0
+        }
+        # S-1-5-32-558 is the well-known SID of "Performance Monitor Users" (works on any display language).
+        $groupSid = 'S-1-5-32-558'
+        try {
+            $members = @(Get-LocalGroupMember -SID $groupSid -ErrorAction Stop | ForEach-Object { $_.Name })
+        } catch {
+            Write-Host "##vso[task.logissue type=warning]Could not read the Performance Monitor Users group: $($_.Exception.Message)"
+            exit 0
+        }
+        if ($members | Where-Object { $_ -ieq $account }) {
+            Write-Host "$account is already in Performance Monitor Users."
+            exit 0
+        }
+        try {
+            Add-LocalGroupMember -SID $groupSid -Member $account -ErrorAction Stop
+            Write-Host "Added $account to Performance Monitor Users."
+        } catch {
+            Write-Host "##vso[task.logissue type=warning]Could not add $account to Performance Monitor Users: $($_.Exception.Message)"
+            exit 0
+        }
+        # Group membership is read when the worker process starts, so recycle the pool for it to take effect now.
+        try {
+            Import-Module WebAdministration -ErrorAction Stop
+            Restart-WebAppPool -Name $poolName -ErrorAction Stop
+            Write-Host "Recycled app pool '$poolName'."
+        } catch {
+            Write-Host "##vso[task.logissue type=warning]Could not recycle app pool '$poolName': $($_.Exception.Message). The grant takes effect when the pool next starts."
+        }
+        exit 0
 
   #
   # 5) Configure IIS Always-On (App Pool & Preload)

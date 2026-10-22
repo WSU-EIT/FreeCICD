@@ -29,22 +29,19 @@ public partial class GraphClient
         }
     }
 
-    public Microsoft.Graph.GraphServiceClient? Client
-    {
+    public Microsoft.Graph.GraphServiceClient? Client {
         get {
             return _client;
         }
     }
 
-    public string? Error
-    {
+    public string? Error {
         get {
             return _error;
         }
     }
 
-    public bool Status
-    {
+    public bool Status {
         get {
             return _status;
         }

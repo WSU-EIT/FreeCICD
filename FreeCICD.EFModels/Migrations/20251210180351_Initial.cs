@@ -9,12 +9,50 @@ namespace FreeCICD.EFModels.Migrations
     public partial class Initial : Migration
     {
         /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DropTable(
+                name: "DepartmentGroups");
+
+            migrationBuilder.DropTable(
+                name: "FileStorage");
+
+            migrationBuilder.DropTable(
+                name: "PluginCache");
+
+            migrationBuilder.DropTable(
+                name: "Settings");
+
+            migrationBuilder.DropTable(
+                name: "TagItems");
+
+            migrationBuilder.DropTable(
+                name: "UDFLabels");
+
+            migrationBuilder.DropTable(
+                name: "UserInGroups");
+
+            migrationBuilder.DropTable(
+                name: "Tags");
+
+            migrationBuilder.DropTable(
+                name: "UserGroups");
+
+            migrationBuilder.DropTable(
+                name: "Users");
+
+            migrationBuilder.DropTable(
+                name: "Departments");
+
+            migrationBuilder.DropTable(
+                name: "Tenants");
+        }
+        /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.CreateTable(
                 name: "DepartmentGroups",
-                columns: table => new
-                {
+                columns: table => new {
                     DepartmentGroupId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     DepartmentGroupName = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
                     TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
@@ -25,15 +63,13 @@ namespace FreeCICD.EFModels.Migrations
                     Deleted = table.Column<bool>(type: "bit", nullable: false),
                     DeletedAt = table.Column<DateTime>(type: "datetime", nullable: true)
                 },
-                constraints: table =>
-                {
+                constraints: table => {
                     table.PrimaryKey("PK_DepartmentGroups", x => x.DepartmentGroupId);
                 });
 
             migrationBuilder.CreateTable(
                 name: "Departments",
-                columns: table => new
-                {
+                columns: table => new {
                     DepartmentId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     DepartmentName = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
                     ActiveDirectoryNames = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
@@ -47,15 +83,13 @@ namespace FreeCICD.EFModels.Migrations
                     Deleted = table.Column<bool>(type: "bit", nullable: false),
                     DeletedAt = table.Column<DateTime>(type: "datetime", nullable: true)
                 },
-                constraints: table =>
-                {
+                constraints: table => {
                     table.PrimaryKey("PK_Departments", x => x.DepartmentId);
                 });
 
             migrationBuilder.CreateTable(
                 name: "PluginCache",
-                columns: table => new
-                {
+                columns: table => new {
                     RecordId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     Author = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
@@ -69,15 +103,13 @@ namespace FreeCICD.EFModels.Migrations
                     AdditionalAssemblies = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     StillExists = table.Column<bool>(type: "bit", nullable: false)
                 },
-                constraints: table =>
-                {
+                constraints: table => {
                     table.PrimaryKey("PK_PluginCache", x => x.RecordId);
                 });
 
             migrationBuilder.CreateTable(
                 name: "Settings",
-                columns: table => new
-                {
+                columns: table => new {
                     SettingId = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
                     SettingName = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
@@ -89,15 +121,13 @@ namespace FreeCICD.EFModels.Migrations
                     LastModified = table.Column<DateTime>(type: "datetime", nullable: false),
                     LastModifiedBy = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true)
                 },
-                constraints: table =>
-                {
+                constraints: table => {
                     table.PrimaryKey("PK_Settings_1", x => x.SettingId);
                 });
 
             migrationBuilder.CreateTable(
                 name: "Tags",
-                columns: table => new
-                {
+                columns: table => new {
                     TagId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     Name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
@@ -113,15 +143,13 @@ namespace FreeCICD.EFModels.Migrations
                     Deleted = table.Column<bool>(type: "bit", nullable: false),
                     DeletedAt = table.Column<DateTime>(type: "datetime", nullable: true)
                 },
-                constraints: table =>
-                {
+                constraints: table => {
                     table.PrimaryKey("PK_Tags", x => x.TagId);
                 });
 
             migrationBuilder.CreateTable(
                 name: "Tenants",
-                columns: table => new
-                {
+                columns: table => new {
                     TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     Name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
                     TenantCode = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
@@ -131,15 +159,13 @@ namespace FreeCICD.EFModels.Migrations
                     LastModified = table.Column<DateTime>(type: "datetime", nullable: false),
                     LastModifiedBy = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true)
                 },
-                constraints: table =>
-                {
+                constraints: table => {
                     table.PrimaryKey("PK_Tenants", x => x.TenantId);
                 });
 
             migrationBuilder.CreateTable(
                 name: "UDFLabels",
-                columns: table => new
-                {
+                columns: table => new {
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     Module = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
                     UDF = table.Column<string>(type: "nvarchar(10)", maxLength: 10, nullable: false),
@@ -151,15 +177,13 @@ namespace FreeCICD.EFModels.Migrations
                     LastModified = table.Column<DateTime>(type: "datetime", nullable: false),
                     LastModifiedBy = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true)
                 },
-                constraints: table =>
-                {
+                constraints: table => {
                     table.PrimaryKey("PK_UDFLabels", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
                 name: "UserGroups",
-                columns: table => new
-                {
+                columns: table => new {
                     GroupId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     Name = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
@@ -172,22 +196,19 @@ namespace FreeCICD.EFModels.Migrations
                     Deleted = table.Column<bool>(type: "bit", nullable: false),
                     DeletedAt = table.Column<DateTime>(type: "datetime", nullable: true)
                 },
-                constraints: table =>
-                {
+                constraints: table => {
                     table.PrimaryKey("PK_UserGroups", x => x.GroupId);
                 });
 
             migrationBuilder.CreateTable(
                 name: "TagItems",
-                columns: table => new
-                {
+                columns: table => new {
                     TagItemId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     TagId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     ItemId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
                 },
-                constraints: table =>
-                {
+                constraints: table => {
                     table.PrimaryKey("PK_TagItems", x => x.TagItemId);
                     table.ForeignKey(
                         name: "FK_TagItems_Tags",
@@ -198,8 +219,7 @@ namespace FreeCICD.EFModels.Migrations
 
             migrationBuilder.CreateTable(
                 name: "Users",
-                columns: table => new
-                {
+                columns: table => new {
                     UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     FirstName = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
@@ -241,8 +261,7 @@ namespace FreeCICD.EFModels.Migrations
                     DeletedAt = table.Column<DateTime>(type: "datetime", nullable: true),
                     Preferences = table.Column<string>(type: "nvarchar(max)", nullable: true)
                 },
-                constraints: table =>
-                {
+                constraints: table => {
                     table.PrimaryKey("PK_Users", x => x.UserId);
                     table.ForeignKey(
                         name: "IX_Users_DepartmentId",
@@ -258,8 +277,7 @@ namespace FreeCICD.EFModels.Migrations
 
             migrationBuilder.CreateTable(
                 name: "FileStorage",
-                columns: table => new
-                {
+                columns: table => new {
                     FileId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     ItemId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     FileName = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: false),
@@ -276,8 +294,7 @@ namespace FreeCICD.EFModels.Migrations
                     Deleted = table.Column<bool>(type: "bit", nullable: false),
                     DeletedAt = table.Column<DateTime>(type: "datetime", nullable: true)
                 },
-                constraints: table =>
-                {
+                constraints: table => {
                     table.PrimaryKey("PK_FileStorage", x => x.FileId);
                     table.ForeignKey(
                         name: "IX_FileStorage_UserId",
@@ -288,15 +305,13 @@ namespace FreeCICD.EFModels.Migrations
 
             migrationBuilder.CreateTable(
                 name: "UserInGroups",
-                columns: table => new
-                {
+                columns: table => new {
                     UserInGroupId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     GroupId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
                 },
-                constraints: table =>
-                {
+                constraints: table => {
                     table.PrimaryKey("PK_UserInGroups", x => x.UserInGroupId);
                     table.ForeignKey(
                         name: "FK_UserInGroups_UserGroups",
@@ -339,46 +354,6 @@ namespace FreeCICD.EFModels.Migrations
                 name: "IX_Users_TenantId",
                 table: "Users",
                 column: "TenantId");
-        }
-
-        /// <inheritdoc />
-        protected override void Down(MigrationBuilder migrationBuilder)
-        {
-            migrationBuilder.DropTable(
-                name: "DepartmentGroups");
-
-            migrationBuilder.DropTable(
-                name: "FileStorage");
-
-            migrationBuilder.DropTable(
-                name: "PluginCache");
-
-            migrationBuilder.DropTable(
-                name: "Settings");
-
-            migrationBuilder.DropTable(
-                name: "TagItems");
-
-            migrationBuilder.DropTable(
-                name: "UDFLabels");
-
-            migrationBuilder.DropTable(
-                name: "UserInGroups");
-
-            migrationBuilder.DropTable(
-                name: "Tags");
-
-            migrationBuilder.DropTable(
-                name: "UserGroups");
-
-            migrationBuilder.DropTable(
-                name: "Users");
-
-            migrationBuilder.DropTable(
-                name: "Departments");
-
-            migrationBuilder.DropTable(
-                name: "Tenants");
         }
     }
 }

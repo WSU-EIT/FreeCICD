@@ -208,7 +208,7 @@ public partial class DataAccess
         // If any passwords are in the old encrypted format, then decrypt them and use the new hash format.
         var oldPasswords = data.Users.Where(x => x.Password != null && x.Password.Contains(",0x"));
         if (oldPasswords != null && oldPasswords.Any()) {
-            foreach(var oldPassword in oldPasswords) {
+            foreach (var oldPassword in oldPasswords) {
                 var password = Decrypt(oldPassword.Password);
                 if (!String.IsNullOrWhiteSpace(password)) {
                     oldPassword.Password = HashPassword(password);

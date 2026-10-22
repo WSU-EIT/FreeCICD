@@ -11,10 +11,10 @@
                 <div class="item-file-delete-button">
                     @if (UseDeleteConfirmation) {
                         <DeleteConfirmation OnConfirmed="@(() => DeleteFile(file.FileId))"
-                                            CancelText="@Helpers.ConfirmButtonTextCancel"
-                                            DeleteText="@Helpers.ConfirmButtonTextDelete"
-                                            ConfirmDeleteText="@Helpers.Text("Confirm")"
-                                            ButtonSize="xs" />
+                                CancelText="@Helpers.ConfirmButtonTextCancel"
+                                DeleteText="@Helpers.ConfirmButtonTextDelete"
+                                ConfirmDeleteText="@Helpers.Text("Confirm")"
+                                ButtonSize="xs" />
                     } else {
                         <button type="button" class="btn btn-xs btn-danger show-on-hover" @onclick="@(() => DeleteFile(file.FileId))">
                             <Language Tag="Delete" IncludeIcon="true" />

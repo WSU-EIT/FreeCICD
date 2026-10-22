@@ -255,7 +255,7 @@
                             <Language Tag="EmailAddress" Required="true" />
                         </label>
                         <input type="text" id="forgotpassword-email" @bind="_user.Email" @bind:event="oninput"
-                        class="@Helpers.MissingValue(_user.Email, "form-control")" />
+                                class="@Helpers.MissingValue(_user.Email, "form-control")" />
                     </div>
 
                     <div class="mb-2">
@@ -263,7 +263,7 @@
                             <Language Tag="NewPassword" Required="true" />
                         </label>
                         <input type="password" id="forgotpassword-password" @bind="_user.Password" @bind:event="oninput"
-                        class="@Helpers.MissingValue(_user.Password, "form-control")" />
+                                class="@Helpers.MissingValue(_user.Password, "form-control")" />
                     </div>
 
                     <div class="btn-group mb-2" role="group">
@@ -287,10 +287,7 @@
                         <label for="forgot-password-validate"><Language Tag="ValidationCode" /></label>
 
                         <div class="center">
-                            <ConfirmationCode 
-                                    Id="forgot-password-validate"
-                                    @bind-Value="_user.Confirmation"
-                                />
+                            <ConfirmationCode Id="forgot-password-validate" @bind-Value="_user.Confirmation" />
                         </div>
                     </div>
 
@@ -367,10 +364,7 @@
                         <label for="signup-validate"><Language Tag="ValidationCode" /></label>
 
                         <div class="center">
-                            <ConfirmationCode 
-                                    Id="signup-validate"
-                                    @bind-Value="_user.Confirmation"
-                                />
+                            <ConfirmationCode Id="signup-validate" @bind-Value="_user.Confirmation" />
                         </div>
                     </div>
 
@@ -391,9 +385,7 @@
                     <h1 class="page-title">@_plugin.Name</h1>
 
                     <div class="mb-2">
-                        <PluginPrompts 
-                        Plugin="_plugin"
-                        OnValuesChange="DoLoginPluginWithPromptsPromptValuesChanged" />
+                        <PluginPrompts Plugin="_plugin" OnValuesChange="DoLoginPluginWithPromptsPromptValuesChanged" />
                     </div>
 
                     <div class="btn-group mb-2 center" role="group">

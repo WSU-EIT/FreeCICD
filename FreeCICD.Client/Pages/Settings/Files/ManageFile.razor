@@ -60,33 +60,6 @@
     [Parameter]
     public Delegate? OnDelete { get; set; }
 
-    public void Dispose()
-    {
-        Model.OnChange -= StateHasChanged;
-        Model.OnSignalRUpdate -= SignalRUpdate;
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (Model.Loaded && Model.LoggedIn) {
-            if (!Model.FeatureEnabledFiles) {
-                Helpers.NavigateToRoot();
-                return;
-            }
-
-            if (!_loadedData) {
-                _loadedData = true;
-                await LoadData();
-            }
-        }
-    }
-
-    protected override void OnInitialized()
-    {
-        Model.OnChange += StateHasChanged;
-        Model.OnSignalRUpdate += SignalRUpdate;
-    }
-
     protected void Cancel()
     {
         _visible = false;
@@ -101,6 +74,12 @@
 
         _visible = false;
         DialogService.Close();
+    }
+
+    public void Dispose()
+    {
+        Model.OnChange -= StateHasChanged;
+        Model.OnSignalRUpdate -= SignalRUpdate;
     }
 
     protected async Task LoadData()
@@ -127,6 +106,27 @@
         _loadedData = true;
 
         StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Model.Loaded && Model.LoggedIn) {
+            if (!Model.FeatureEnabledFiles) {
+                Helpers.NavigateToRoot();
+                return;
+            }
+
+            if (!_loadedData) {
+                _loadedData = true;
+                await LoadData();
+            }
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        Model.OnChange += StateHasChanged;
+        Model.OnSignalRUpdate += SignalRUpdate;
     }
 
     protected async Task Save()

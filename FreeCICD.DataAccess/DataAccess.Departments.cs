@@ -29,7 +29,7 @@ public partial class DataAccess
             var tenantSettings = GetTenantSettings(tenantId);
 
             // First, delete related data
-            if(ForceDeleteImmediately || tenantSettings.DeletePreference == DataObjects.DeletePreference.Immediate) {
+            if (ForceDeleteImmediately || tenantSettings.DeletePreference == DataObjects.DeletePreference.Immediate) {
                 var deleteAppRecords = await DeleteRecordsApp(rec, CurrentUser);
                 if (!deleteAppRecords.Result) {
                     output.Messages.AddRange(deleteAppRecords.Messages);
@@ -51,13 +51,13 @@ public partial class DataAccess
                 }
             }
 
-            if(ForceDeleteImmediately || tenantSettings.DeletePreference == DataObjects.DeletePreference.Immediate) {
+            if (ForceDeleteImmediately || tenantSettings.DeletePreference == DataObjects.DeletePreference.Immediate) {
                 data.Departments.Remove(rec);
             } else {
                 rec.Deleted = true;
                 rec.DeletedAt = DateTime.UtcNow;
                 rec.LastModified = DateTime.UtcNow;
-                if(CurrentUser != null) {
+                if (CurrentUser != null) {
                     rec.LastModifiedBy = CurrentUserIdString(CurrentUser);
                 }
             }
@@ -100,7 +100,7 @@ public partial class DataAccess
             Guid tenantId = GuidValue(rec.TenantId);
             var tenantSettings = GetTenantSettings(GuidValue(rec.TenantId));
 
-            if(ForceDeleteImmediately || tenantSettings.DeletePreference == DataObjects.DeletePreference.Immediate) {
+            if (ForceDeleteImmediately || tenantSettings.DeletePreference == DataObjects.DeletePreference.Immediate) {
                 var deleteAppRecords = await DeleteRecordsApp(rec, CurrentUser);
                 if (!deleteAppRecords.Result) {
                     output.Messages.AddRange(deleteAppRecords.Messages);
@@ -122,17 +122,17 @@ public partial class DataAccess
                 }
             }
 
-            if(ForceDeleteImmediately || tenantSettings.DeletePreference == DataObjects.DeletePreference.Immediate) {
+            if (ForceDeleteImmediately || tenantSettings.DeletePreference == DataObjects.DeletePreference.Immediate) {
                 data.DepartmentGroups.Remove(rec);
             } else {
                 rec.Deleted = true;
                 rec.DeletedAt = DateTime.UtcNow;
                 rec.LastModified = DateTime.UtcNow;
-                if(CurrentUser != null) {
+                if (CurrentUser != null) {
                     rec.LastModifiedBy = CurrentUserIdString(CurrentUser);
                 }
             }
-            
+
             try {
                 await data.SaveChangesAsync();
                 output.Result = true;
@@ -225,11 +225,11 @@ public partial class DataAccess
         } else {
             rec = await data.Departments.FirstOrDefaultAsync(x => x.DepartmentId == DepartmentId && x.Deleted != true);
         }
-        
+
         if (rec == null) {
             output.ActionResponse.Messages.Add("Department " + DepartmentId.ToString() + " Not Found");
         } else {
-            output = new DataObjects.Department { 
+            output = new DataObjects.Department {
                 ActionResponse = GetNewActionResponse(true),
                 ActiveDirectoryNames = rec.ActiveDirectoryNames,
                 Added = rec.Added,
@@ -257,14 +257,14 @@ public partial class DataAccess
 
         DepartmentGroup? rec = null;
 
-        if(AdminUser(CurrentUser)) {
+        if (AdminUser(CurrentUser)) {
             rec = await data.DepartmentGroups.FirstOrDefaultAsync(x => x.DepartmentGroupId == DepartmentGroupId);
         } else {
             rec = await data.DepartmentGroups.FirstOrDefaultAsync(x => x.DepartmentGroupId == DepartmentGroupId && x.Deleted != true);
         }
-        
-        if(rec != null) {
-            output = new DataObjects.DepartmentGroup { 
+
+        if (rec != null) {
+            output = new DataObjects.DepartmentGroup {
                 ActionResponse = GetNewActionResponse(true),
                 Added = rec.Added,
                 AddedBy = LastModifiedDisplayName(rec.AddedBy),
@@ -291,14 +291,14 @@ public partial class DataAccess
 
         List<DepartmentGroup>? recs = null;
 
-        if(AdminUser(CurrentUser)) {
+        if (AdminUser(CurrentUser)) {
             recs = await data.DepartmentGroups.Where(x => x.TenantId == TenantId)
             .OrderBy(x => x.DepartmentGroupName).ToListAsync();
         } else {
             recs = await data.DepartmentGroups.Where(x => x.TenantId == TenantId && x.Deleted != true)
             .OrderBy(x => x.DepartmentGroupName).ToListAsync();
         }
-        
+
         if (recs != null && recs.Count() > 0) {
             foreach (var rec in recs) {
                 var d = new DataObjects.DepartmentGroup {
@@ -328,7 +328,7 @@ public partial class DataAccess
         string output = String.Empty;
 
         var rec = data.Departments.FirstOrDefault(x => x.TenantId == TenantId && x.DepartmentId == DepartmentId && x.Deleted != true);
-        if(rec != null && !String.IsNullOrEmpty(rec.DepartmentName)) {
+        if (rec != null && !String.IsNullOrEmpty(rec.DepartmentName)) {
             output = rec.DepartmentName;
         }
 
@@ -341,12 +341,12 @@ public partial class DataAccess
 
         List<Department>? recs = null;
 
-        if(AdminUser(CurrentUser)) {
+        if (AdminUser(CurrentUser)) {
             recs = await data.Departments.Where(x => x.TenantId == TenantId).OrderBy(x => x.DepartmentName).ToListAsync();
         } else {
             recs = await data.Departments.Where(x => x.TenantId == TenantId && x.Deleted != true).OrderBy(x => x.DepartmentName).ToListAsync();
         }
-        
+
         if (recs != null && recs.Count() > 0) {
             foreach (var rec in recs) {
                 var d = new DataObjects.Department {
@@ -409,7 +409,7 @@ public partial class DataAccess
             rec.DepartmentGroupId = output.DepartmentGroupId;
             rec.LastModified = now;
 
-            if(CurrentUser != null) {
+            if (CurrentUser != null) {
                 rec.LastModifiedBy = CurrentUserIdString(CurrentUser);
 
                 if (CurrentUser.Admin) {
@@ -477,7 +477,7 @@ public partial class DataAccess
             rec.DepartmentGroupName = output.DepartmentGroupName;
             rec.LastModified = now;
 
-            if(CurrentUser != null) {
+            if (CurrentUser != null) {
                 rec.LastModifiedBy = CurrentUserIdString(CurrentUser);
 
                 if (CurrentUser.Admin) {

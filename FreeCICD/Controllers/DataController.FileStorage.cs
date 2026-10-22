@@ -15,6 +15,32 @@ public partial class DataController
     }
 
     [HttpGet]
+    [AllowAnonymous]
+    [Route("~/File/Embed/{id}")]
+    public async Task<IActionResult> EmbedFile(Guid id)
+    {
+        string filename = String.Empty;
+        byte[]? fileContent = null;
+        string mimeType = "";
+
+        if (id != Guid.Empty && context != null) {
+            DataObjects.FileStorage file = await da.GetFileStorage(id);
+            if (file != null && file.ActionResponse != null && file.ActionResponse.Result) {
+                string extension = da.StringValue(file.Extension).Replace(".", "").ToLower();
+                mimeType = Utilities.GetMimeType(extension);
+                filename = da.StringValue(file.FileName);
+                fileContent = file.Value;
+            }
+        }
+
+        if (fileContent == null) {
+            return new EmptyResult();
+        } else {
+            return new FileStreamResult(new MemoryStream(fileContent), mimeType);
+        }
+    }
+
+    [HttpGet]
     [Authorize]
     [Route("~/api/Data/GetFileStorage/{id}")]
     public async Task<ActionResult<DataObjects.FileStorage>> GetFileStorage(Guid id)
@@ -130,32 +156,6 @@ public partial class DataController
     {
         var output = await da.UndeleteFileStorage(id);
         return Ok(output);
-    }
-
-    [HttpGet]
-    [AllowAnonymous]
-    [Route("~/File/Embed/{id}")]
-    public async Task<IActionResult> EmbedFile(Guid id)
-    {
-        string filename = String.Empty;
-        byte[]? fileContent = null;
-        string mimeType = "";
-
-        if (id != Guid.Empty && context != null) {
-            DataObjects.FileStorage file = await da.GetFileStorage(id);
-            if (file != null && file.ActionResponse != null && file.ActionResponse.Result) {
-                string extension = da.StringValue(file.Extension).Replace(".", "").ToLower();
-                mimeType = Utilities.GetMimeType(extension);
-                filename = da.StringValue(file.FileName);
-                fileContent = file.Value;
-            }
-        }
-
-        if (fileContent == null) {
-            return new EmptyResult();
-        } else {
-            return new FileStreamResult(new MemoryStream(fileContent), mimeType);
-        }
     }
 
     [HttpGet]

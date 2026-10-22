@@ -145,7 +145,7 @@ public partial class DataAccess
                 }
             }
 
-            output = new DataObjects.Setting { 
+            output = new DataObjects.Setting {
                 ActionResponse = GetNewActionResponse(true),
                 LastModified = rec.LastModified,
                 LastModifiedBy = LastModifiedDisplayName(rec.LastModifiedBy),
@@ -380,7 +380,7 @@ public partial class DataAccess
                 if (save) {
                     try {
                         rec.LastModified = DateTime.UtcNow;
-                        if(CurrentUser != null) {
+                        if (CurrentUser != null) {
                             rec.LastModifiedBy = CurrentUserIdString(CurrentUser);
                         }
 
@@ -551,7 +551,7 @@ public partial class DataAccess
 
         try {
             rec.LastModified = DateTime.UtcNow;
-            if(CurrentUser != null) {
+            if (CurrentUser != null) {
                 rec.LastModifiedBy = CurrentUserIdString(CurrentUser);
             }
 

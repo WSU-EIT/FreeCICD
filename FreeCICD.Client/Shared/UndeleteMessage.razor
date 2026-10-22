@@ -27,11 +27,7 @@
     </button>
 </div>
 @code {
-    /// <summary>
-    /// Required callback event to invoke when the Undelete Record button is clicked.
-    /// </summary>
-    [Parameter]
-    public EventCallback OnUndelete { get; set; }
+    protected DateTime? WillDeleteAt;
 
     /// <summary>
     /// Optional DeletedAt datetime? value.
@@ -44,10 +40,18 @@
     /// </summary>
     [Parameter]
     public string? LastModifiedBy { get; set; }
-
-    protected DateTime? WillDeleteAt;
+    /// <summary>
+    /// Required callback event to invoke when the Undelete Record button is clicked.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnUndelete { get; set; }
 
     public void Dispose() { }
+
+    protected async Task DoUndelete()
+    {
+        await OnUndelete.InvokeAsync();
+    }
 
     protected override void OnParametersSet()
     {
@@ -57,10 +61,5 @@
                 WillDeleteAt = ((DateTime)DeletedAt).AddDays(deleteAfterDays);
             }
         }
-    }
-
-    protected async Task DoUndelete()
-    {
-        await OnUndelete.InvokeAsync();
     }
 }

@@ -364,3 +364,6 @@ FodyWeavers.xsd
 /FreeCICD/IISInfo_AzureCMS.json
 /FreeCICD/IISInfo_AzureDev.json
 /FreeCICD/IISInfo_AzureProd.json
+
+# Host stats history written at runtime (FreeCICD.App.HostStats)
+**/App_Data/HostStats/

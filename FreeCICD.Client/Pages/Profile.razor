@@ -58,20 +58,20 @@
                         <div class="mb-2">
                             <label for="edit-profile-firstName"><Language Tag="FirstName" Required="true" /></label>
                             <input type="text" id="edit-profile-firstName" @bind="_user.FirstName" @bind:event="oninput"
-                                   class="@Helpers.MissingValue(_user.FirstName, "form-control")" />
+                                    class="@Helpers.MissingValue(_user.FirstName, "form-control")" />
                         </div>
 
                         <div class="mb-2">
                             <label for="edit-profile-lastName"><Language Tag="LastName" Required="true" /></label>
                             <input type="text" id="edit-profile-lastName" @bind="_user.LastName" @bind:event="oninput"
-                                   class="@Helpers.MissingValue(_user.LastName, "form-control")" />
+                                    class="@Helpers.MissingValue(_user.LastName, "form-control")" />
                         </div>
                     }
                     @if (Model.AllowUsersToManageEmail) {
                         <div class="mb-2">
                             <label for="edit-profile-email"><Language Tag="Email" Required="true" /></label>
                             <input type="email" id="edit-profile-email" @bind="_user.Email" @bind:event="oninput"
-                                   class="@Helpers.MissingValue(_user.Email, "form-control")" />
+                                    class="@Helpers.MissingValue(_user.Email, "form-control")" />
                         </div>
                     }
                     @if (Model.AllowUsersToManagePhone) {

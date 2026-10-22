@@ -46,7 +46,7 @@
             <div class="mb-2">
                 <label for="edit-departmentgroup-departmentGroupName"><Language Tag="DepartmentGroupName" Required="true" /></label>
                 <input type="text" id="edit-departmentgroup-departmentGroupName" @bind="_deptGroup.DepartmentGroupName" @bind:event="oninput"
-                       class="@Helpers.MissingValue(_deptGroup.DepartmentGroupName,"form-control")" />
+                        class="@Helpers.MissingValue(_deptGroup.DepartmentGroupName,"form-control")" />
             </div>
 
             <EditDepartmentGroup_App @bind-Value="_deptGroup" />

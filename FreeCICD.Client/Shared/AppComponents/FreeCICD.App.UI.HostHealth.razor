@@ -1,0 +1,127 @@
+@* Host Health panel: findings for one environment, computed on the server from the JSON FreeCICD already reads *@
+@* (see FreeCICD.App.DataAccess.HostEnvironment.cs). Severity is shown by icon shape and text, never by colour alone. *@
+@* Styles are in wwwroot/css/FreeCICD.App.css (.hosthealth). *@
+
+@code {
+    /// <summary>The report to show; null while loading or when the endpoint failed.</summary>
+    [Parameter] public DataObjects.HostHealthReport? Report { get; set; }
+
+    /// <summary>"DEV", "PROD", "CMS" or "This Server".</summary>
+    [Parameter] public string EnvironmentLabel { get; set; } = "";
+
+    protected HashSet<string> _expanded = new();
+    protected string? _reportKey;
+
+    protected override void OnParametersSet()
+    {
+        // Collapse everything when switching to another environment.
+        if (_reportKey != Report?.Environment) {
+            _reportKey = Report?.Environment;
+            _expanded.Clear();
+        }
+    }
+
+    protected string Key => string.Concat((Report?.Environment ?? "env").Where(char.IsLetterOrDigit)).ToLowerInvariant();
+
+    protected static string SeverityIcon(DataObjects.HostHealthSeverity severity) => severity switch {
+        DataObjects.HostHealthSeverity.Critical => "fa-solid fa-square-xmark",
+        DataObjects.HostHealthSeverity.Warning => "fa-solid fa-triangle-exclamation",
+        _ => "fa-solid fa-circle-info",
+    };
+
+    protected static string SeverityText(DataObjects.HostHealthSeverity severity) => severity switch {
+        DataObjects.HostHealthSeverity.Critical => "Critical",
+        DataObjects.HostHealthSeverity.Warning => "Warning",
+        _ => "Info",
+    };
+
+    protected static string SeverityClass(DataObjects.HostHealthSeverity severity) => severity switch {
+        DataObjects.HostHealthSeverity.Critical => "hh-critical",
+        DataObjects.HostHealthSeverity.Warning => "hh-warning",
+        _ => "hh-info",
+    };
+
+    protected static string Plural(int count, string one, string many) => count == 1 ? $"1 {one}" : $"{count} {many}";
+}
+
+<section class="hosthealth" aria-labelledby="hh-title-@Key">
+    <div class="hh-head">
+        <h2 id="hh-title-@Key" class="hh-title">
+            <i class="fa-solid fa-heart-pulse me-2" aria-hidden="true"></i>Health: @EnvironmentLabel
+        </h2>
+        @if (Report?.HasData == true) {
+            <p class="hh-meta">
+                @if (Report.ScannedUtc.HasValue) {
+                    @:From the deploy scan of
+                    <strong>@(Report.MachineName ?? EnvironmentLabel)</strong>
+                    @:on @Helpers.FormatDateTime(Report.ScannedUtc).
+                } else {
+                    @:From live data on
+                    <strong>@(Report.MachineName ?? EnvironmentLabel)</strong>
+                    @:and its Host Stats history.
+                }
+                Nothing extra runs on the server.
+            </p>
+        }
+    </div>
+
+    @if (Report == null) {
+        <p class="hh-empty">Health findings could not be loaded. Use Refresh to try again.</p>
+    } else if (!Report.HasData) {
+        <p class="hh-empty">There is no scan data for @EnvironmentLabel yet, so nothing could be checked.</p>
+    } else {
+        <ul class="hh-summary" aria-label="Summary">
+            <li class="hh-critical"><i class="@SeverityIcon(DataObjects.HostHealthSeverity.Critical)" aria-hidden="true"></i> @Plural(Report.CriticalCount, "critical", "critical")</li>
+            <li class="hh-warning"><i class="@SeverityIcon(DataObjects.HostHealthSeverity.Warning)" aria-hidden="true"></i> @Plural(Report.WarningCount, "warning", "warnings")</li>
+            <li class="hh-info"><i class="@SeverityIcon(DataObjects.HostHealthSeverity.Info)" aria-hidden="true"></i> @Plural(Report.InfoCount, "info", "info")</li>
+            <li class="hh-passed"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> @Plural(Report.Passed.Count, "check passed", "checks passed")</li>
+        </ul>
+
+        @if (Report.Findings.Count == 0) {
+            <p class="hh-empty"><i class="fa-solid fa-circle-check me-1" aria-hidden="true"></i> No issues found.</p>
+        } else {
+            <ul class="hh-findings">
+                @foreach (var finding in Report.Findings) {
+                    var id = $"hh-{Key}-{finding.Id}";
+                    var expanded = _expanded.Contains(finding.Id);
+                    <li class="hh-finding @SeverityClass(finding.Severity)">
+                        <h3 class="hh-finding-title" id="@id-title">
+                            <span class="hh-sev">
+                                <i class="@SeverityIcon(finding.Severity)" aria-hidden="true"></i>
+                                @SeverityText(finding.Severity)<span class="visually-hidden">:</span>
+                            </span>
+                            <span class="hh-finding-text">@finding.Title</span>
+                            <span class="hh-count">@finding.Count<span class="visually-hidden"> affected</span></span>
+                        </h3>
+                        <p class="hh-advice">@finding.Advice</p>
+                        @if (finding.Items.Count > 0) {
+                            <button type="button" class="hh-toggle" aria-expanded="@(expanded ? "true" : "false")" aria-controls="@id-items"
+                                    @onclick="() => Helpers.ToggleSet(_expanded, finding.Id)">
+                                <i class="fa-solid @(expanded ? "fa-chevron-down" : "fa-chevron-right") me-2" aria-hidden="true"></i>
+                                @(expanded ? "Hide" : "Show") @Plural(finding.Items.Count, "affected item", "affected items")
+                                <span class="visually-hidden">for @finding.Title</span>
+                            </button>
+                            <ul class="hh-items" id="@id-items" hidden="@(!expanded)" aria-labelledby="@id-title">
+                                @foreach (var item in finding.Items) {
+                                    <li>
+                                        <span class="hh-item-name">@item.Name</span>
+                                        @if (!string.IsNullOrWhiteSpace(item.Detail)) {
+                                            <span class="hh-item-detail">@item.Detail</span>
+                                        }
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </li>
+                }
+            </ul>
+        }
+
+        @if (Report.Passed.Count > 0) {
+            <p class="hh-footnote"><strong>Passed:</strong> @string.Join(", ", Report.Passed).</p>
+        }
+        @if (Report.NotChecked.Count > 0) {
+            <p class="hh-footnote"><strong>Not checked (no data):</strong> @string.Join(", ", Report.NotChecked).</p>
+        }
+    }
+</section>

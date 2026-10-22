@@ -6,6 +6,7 @@ public partial class Program
     {
         var output = builder;
         // Add any app-specific modifications to the builder here.
+        output = AddFreeCICDServices(output);
         return output;
     }
 
@@ -20,6 +21,7 @@ public partial class Program
     {
         var output = app;
         // Add any app-specific modifications to the app here.
+        output = UseFreeCICDGates(output);
         return output;
     }
 
@@ -33,11 +35,11 @@ public partial class Program
     public static List<string> AuthenticationPoliciesApp {
         get {
             var output = new List<string>();
-            
+
             // Add any app-specific authentication policies here.
             // Example:
             //output.Add("PolicyName");
-            
+
             return output;
         }
     }

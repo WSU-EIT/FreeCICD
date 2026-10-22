@@ -20,13 +20,12 @@ public partial class DataAccess
     /// <param name="Classname">The class name in which the invokerFunction resides.</param>
     /// <param name="invokerFunction">The name of the function to invoke from the code.</param>
     /// <returns>An object of type T.</returns>
-    public T? ExecuteDynamicCSharpCode<T>(string code, 
-        object[] objects, 
-        List<string>? additionalAssemblies, 
-        string Namespace, 
-        string Classname, 
-        string invokerFunction)
-    {
+    public T? ExecuteDynamicCSharpCode<T>(string code,
+        object[] objects,
+        List<string>? additionalAssemblies,
+        string Namespace,
+        string Classname,
+        string invokerFunction){
         T? output = default(T);
 
         try {
@@ -92,7 +91,7 @@ public partial class DataAccess
 
                                 int iterations = 0;
 
-                                while(!taskItem.IsCompleted) {
+                                while (!taskItem.IsCompleted) {
                                     iterations++;
                                     System.Threading.Thread.Sleep(10);
                                 }

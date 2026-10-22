@@ -5,20 +5,58 @@ export function LoadHighchartsResources() {
     // If so, this immediately invokes the OnHighchartsLoaded method in the Blazor
     // component. If not, the libraries are loaded and then the method is invoked.
 
-    if(typeof(Highcharts) == "object"){
-        dotNetHelper.invokeMethodAsync("OnHighchartsLoaded");
+    // The libraries are vendored under wwwroot/lib/highcharts (Highcharts 11.4.8, as in FreeCRM).
+    // highcharts-more adds the arearange series used for min/max bands.
+    var helper = dotNetHelper;
+
+    if (typeof (Highcharts) == "object") {
+        helper.invokeMethodAsync("OnHighchartsLoaded");
+    } else if (window.highchartsResourcesLoading) {
+        // Another component is already loading the libraries.
+        waitForHighcharts(() => {
+            helper.invokeMethodAsync("OnHighchartsLoaded");
+        });
     } else {
-        LoadCssResource("https://code.highcharts.com/css/highcharts.css", "highcharts-light", () => {
-            LoadScriptResource("https://code.highcharts.com/highcharts.js", () => {
-                LoadScriptResource("https://code.highcharts.com/modules/exporting.js", () => {
-                    LoadScriptResource("https://code.highcharts.com/modules/export-data.js", () => {
-                        LoadScriptResource("https://code.highcharts.com/modules/accessibility.js", () => {
-                            dotNetHelper.invokeMethodAsync("OnHighchartsLoaded");
+        window.highchartsResourcesLoading = true;
+
+        // AMD Workaround: Monaco's vs/loader.js creates a global AMD environment.
+        // Highcharts detects AMD and registers as a module instead of setting window.Highcharts.
+        // We temporarily hide the AMD loader so Highcharts falls back to browser globals.
+        var tempDefine = window.define;
+        window.define = undefined;
+
+        LoadCssResource("lib/highcharts/highcharts.css", "highcharts-light", () => {
+            LoadScriptResource("lib/highcharts/highcharts.js", () => {
+                LoadScriptResource("lib/highcharts/highcharts-more.js", () => {
+                    LoadScriptResource("lib/highcharts/modules/exporting.js", () => {
+                        LoadScriptResource("lib/highcharts/modules/export-data.js", () => {
+                            LoadScriptResource("lib/highcharts/modules/accessibility.js", () => {
+                                // Restore AMD loader now that Highcharts is loaded
+                                window.define = tempDefine;
+
+                                // Wait for Highcharts to be actually available before notifying Blazor
+                                waitForHighcharts(() => {
+                                    helper.invokeMethodAsync("OnHighchartsLoaded");
+                                });
+                            });
                         });
                     });
                 });
             });
         });
+    }
+}
+
+// Polls for Highcharts availability; handles race condition where script.onload
+// fires before the library has finished initializing its global object.
+function waitForHighcharts(callback, attempts = 0) {
+    if (typeof (Highcharts) == "object") {
+        callback();
+    } else if (attempts < 100) {
+        // Retry up to 100 times (10 seconds max with 100ms intervals)
+        setTimeout(() => waitForHighcharts(callback, attempts + 1), 100);
+    } else {
+        console.error("Highcharts failed to load after multiple attempts");
     }
 }
 

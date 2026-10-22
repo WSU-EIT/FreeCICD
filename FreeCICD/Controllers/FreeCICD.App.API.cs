@@ -1,9 +1,10 @@
-﻿using FreeCICD.Server.Hubs;
+using FreeCICD.Server.Hubs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FreeCICD.Server.Controllers;
 
+// ---- API ----
 // FreeCICD-specific API endpoints for Azure DevOps integration
 
 public partial class DataController
@@ -11,14 +12,72 @@ public partial class DataController
     /// <summary>
     /// Gets DevOps config from appsettings (for logged-in users)
     /// </summary>
-    private (string orgName, string pat, string projectId, string repoId, string branch) GetReleasePipelinesDevOpsConfig()
+    private DevOpsAccess.Configured GetReleasePipelinesDevOpsConfig() => DevOpsAccess.Configured.FromConfig(configurationHelper);
+
+    /// <summary>
+    /// The PAT, OrgName and project a call runs with: the caller's own when sent (logged in or not), else the config for a logged-in user.
+    /// </summary>
+    private (string pat, string orgName, string projectId, bool usesConfig, string? error) ResolveDevOpsAccess(string? pat, string? orgName, string? projectId, bool requireProject)
     {
-        string orgName = configurationHelper?.OrgName ?? "";
-        string pat = configurationHelper?.PAT ?? "";
-        string projectId = configurationHelper?.ProjectId ?? "";
-        string repoId = configurationHelper?.RepoId ?? "";
-        string branch = configurationHelper?.Branch ?? "";
-        return (orgName, pat, projectId, repoId, branch);
+        return DevOpsAccess.Resolve(CurrentUser.Enabled, pat, orgName, projectId, requireProject, GetReleasePipelinesDevOpsConfig());
+    }
+
+    /// <summary>
+    /// Where a wizard call reads or writes and with which credentials. A signed-in user always works in the configured
+    /// project, repository and branch with the configured PAT (CreateOrUpdateDevOpsPipeline saves there); an anonymous
+    /// caller works with their own PAT in the project, repository and branch they sent.
+    /// </summary>
+    private sealed record WizardTarget(string Pat, string OrgName, string ProjectId, string RepoId, string Branch, bool UsesConfig);
+
+    /// <summary>
+    /// The WizardTarget for a wizard GET, or the refusal message from ResolveDevOpsAccess.
+    /// </summary>
+    private (WizardTarget? target, string? error) ResolveWizardTarget(string? pat, string? orgName, string? projectId, string? repoId, string? branch, bool requireProject)
+    {
+        var access = ResolveDevOpsAccess(pat, orgName, projectId, requireProject);
+        if (access.error != null) {
+            return (null, access.error);
+        }
+        if (access.usesConfig) {
+            var config = GetReleasePipelinesDevOpsConfig();
+            return (new WizardTarget(config.Pat, config.OrgName, config.ProjectId, config.RepoId, config.Branch, UsesConfig: true), null);
+        }
+        return (new WizardTarget(access.pat, access.orgName, access.projectId, repoId ?? "", branch ?? "", UsesConfig: false), null);
+    }
+
+    /// <summary>
+    /// The WizardTarget for a Preview or CreateOrUpdate request, or the refusal message: no credentials, or (with the
+    /// caller's own PAT) a request that does not name its project, repository and branch (DevOpsAccess.MissingTarget).
+    /// </summary>
+    private (WizardTarget? target, string? error) ResolveWizardTarget(DataObjects.DevOpsPipelineRequest request)
+    {
+        var resolved = ResolveWizardTarget(request.Pat, request.OrgName, request.ProjectId, request.RepoId, request.Branch, requireProject: false);
+        if (resolved.target is { UsesConfig: false } && DevOpsAccess.MissingTarget(request) is string missing) {
+            return (null, missing);
+        }
+        return resolved;
+    }
+
+    /// <summary>
+    /// The App Atlas options a wizard pipeline is generated with. An anonymous caller's pipeline lives in their own
+    /// organization, so this server's report URL and key must not travel there.
+    /// </summary>
+    private DataObjects.AtlasVerifyOptions AtlasVerifyOptionsFor(WizardTarget target, DataObjects.DevOpsPipelineRequest request) =>
+        target.UsesConfig ? AtlasVerifyOptionsFor(request) : new DataObjects.AtlasVerifyOptions { Enabled = false };
+
+    /// <summary>
+    /// The PAT and OrgName an import call runs with: the same rule as every other DevOps endpoint (DevOpsAccess.Resolve),
+    /// applied to the DevOpsPAT/DevOpsOrg headers the import page sends. A signed-in user always uses the configured
+    /// credentials; an anonymous caller must send a real (non-placeholder) PAT and OrgName or gets the refusal message.
+    /// </summary>
+    private (string pat, string orgName, string? error) ResolveImportAccess()
+    {
+        var headers = Request?.Headers;
+        var pat = headers == null ? null : headers[DevOpsAccess.PatHeader].FirstOrDefault();
+        var orgName = headers == null ? null : headers[DevOpsAccess.OrgHeader].FirstOrDefault();
+
+        var access = ResolveDevOpsAccess(pat, orgName, null, requireProject: false);
+        return (access.pat, access.orgName, access.error == null ? null : DevOpsAccess.ImportNoCredentialsMessage);
     }
 
     #region Pipeline Dashboard Endpoints
@@ -27,387 +86,208 @@ public partial class DataController
     /// Joins the caller's SignalR connection to the live pipeline monitor group.
     /// The background PipelineMonitorService broadcasts status changes to this group.
     /// </summary>
-    [HttpPost("~/api/Pipelines/monitor/join")]
-    [AllowAnonymous]
+    [HttpPost($"~/{DataObjects.Endpoints.PipelineDashboard.MonitorJoin}")]
+    [Authorize]
     public async Task<ActionResult<DataObjects.BooleanResponse>> JoinPipelineMonitor([FromQuery] string connectionId)
     {
-        var output = new DataObjects.BooleanResponse();
-
-        if (string.IsNullOrWhiteSpace(connectionId)) {
-            output.Messages.Add("ConnectionId is required");
-            return Ok(output);
+        if (!CurrentUser.Enabled) {
+            return Unauthorized(_returnCodeAccessDenied);
         }
 
-        if (_signalR != null) {
-            await _signalR.Groups.AddToGroupAsync(connectionId, DataObjects.SignalRUpdateType.PipelineMonitorGroup);
-
-            // Update connection info tracking
-            var connInfo = freecicdHub.GetConnectionInfo(connectionId);
-            if (connInfo != null && !connInfo.Groups.Contains(DataObjects.SignalRUpdateType.PipelineMonitorGroup)) {
-                connInfo.Groups.Add(DataObjects.SignalRUpdateType.PipelineMonitorGroup);
-            }
-
-            output.Result = true;
-        }
-
-        return Ok(output);
+        return Ok(await ChangeGroupMembership(connectionId, DataObjects.SignalRUpdateType.PipelineMonitorGroup, join: true));
     }
 
     /// <summary>
     /// Removes the caller's SignalR connection from the live pipeline monitor group.
     /// </summary>
-    [HttpPost("~/api/Pipelines/monitor/leave")]
-    [AllowAnonymous]
+    [HttpPost($"~/{DataObjects.Endpoints.PipelineDashboard.MonitorLeave}")]
+    [Authorize]
     public async Task<ActionResult<DataObjects.BooleanResponse>> LeavePipelineMonitor([FromQuery] string connectionId)
     {
-        var output = new DataObjects.BooleanResponse();
-
-        if (string.IsNullOrWhiteSpace(connectionId)) {
-            output.Messages.Add("ConnectionId is required");
-            return Ok(output);
+        if (!CurrentUser.Enabled) {
+            return Unauthorized(_returnCodeAccessDenied);
         }
 
-        if (_signalR != null) {
-            await _signalR.Groups.RemoveFromGroupAsync(connectionId, DataObjects.SignalRUpdateType.PipelineMonitorGroup);
-
-            // Update connection info tracking
-            var connInfo = freecicdHub.GetConnectionInfo(connectionId);
-            if (connInfo != null) {
-                connInfo.Groups.Remove(DataObjects.SignalRUpdateType.PipelineMonitorGroup);
-            }
-
-            output.Result = true;
-        }
-
-        return Ok(output);
+        return Ok(await ChangeGroupMembership(connectionId, DataObjects.SignalRUpdateType.PipelineMonitorGroup, join: false));
     }
+
+    // The dashboard endpoints below are for signed-in users: they read and queue builds with the configured PAT.
+    // Only the wizard's own-PAT endpoints (GetDevOps*, Preview, CreateOrUpdate, the pipeline YAML pair and the
+    // header-authenticated import calls) stay [AllowAnonymous], because a caller without an account can use them
+    // with their own PAT and organization (see DevOpsAccess.Resolve).
 
     /// <summary>
     /// Queues a new run for a specific pipeline (equivalent to clicking "Run pipeline" in Azure DevOps).
     /// </summary>
-    [HttpPost("~/api/Pipelines/{pipelineId}/run")]
-    [AllowAnonymous]
-    public async Task<ActionResult<DataObjects.BooleanResponse>> RunPipeline(int pipelineId, [FromQuery] string? projectId = null, [FromQuery] string? pat = null, [FromQuery] string? orgName = null)
-    {
-        var output = new DataObjects.BooleanResponse();
+    [HttpPost($"~/{DataObjects.Endpoints.PipelineDashboard.RunPipeline}")]
+    [Authorize]
+    public Task<ActionResult<DataObjects.BooleanResponse>> RunPipeline(int pipelineId, [FromQuery] string? projectId = null) =>
+        WithDevOpsAccess(null, null, projectId, requireProject: true, RefusedResponse,
+            a => da.RunPipelineAsync(a.pat, a.orgName, a.projectId, pipelineId));
 
-        try {
-            if (CurrentUser.Enabled) {
-                var config = GetReleasePipelinesDevOpsConfig();
-                output = await da.RunPipelineAsync(config.pat, config.orgName, projectId ?? config.projectId, pipelineId);
-            } else if (!string.IsNullOrWhiteSpace(pat) && !string.IsNullOrWhiteSpace(orgName) && !string.IsNullOrWhiteSpace(projectId)) {
-                output = await da.RunPipelineAsync(pat, orgName, projectId, pipelineId);
-            } else {
-                return BadRequest("No PAT or OrgName provided and user is not logged in.");
-            }
-        } catch (Exception ex) {
-            output.Messages.Add($"Error running pipeline: {ex.Message}");
-        }
-
-        return Ok(output);
-    }
     /// <summary>
     /// Gets the detailed build timeline (stages + jobs) for a specific build.
     /// Used by the expandable row detail view on the dashboard.
     /// </summary>
-    [HttpGet("~/api/Pipelines/builds/{buildId}/timeline")]
-    [AllowAnonymous]
-    public async Task<ActionResult<DataObjects.BuildTimelineResponse>> GetBuildTimeline(int buildId, [FromQuery] string? projectId = null, [FromQuery] string? pat = null, [FromQuery] string? orgName = null)
-    {
-        DataObjects.BuildTimelineResponse output;
+    [HttpGet($"~/{DataObjects.Endpoints.PipelineDashboard.GetBuildTimeline}")]
+    [Authorize]
+    public Task<ActionResult<DataObjects.BuildTimelineResponse>> GetBuildTimeline(int buildId, [FromQuery] string? projectId = null) =>
+        WithDevOpsAccess(null, null, projectId, requireProject: true, error => new DataObjects.BuildTimelineResponse { BuildId = buildId, ErrorMessage = error },
+            a => da.GetBuildTimelineAsync(a.pat, a.orgName, a.projectId, buildId));
 
-        try {
-            if (CurrentUser.Enabled) {
-                var config = GetReleasePipelinesDevOpsConfig();
-                output = await da.GetBuildTimelineAsync(config.pat, config.orgName, projectId ?? config.projectId, buildId);
-            } else if (!string.IsNullOrWhiteSpace(pat) && !string.IsNullOrWhiteSpace(orgName) && !string.IsNullOrWhiteSpace(projectId)) {
-                output = await da.GetBuildTimelineAsync(pat, orgName, projectId, buildId);
-            } else {
-                return BadRequest("No PAT or OrgName provided and user is not logged in.");
-            }
-        } catch (Exception ex) {
-            output = new DataObjects.BuildTimelineResponse { Success = false, ErrorMessage = ex.Message };
-        }
-
-        return Ok(output);
-    }
     /// <summary>
     /// Gets log content for a specific build job.
     /// </summary>
-    [HttpGet("~/api/Pipelines/builds/{buildId}/jobs/{jobId}/logs")]
-    [AllowAnonymous]
-    public async Task<ActionResult<DataObjects.BuildLogResponse>> GetBuildJobLogs(int buildId, string jobId, [FromQuery] string? projectId = null, [FromQuery] string? pat = null, [FromQuery] string? orgName = null)
-    {
-        DataObjects.BuildLogResponse output;
-
-        try {
-            if (CurrentUser.Enabled) {
-                var config = GetReleasePipelinesDevOpsConfig();
-                output = await da.GetBuildJobLogsAsync(config.pat, config.orgName, projectId ?? config.projectId, buildId, jobId);
-            } else if (!string.IsNullOrWhiteSpace(pat) && !string.IsNullOrWhiteSpace(orgName) && !string.IsNullOrWhiteSpace(projectId)) {
-                output = await da.GetBuildJobLogsAsync(pat, orgName, projectId, buildId, jobId);
-            } else {
-                return BadRequest("No PAT or OrgName provided and user is not logged in.");
-            }
-        } catch (Exception ex) {
-            output = new DataObjects.BuildLogResponse { Success = false, ErrorMessage = ex.Message };
-        }
-
-        return Ok(output);
-    }
+    [HttpGet($"~/{DataObjects.Endpoints.PipelineDashboard.GetJobLogs}")]
+    [Authorize]
+    public Task<ActionResult<DataObjects.BuildLogResponse>> GetBuildJobLogs(int buildId, string jobId, [FromQuery] string? projectId = null) =>
+        WithDevOpsAccess(null, null, projectId, requireProject: true, error => new DataObjects.BuildLogResponse { BuildId = buildId, ErrorMessage = error },
+            a => da.GetBuildJobLogsAsync(a.pat, a.orgName, a.projectId, buildId, jobId));
 
     /// <summary>
     /// Gets organization-wide pipeline health trends (recent build results for all pipelines).
     /// </summary>
-    [HttpGet("~/api/Pipelines/health")]
-    [AllowAnonymous]
-    public async Task<ActionResult<DataObjects.OrgHealthResponse>> GetOrgHealth([FromQuery] int top = 10, [FromQuery] string? projectId = null, [FromQuery] string? pat = null, [FromQuery] string? orgName = null)
-    {
-        DataObjects.OrgHealthResponse output;
+    [HttpGet($"~/{DataObjects.Endpoints.PipelineDashboard.GetHealth}")]
+    [Authorize]
+    public Task<ActionResult<DataObjects.OrgHealthResponse>> GetOrgHealth([FromQuery] int top = 10, [FromQuery] string? projectId = null) =>
+        WithDevOpsAccess(null, null, projectId, requireProject: true, error => new DataObjects.OrgHealthResponse { ErrorMessage = error },
+            a => da.GetOrgHealthAsync(a.pat, a.orgName, a.projectId, top));
 
-        try {
-            if (CurrentUser.Enabled) {
-                var config = GetReleasePipelinesDevOpsConfig();
-                output = await da.GetOrgHealthAsync(config.pat, config.orgName, projectId ?? config.projectId, top);
-            } else if (!string.IsNullOrWhiteSpace(pat) && !string.IsNullOrWhiteSpace(orgName) && !string.IsNullOrWhiteSpace(projectId)) {
-                output = await da.GetOrgHealthAsync(pat, orgName, projectId, top);
-            } else {
-                return BadRequest("No PAT or OrgName provided and user is not logged in.");
-            }
-        } catch (Exception ex) {
-            output = new DataObjects.OrgHealthResponse { Success = false, ErrorMessage = ex.Message };
-        }
-
-        return Ok(output);
-    }
     /// <summary>
     /// Gets all pipelines for the dashboard view with status information.
     /// </summary>
     [HttpGet($"~/{DataObjects.Endpoints.PipelineDashboard.GetPipelinesList}")]
-    [AllowAnonymous]
-    public async Task<ActionResult<DataObjects.PipelineDashboardResponse>> GetPipelinesDashboard([FromQuery] string? projectId = null, [FromQuery] string? pat = null, [FromQuery] string? orgName = null, [FromQuery] string? connectionId = null)
-    {
-        DataObjects.PipelineDashboardResponse output;
-
-        if (CurrentUser.Enabled) {
-            var config = GetReleasePipelinesDevOpsConfig();
-            output = await da.GetPipelineDashboardAsync(config.pat, config.orgName, projectId ?? config.projectId, connectionId);
-        } else if (!string.IsNullOrWhiteSpace(pat) && !string.IsNullOrWhiteSpace(orgName) && !string.IsNullOrWhiteSpace(projectId)) {
-            output = await da.GetPipelineDashboardAsync(pat, orgName, projectId, connectionId);
-        } else {
-            return BadRequest("No PAT or OrgName provided and user is not logged in.");
-        }
-
-        return Ok(output);
-    }
+    [Authorize]
+    public Task<ActionResult<DataObjects.PipelineDashboardResponse>> GetPipelinesDashboard([FromQuery] string? projectId = null, [FromQuery] string? connectionId = null) =>
+        WithDevOpsAccess(null, null, projectId, requireProject: true, error => new DataObjects.PipelineDashboardResponse { ErrorMessage = error },
+            a => da.GetPipelineDashboardAsync(a.pat, a.orgName, a.projectId, connectionId));
 
     /// <summary>
     /// Gets recent runs for a specific pipeline.
     /// </summary>
-    [HttpGet("~/api/Pipelines/{pipelineId}/runs")]
-    [AllowAnonymous]
-    public async Task<ActionResult<DataObjects.PipelineRunsResponse>> GetPipelineRuns(int pipelineId, [FromQuery] int top = 5, [FromQuery] string? projectId = null, [FromQuery] string? pat = null, [FromQuery] string? orgName = null, [FromQuery] string? connectionId = null)
-    {
-        DataObjects.PipelineRunsResponse output;
-
-        if (CurrentUser.Enabled) {
-            var config = GetReleasePipelinesDevOpsConfig();
-            output = await da.GetPipelineRunsForDashboardAsync(config.pat, config.orgName, projectId ?? config.projectId, pipelineId, top, connectionId);
-        } else if (!string.IsNullOrWhiteSpace(pat) && !string.IsNullOrWhiteSpace(orgName) && !string.IsNullOrWhiteSpace(projectId)) {
-            output = await da.GetPipelineRunsForDashboardAsync(pat, orgName, projectId, pipelineId, top, connectionId);
-        } else {
-            return BadRequest("No PAT or OrgName provided and user is not logged in.");
-        }
-
-        return Ok(output);
-    }
+    [HttpGet($"~/{DataObjects.Endpoints.PipelineDashboard.GetPipelineRuns}")]
+    [Authorize]
+    public Task<ActionResult<DataObjects.PipelineRunsResponse>> GetPipelineRuns([FromRoute(Name = "id")] int pipelineId, [FromQuery] int top = 5, [FromQuery] string? projectId = null) =>
+        WithDevOpsAccess(null, null, projectId, requireProject: true, error => new DataObjects.PipelineRunsResponse { ErrorMessage = error },
+            a => da.GetPipelineRunsForDashboardAsync(a.pat, a.orgName, a.projectId, pipelineId, top));
 
     /// <summary>
     /// Gets the raw YAML content for a specific pipeline.
     /// </summary>
-    [HttpGet("~/api/Pipelines/{pipelineId}/yaml")]
+    [HttpGet($"~/{DataObjects.Endpoints.PipelineDashboard.GetPipelineYaml}")]
     [AllowAnonymous]
-    public async Task<ActionResult<DataObjects.PipelineYamlResponse>> GetPipelineYaml(int pipelineId, [FromQuery] string? projectId = null, [FromQuery] string? pat = null, [FromQuery] string? orgName = null, [FromQuery] string? connectionId = null)
-    {
-        DataObjects.PipelineYamlResponse output;
-
-        if (CurrentUser.Enabled) {
-            var config = GetReleasePipelinesDevOpsConfig();
-            output = await da.GetPipelineYamlContentAsync(config.pat, config.orgName, projectId ?? config.projectId, pipelineId, connectionId);
-        } else if (!string.IsNullOrWhiteSpace(pat) && !string.IsNullOrWhiteSpace(orgName) && !string.IsNullOrWhiteSpace(projectId)) {
-            output = await da.GetPipelineYamlContentAsync(pat, orgName, projectId, pipelineId, connectionId);
-        } else {
-            return BadRequest("No PAT or OrgName provided and user is not logged in.");
-        }
-
-        return Ok(output);
-    }
+    public Task<ActionResult<DataObjects.PipelineYamlResponse>> GetPipelineYaml([FromRoute(Name = "id")] int pipelineId, [FromQuery] string? projectId = null, [FromQuery] string? pat = null, [FromQuery] string? orgName = null) =>
+        WithDevOpsAccess(pat, orgName, projectId, requireProject: true, error => new DataObjects.PipelineYamlResponse { ErrorMessage = error },
+            a => da.GetPipelineYamlContentAsync(a.pat, a.orgName, a.projectId, pipelineId));
 
     /// <summary>
     /// Parses a pipeline's YAML and returns extracted settings for import.
     /// </summary>
-    [HttpPost("~/api/Pipelines/{pipelineId}/parse")]
+    [HttpPost($"~/{DataObjects.Endpoints.PipelineDashboard.ParsePipelineSettings}")]
     [AllowAnonymous]
-    public async Task<ActionResult<DataObjects.ParsedPipelineSettings>> ParsePipelineYaml(int pipelineId, [FromQuery] string? projectId = null, [FromQuery] string? pat = null, [FromQuery] string? orgName = null, [FromQuery] string? connectionId = null)
-    {
-        // First get the YAML content
-        DataObjects.PipelineYamlResponse yamlResponse;
-        string pipelineName = string.Empty;
-        string pipelinePath = string.Empty;
+    public Task<ActionResult<DataObjects.ParsedPipelineSettings>> ParsePipelineYaml([FromRoute(Name = "id")] int pipelineId, [FromQuery] string? projectId = null, [FromQuery] string? pat = null, [FromQuery] string? orgName = null) =>
+        WithDevOpsAccess(pat, orgName, projectId, requireProject: true, error => new DataObjects.ParsedPipelineSettings { PipelineId = pipelineId, ActionResponse = RefusedResponse(error) },
+            a => da.GetParsedPipelineSettings(a.pat, a.orgName, a.projectId, pipelineId));
 
-        if (CurrentUser.Enabled) {
-            var config = GetReleasePipelinesDevOpsConfig();
-            yamlResponse = await da.GetPipelineYamlContentAsync(config.pat, config.orgName, projectId ?? config.projectId, pipelineId, connectionId);
-            
-            // Get pipeline name and path
-            try {
-                var pipeline = await da.GetDevOpsPipeline(projectId ?? config.projectId, pipelineId, config.pat, config.orgName, connectionId);
-                pipelineName = pipeline.Name;
-                pipelinePath = pipeline.Path;
-            } catch { }
-        } else if (!string.IsNullOrWhiteSpace(pat) && !string.IsNullOrWhiteSpace(orgName) && !string.IsNullOrWhiteSpace(projectId)) {
-            yamlResponse = await da.GetPipelineYamlContentAsync(pat, orgName, projectId, pipelineId, connectionId);
-            
-            // Get pipeline name and path
-            try {
-                var pipeline = await da.GetDevOpsPipeline(projectId, pipelineId, pat, orgName, connectionId);
-                pipelineName = pipeline.Name;
-                pipelinePath = pipeline.Path;
-            } catch { }
-        } else {
-            return BadRequest("No PAT or OrgName provided and user is not logged in.");
+    /// <summary>
+    /// Resolves whose Azure DevOps credentials a call runs with (DevOpsAccess.Resolve) and runs it with them, or answers
+    /// with the refused response carrying the reason. One shape for every dashboard and wizard lookup endpoint.
+    /// </summary>
+    private async Task<ActionResult<T>> WithDevOpsAccess<T>(string? pat, string? orgName, string? projectId, bool requireProject,
+        Func<string, T> refused, Func<(string pat, string orgName, string projectId), Task<T>> run){
+        var access = ResolveDevOpsAccess(pat, orgName, projectId, requireProject);
+        if (access.error != null) {
+            return Ok(refused(access.error));
         }
-
-        if (!yamlResponse.Success) {
-            return BadRequest(yamlResponse.ErrorMessage ?? "Failed to fetch pipeline YAML.");
-        }
-
-        // Parse the YAML
-        var parsedSettings = da.ParsePipelineYaml(yamlResponse.Yaml, pipelineId, pipelineName, pipelinePath);
-        return Ok(parsedSettings);
+        return Ok(await run((access.pat, access.orgName, access.projectId)));
     }
 
     #endregion Pipeline Dashboard Endpoints
 
     #region Git & Pipeline Endpoints
 
+    /// <summary>
+    /// A request refused before Azure DevOps is called (no credentials, missing target), answered with a 200 like every
+    /// framework endpoint: the client's GetOrPost discards the body of any other status, and with it the reason.
+    /// </summary>
+    private static DataObjects.BooleanResponse RefusedResponse(string? reason)
+    {
+        var output = new DataObjects.BooleanResponse();
+        if (!String.IsNullOrWhiteSpace(reason)) {
+            output.Messages.Add(reason);
+        }
+        return output;
+    }
+
+    /// <summary>The empty lookup result that carries a refused request's reason.</summary>
+    private DataObjects.DevOpsResponse<T> RefusedLookup<T>(string? error) =>
+        new DataObjects.DevOpsResponse<T> { ActionResponse = RefusedResponse(error) };
+
     [HttpGet($"~/{DataObjects.Endpoints.DevOps.GetDevOpsBranches}")]
     [AllowAnonymous]
-    public async Task<ActionResult<List<DataObjects.DevopsGitRepoBranchInfo>>> GetDevOpsBranches([FromQuery] string projectId, [FromQuery] string repoId, [FromQuery] string? pat = null, [FromQuery] string? orgName = null, [FromQuery] string? connectionId = null)
-    {
-        List<DataObjects.DevopsGitRepoBranchInfo> output;
-        if (CurrentUser.Enabled) {
-            var config = GetReleasePipelinesDevOpsConfig();
-            output = await da.GetDevOpsBranchesAsync(config.pat, config.orgName, projectId, repoId, connectionId);
-        } else if (!string.IsNullOrWhiteSpace(pat) && !string.IsNullOrWhiteSpace(orgName)) {
-            output = await da.GetDevOpsBranchesAsync(pat, orgName, projectId, repoId, connectionId);
-        } else {
-            return BadRequest("No PAT or OrgName provided and user is not logged in.");
-        }
+    public Task<ActionResult<DataObjects.DevOpsResponse<List<DataObjects.DevopsGitRepoBranchInfo>>>> GetDevOpsBranches([FromQuery] string projectId, [FromQuery] string repoId, [FromQuery] string? pat = null, [FromQuery] string? orgName = null, [FromQuery] string? connectionId = null) =>
+        DevOpsLookup(pat, orgName, projectId, (p, o) => da.GetDevOpsBranchesAsync(p, o, projectId, repoId, connectionId));
 
-        return Ok(output);
-    }
+    /// <summary>
+    /// A wizard lookup (WithDevOpsAccess without a required project), refused with an empty DevOpsResponse.
+    /// </summary>
+    private Task<ActionResult<DataObjects.DevOpsResponse<T>>> DevOpsLookup<T>(string? pat, string? orgName, string? projectId,
+        Func<string, string, Task<DataObjects.DevOpsResponse<T>>> lookup) =>
+        WithDevOpsAccess(pat, orgName, projectId, requireProject: false, RefusedLookup<T>, a => lookup(a.pat, a.orgName));
 
     [HttpGet($"~/{DataObjects.Endpoints.DevOps.GetDevOpsFiles}")]
     [AllowAnonymous]
-    public async Task<ActionResult<List<DataObjects.DevopsFileItem>>> GetDevOpsFiles([FromQuery] string projectId, [FromQuery] string repoId, [FromQuery] string branchName, [FromQuery] string? pat = null, [FromQuery] string? orgName = null, [FromQuery] string? connectionId = null)
-    {
-        List<DataObjects.DevopsFileItem> output;
-        if (CurrentUser.Enabled) {
-            var config = GetReleasePipelinesDevOpsConfig();
-            output = await da.GetDevOpsFilesAsync(config.pat, config.orgName, projectId, repoId, branchName, connectionId);
-        } else if (!string.IsNullOrWhiteSpace(pat) && !string.IsNullOrWhiteSpace(orgName)) {
-            output = await da.GetDevOpsFilesAsync(pat, orgName, projectId, repoId, branchName, connectionId);
-        } else {
-            return BadRequest("No PAT or OrgName provided and user is not logged in.");
-        }
-
-        return Ok(output);
-    }
+    public Task<ActionResult<DataObjects.DevOpsResponse<List<DataObjects.DevopsFileItem>>>> GetDevOpsFiles([FromQuery] string projectId, [FromQuery] string repoId, [FromQuery] string branchName, [FromQuery] string? pat = null, [FromQuery] string? orgName = null, [FromQuery] string? connectionId = null) =>
+        DevOpsLookup(pat, orgName, projectId, (p, o) => da.GetDevOpsFilesAsync(p, o, projectId, repoId, branchName, connectionId));
 
     [HttpGet($"~/{DataObjects.Endpoints.DevOps.GetDevOpsProjects}")]
     [AllowAnonymous]
-    public async Task<ActionResult<List<DataObjects.DevopsProjectInfo>>> GetDevOpsProjects([FromQuery] string? pat = null, [FromQuery] string? orgName = null, [FromQuery] string? connectionId = null)
-    {
-        List<DataObjects.DevopsProjectInfo> output;
-
-        if (CurrentUser.Enabled) {
-            var config = GetReleasePipelinesDevOpsConfig();
-            output = await da.GetDevOpsProjectsAsync(config.pat, config.orgName, connectionId);
-        } else if (!string.IsNullOrWhiteSpace(pat) && !string.IsNullOrWhiteSpace(orgName)) {
-            output = await da.GetDevOpsProjectsAsync(pat, orgName, connectionId);
-        } else {
-            return BadRequest("No PAT or OrgName provided and user is not logged in.");
-        }
-
-        return Ok(output);
-    }
+    public Task<ActionResult<DataObjects.DevOpsResponse<List<DataObjects.DevopsProjectInfo>>>> GetDevOpsProjects([FromQuery] string? pat = null, [FromQuery] string? orgName = null, [FromQuery] string? connectionId = null) =>
+        DevOpsLookup(pat, orgName, null, (p, o) => da.GetDevOpsProjectsAsync(p, o, connectionId));
 
     [HttpGet($"~/{DataObjects.Endpoints.DevOps.GetDevOpsRepos}")]
     [AllowAnonymous]
-    public async Task<ActionResult<List<DataObjects.DevopsGitRepoInfo>>> GetDevOpsRepos([FromQuery] string projectId, [FromQuery] string? pat = null, [FromQuery] string? orgName = null, [FromQuery] string? connectionId = null)
-    {
-        List<DataObjects.DevopsGitRepoInfo> output;
-
-        if (CurrentUser.Enabled) {
-            var config = GetReleasePipelinesDevOpsConfig();
-            output = await da.GetDevOpsReposAsync(config.pat, config.orgName, projectId, connectionId);
-        } else if (!string.IsNullOrWhiteSpace(pat) && !string.IsNullOrWhiteSpace(orgName)) {
-            output = await da.GetDevOpsReposAsync(pat, orgName, projectId, connectionId);
-        } else {
-            return BadRequest("No PAT or OrgName provided and user is not logged in.");
-        }
-
-        return Ok(output);
-    }
+    public Task<ActionResult<DataObjects.DevOpsResponse<List<DataObjects.DevopsGitRepoInfo>>>> GetDevOpsRepos([FromQuery] string projectId, [FromQuery] string? pat = null, [FromQuery] string? orgName = null, [FromQuery] string? connectionId = null) =>
+        DevOpsLookup(pat, orgName, projectId, (p, o) => da.GetDevOpsReposAsync(p, o, projectId, connectionId));
 
     [HttpGet($"~/{DataObjects.Endpoints.DevOps.GetDevOpsPipelines}")]
     [AllowAnonymous]
-    public async Task<ActionResult<List<DataObjects.DevopsPipelineDefinition>>> GetDevOpsPipelines([FromQuery] string? projectId, [FromQuery] string? repoId, [FromQuery] string? pat = null, [FromQuery] string? orgName = null, [FromQuery] string? connectionId = null)
+    public async Task<ActionResult<DataObjects.DevOpsResponse<List<DataObjects.DevopsPipelineDefinition>>>> GetDevOpsPipelines([FromQuery] string? projectId, [FromQuery] string? repoId, [FromQuery] string? pat = null, [FromQuery] string? orgName = null, [FromQuery] string? connectionId = null)
     {
-        List<DataObjects.DevopsPipelineDefinition> output;
-
-        if (CurrentUser.Enabled) {
-            var config = GetReleasePipelinesDevOpsConfig();
-            output = await da.GetDevOpsPipelines(config.projectId, config.pat, config.orgName, connectionId);
-        } else if (!string.IsNullOrWhiteSpace(pat) && !string.IsNullOrWhiteSpace(orgName) && !string.IsNullOrEmpty(projectId)) {
-            output = await da.GetDevOpsPipelines(projectId, pat, orgName, connectionId);
-        } else {
-            return BadRequest("No PAT or OrgName provided and user is not logged in.");
+        var (target, error) = ResolveWizardTarget(pat, orgName, projectId, repoId, null, requireProject: true);
+        if (target == null) {
+            return Ok(RefusedLookup<List<DataObjects.DevopsPipelineDefinition>>(error));
         }
 
-        return Ok(output);
+        return Ok(await da.GetDevOpsPipelines(target.ProjectId, target.Pat, target.OrgName, connectionId));
     }
 
     [HttpGet($"~/{DataObjects.Endpoints.DevOps.GetDevOpsYmlFileContent}")]
     [AllowAnonymous]
-    public async Task<ActionResult<string>> GetDevOpsYmlFileContent(string? filePath, [FromQuery] string? projectId, [FromQuery] string repoId, [FromQuery] string branchName, [FromQuery] string? pat = null, [FromQuery] string? orgName = null, [FromQuery] string? connectionId = null)
+    public async Task<ActionResult<DataObjects.DevOpsResponse<string>>> GetDevOpsYmlFileContent(string? filePath, [FromQuery] string? projectId, [FromQuery] string repoId, [FromQuery] string branchName, [FromQuery] string? pat = null, [FromQuery] string? orgName = null, [FromQuery] string? connectionId = null)
     {
-        string output = string.Empty;
-
-        if (CurrentUser.Enabled) {
-            var config = GetReleasePipelinesDevOpsConfig();
-            output = await da.GetGitFile(filePath ?? "", config.projectId, config.repoId, config.branch, config.pat, config.orgName, connectionId);
-        } else if (!string.IsNullOrWhiteSpace(pat) && !string.IsNullOrWhiteSpace(orgName) && !string.IsNullOrEmpty(projectId)) {
-            output = await da.GetGitFile(filePath ?? "", projectId, repoId, branchName, pat, orgName, connectionId);
-        } else {
-            return BadRequest("No PAT or OrgName provided and user is not logged in.");
+        var (target, error) = ResolveWizardTarget(pat, orgName, projectId, repoId, branchName, requireProject: true);
+        if (target == null) {
+            return Ok(RefusedLookup<string>(error));
         }
 
-        return Ok(output);
+        return Ok(await da.GetGitFile(filePath ?? "", target.ProjectId, target.RepoId, target.Branch, target.Pat, target.OrgName, connectionId));
     }
 
+    /// <summary>
+    /// IIS sites, applications and pools of every environment (the pipeline-gathered JSON). Signed-in users only:
+    /// the wizard uses it to offer existing sites and pools. Physical paths and bindings are server details,
+    /// so a caller without an account gets the framework's access-denied code, never an empty 200.
+    /// </summary>
     [HttpGet($"~/{DataObjects.Endpoints.DevOps.GetDevOpsIISInfo}")]
-    [AllowAnonymous]
+    [Authorize]
     public async Task<ActionResult<Dictionary<string, DataObjects.IISInfo?>>> GetDevOpsIISInfo()
     {
-        Dictionary<string, DataObjects.IISInfo?> output = new();
-
-        if (CurrentUser.Enabled) {
-            output = await da.GetDevOpsIISInfoAsync();
+        if (!CurrentUser.Enabled) {
+            return Unauthorized(_returnCodeAccessDenied);
         }
 
-        return Ok(output);
+        return Ok(await da.GetDevOpsIISInfoAsync());
     }
 
     /// <summary>
@@ -415,24 +295,18 @@ public partial class DataController
     /// </summary>
     [HttpPost($"{DataObjects.Endpoints.DevOps.PreviewDevOpsYmlFileContents}")]
     [AllowAnonymous]
-    public async Task<ActionResult<string>> PreviewDevOpsYmlFileContents([FromBody] DataObjects.DevOpsPipelineRequest request)
+    public async Task<ActionResult<DataObjects.DevOpsResponse<string>>> PreviewDevOpsYmlFileContents([FromBody] DataObjects.DevOpsPipelineRequest request)
     {
-        string output = string.Empty;
-
         if (request == null) {
-            return BadRequest("Request body cannot be null.");
+            return Ok(RefusedLookup<string>("Request body cannot be null."));
         }
 
-        if (CurrentUser.Enabled) {
-            var config = GetReleasePipelinesDevOpsConfig();
-            output = await da.GenerateYmlFileContents(config.projectId, config.repoId, config.branch, request.PipelineId, request.PipelineName, request.ProjectId, request.RepoId, request.Branch, request.CsProjectFile, request.EnvironmentSettings, config.pat, config.orgName, request.ConnectionId);
-        } else if (!string.IsNullOrWhiteSpace(request.Pat) && !string.IsNullOrWhiteSpace(request.OrgName)) {
-            output = await da.GenerateYmlFileContents(request.ProjectId, request.RepoId, request.Branch, request.PipelineId, request.PipelineName, request.ProjectId, request.RepoId, request.Branch, request.CsProjectFile, request.EnvironmentSettings, request.Pat, request.OrgName, request.ConnectionId);
-        } else {
-            return BadRequest("No PAT or OrgName provided and user is not logged in.");
+        var (target, error) = ResolveWizardTarget(request);
+        if (target == null) {
+            return Ok(RefusedLookup<string>(error));
         }
 
-        return Ok(output);
+        return Ok(await da.GenerateYmlFileContents(target.ProjectId, target.RepoId, target.Branch, request.PipelineId, request.PipelineName, request.ProjectId, request.RepoId, request.Branch, request.CsProjectFile, request.EnvironmentSettings, target.Pat, target.OrgName, request.ConnectionId, AtlasVerifyOptionsFor(target, request)));
     }
 
     /// <summary>
@@ -440,27 +314,18 @@ public partial class DataController
     /// </summary>
     [HttpPost($"{DataObjects.Endpoints.DevOps.CreateOrUpdateDevOpsPipeline}")]
     [AllowAnonymous]
-    public async Task<ActionResult<DataObjects.BuildDefinition>> CreateOrUpdateDevOpsPipeline([FromBody] DataObjects.DevOpsPipelineRequest request)
+    public async Task<ActionResult<DataObjects.DevopsPipelineDefinition>> CreateOrUpdateDevOpsPipeline([FromBody] DataObjects.DevOpsPipelineRequest request)
     {
-        DataObjects.BuildDefinition output = new DataObjects.BuildDefinition();
         if (request == null) {
-            return BadRequest("Request body cannot be null.");
+            return Ok(new DataObjects.DevopsPipelineDefinition { ActionResponse = RefusedResponse("Request body cannot be null.") });
         }
 
-        try {
-            if (CurrentUser.Enabled) {
-                var config = GetReleasePipelinesDevOpsConfig();
-                output = await da.CreateOrUpdateDevopsPipeline(config.projectId, config.repoId, config.branch, request.PipelineId, request.PipelineName, request.YAMLFileName, request.ProjectId, request.RepoId, request.Branch, request.CsProjectFile, request.EnvironmentSettings ?? new(), config.pat, config.orgName, request.ConnectionId);
-            } else if (!string.IsNullOrWhiteSpace(request.Pat) && !string.IsNullOrWhiteSpace(request.OrgName)) {
-                output = await da.CreateOrUpdateDevopsPipeline(request.ProjectId, request.RepoId, request.Branch, request.PipelineId, request.PipelineName, request.YAMLFileName, request.ProjectId, request.RepoId, request.Branch, request.CsProjectFile, request.EnvironmentSettings, request.Pat, request.OrgName, request.ConnectionId);
-            } else {
-                return BadRequest("No PAT or OrgName provided and user is not logged in.");
-            }
-        } catch (System.Exception ex) {
-            return BadRequest($"Error creating/updating pipeline: {ex.Message}");
+        var (target, error) = ResolveWizardTarget(request);
+        if (target == null) {
+            return Ok(new DataObjects.DevopsPipelineDefinition { ActionResponse = RefusedResponse(error) });
         }
 
-        return Ok(output);
+        return Ok(await da.CreateOrUpdateDevopsPipeline(target.ProjectId, target.RepoId, target.Branch, request.PipelineId, request.PipelineName, request.YAMLFileName, request.ProjectId, request.RepoId, request.Branch, request.CsProjectFile, request.EnvironmentSettings ?? new(), target.Pat, target.OrgName, request.ConnectionId, AtlasVerifyOptionsFor(target, request)));
     }
 
     #endregion Git & Pipeline Endpoints
@@ -469,18 +334,15 @@ public partial class DataController
 
     /// <summary>
     /// Validates a public Git repository URL and retrieves metadata.
-    /// No authentication required - just validates the URL exists and extracts info.
+    /// Signed-in users only: it needs no PAT, but it spends this server's GitHub rate limit, and the
+    /// import page is only shown to signed-in users.
     /// </summary>
     [HttpPost($"~/{DataObjects.Endpoints.Import.ValidateUrl}")]
-    [AllowAnonymous]
+    [Authorize]
     public async Task<ActionResult<DataObjects.PublicGitRepoInfo>> ValidatePublicRepoUrl([FromBody] ValidateUrlRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request?.Url)) {
-            return BadRequest("URL is required.");
-        }
-
-        var result = await da.ValidatePublicGitRepoAsync(request.Url);
-        return Ok(result);
+        // An empty URL is answered by the validation itself ("Please enter a Git repository URL.").
+        return Ok(await da.ValidatePublicGitRepoAsync(request?.Url ?? ""));
     }
 
     /// <summary>
@@ -491,34 +353,16 @@ public partial class DataController
     [AllowAnonymous]
     public async Task<ActionResult<DataObjects.ImportConflictInfo>> CheckImportConflicts([FromBody] CheckConflictsRequest request)
     {
-        // Get PAT and org from headers (following existing pattern)
-        var pat = Request.Headers["DevOpsPAT"].FirstOrDefault();
-        var orgName = Request.Headers["DevOpsOrg"].FirstOrDefault();
-
-        if (string.IsNullOrWhiteSpace(pat) || string.IsNullOrWhiteSpace(orgName)) {
-            // Try from logged in user config
-            if (CurrentUser.Enabled) {
-                var config = GetReleasePipelinesDevOpsConfig();
-                pat = config.pat;
-                orgName = config.orgName;
-            } else {
-                return BadRequest("PAT and OrgName are required. Pass via DevOpsPAT and DevOpsOrg headers.");
-            }
+        var access = ResolveImportAccess();
+        if (access.error != null) {
+            return Ok(new DataObjects.ImportConflictInfo { ActionResponse = RefusedResponse(access.error) });
         }
 
         if (string.IsNullOrWhiteSpace(request?.RepoName)) {
-            return BadRequest("RepoName is required.");
+            return Ok(new DataObjects.ImportConflictInfo { ActionResponse = RefusedResponse("RepoName is required.") });
         }
 
-        var result = await da.CheckImportConflictsAsync(
-            pat, orgName,
-            request.TargetProjectId,
-            request.NewProjectName,
-            request.RepoName,
-            request.SourceUrl ?? ""
-        );
-
-        return Ok(result);
+        return Ok(await da.CheckImportConflictsAsync(access.pat, access.orgName, request.TargetProjectId, request.NewProjectName, request.RepoName, request.SourceUrl ?? ""));
     }
 
     /// <summary>
@@ -529,67 +373,49 @@ public partial class DataController
     [AllowAnonymous]
     public async Task<ActionResult<DataObjects.ImportPublicRepoResponse>> StartPublicRepoImport([FromBody] DataObjects.ImportPublicRepoRequest request, [FromQuery] string? connectionId = null)
     {
-        // Get PAT and org from headers
-        var pat = Request.Headers["DevOpsPAT"].FirstOrDefault();
-        var orgName = Request.Headers["DevOpsOrg"].FirstOrDefault();
-
-        if (string.IsNullOrWhiteSpace(pat) || string.IsNullOrWhiteSpace(orgName)) {
-            if (CurrentUser.Enabled) {
-                var config = GetReleasePipelinesDevOpsConfig();
-                pat = config.pat;
-                orgName = config.orgName;
-            } else {
-                return BadRequest("PAT and OrgName are required. Pass via DevOpsPAT and DevOpsOrg headers.");
-            }
+        var access = ResolveImportAccess();
+        if (access.error != null) {
+            return Ok(new DataObjects.ImportPublicRepoResponse { ErrorMessage = access.error });
         }
 
         if (request == null || string.IsNullOrWhiteSpace(request.NewProjectName)) {
-            return BadRequest("NewProjectName is required.");
+            return Ok(new DataObjects.ImportPublicRepoResponse { ErrorMessage = "NewProjectName is required." });
         }
 
-        // For URL-based imports, SourceUrl is required
         if (request.Method != DataObjects.ImportMethod.ZipUpload && string.IsNullOrWhiteSpace(request.SourceUrl)) {
-            return BadRequest("SourceUrl is required for URL-based imports.");
+            return Ok(new DataObjects.ImportPublicRepoResponse { ErrorMessage = "SourceUrl is required for URL-based imports." });
         }
 
-        var result = await da.ImportPublicRepoAsync(pat, orgName, request, connectionId);
-        return Ok(result);
+        return Ok(await da.ImportPublicRepoAsync(access.pat, access.orgName, request, connectionId));
     }
 
     /// <summary>
     /// Gets the status of an import operation.
     /// Poll this endpoint to track import progress.
+    /// A requestId of 0 is a snapshot import: its status is read from the repository's ?branch=.
     /// </summary>
     [HttpGet($"~/{DataObjects.Endpoints.Import.GetStatus}/{{projectId}}/{{repoId}}/{{requestId}}")]
     [AllowAnonymous]
-    public async Task<ActionResult<DataObjects.ImportPublicRepoResponse>> GetPublicRepoImportStatus(string projectId, string repoId, int requestId, [FromQuery] string? connectionId = null)
+    public async Task<ActionResult<DataObjects.ImportPublicRepoResponse>> GetPublicRepoImportStatus(string projectId, string repoId, int requestId, [FromQuery] string? connectionId = null, [FromQuery] string? branch = null)
     {
-        // Get PAT and org from headers
-        var pat = Request.Headers["DevOpsPAT"].FirstOrDefault();
-        var orgName = Request.Headers["DevOpsOrg"].FirstOrDefault();
-
-        if (string.IsNullOrWhiteSpace(pat) || string.IsNullOrWhiteSpace(orgName)) {
-            if (CurrentUser.Enabled) {
-                var config = GetReleasePipelinesDevOpsConfig();
-                pat = config.pat;
-                orgName = config.orgName;
-            } else {
-                return BadRequest("PAT and OrgName are required. Pass via DevOpsPAT and DevOpsOrg headers.");
-            }
+        var access = ResolveImportAccess();
+        if (access.error != null) {
+            return Ok(new DataObjects.ImportPublicRepoResponse { ProjectId = projectId, RepoId = repoId, ErrorMessage = access.error });
         }
 
-        var result = await da.GetImportStatusAsync(pat, orgName, projectId, repoId, requestId, connectionId);
-        return Ok(result);
+        return Ok(await da.GetImportStatusAsync(access.pat, access.orgName, projectId, repoId, requestId, connectionId, branch));
     }
 
     /// <summary>
     /// Uploads a ZIP file for import. The file is stored temporarily and can be
     /// referenced by FileId when calling StartPublicRepoImport with Method=ZipUpload.
     /// Max size: 100MB. Files are automatically cleaned up after 1 hour.
+    /// Signed-in users only: an upload writes to this server's disk, and unlike the other import calls
+    /// there is no PAT that could vouch for an anonymous caller.
     /// </summary>
     [HttpPost($"~/{DataObjects.Endpoints.Import.UploadZip}")]
-    [AllowAnonymous]
-    [RequestSizeLimit(100 * 1024 * 1024)] // 100MB limit
+    [Authorize]
+    [RequestSizeLimit(DataObjects.ImportUploadMaxBytes)]
     public async Task<ActionResult<DataObjects.UploadZipResponse>> UploadImportZip(IFormFile file)
     {
         var result = new DataObjects.UploadZipResponse();
@@ -598,7 +424,7 @@ public partial class DataController
             if (file == null || file.Length == 0) {
                 result.Success = false;
                 result.ErrorMessage = "No file uploaded.";
-                return BadRequest(result);
+                return Ok(result);
             }
 
             // Validate file extension
@@ -606,24 +432,24 @@ public partial class DataController
             if (extension != ".zip") {
                 result.Success = false;
                 result.ErrorMessage = "Only .zip files are allowed.";
-                return BadRequest(result);
+                return Ok(result);
             }
 
-            // Validate file size (100MB max)
-            if (file.Length > 100 * 1024 * 1024) {
+            // RequestSizeLimit is skipped when the body-size feature is already read-only (body read earlier),
+            // so the file's own size is checked as well.
+            if (file.Length > DataObjects.ImportUploadMaxBytes) {
                 result.Success = false;
-                result.ErrorMessage = "File size exceeds 100MB limit.";
-                return BadRequest(result);
+                result.ErrorMessage = $"File size exceeds {DataObjects.ImportUploadMaxBytes / (1024 * 1024)}MB limit.";
+                return Ok(result);
             }
 
-            // Generate unique file ID
             var fileId = Guid.NewGuid();
-            
-            // Create temp directory for uploads if it doesn't exist
-            var uploadDir = Path.Combine(Path.GetTempPath(), "FreeCICD_Imports");
+            var uploadDir = DataAccess.ImportUploadDirectory;
             Directory.CreateDirectory(uploadDir);
-            
-            // Save file with unique ID
+
+            // Delete uploads older than 1 hour (also done periodically by the ImportUploadCleanupService)
+            DataAccess.CleanupImportUploads(uploadDir, DataAccess.ImportUploadClock());
+
             var filePath = Path.Combine(uploadDir, $"{fileId}.zip");
             using (var stream = new FileStream(filePath, FileMode.Create)) {
                 await file.CopyToAsync(stream);
@@ -635,7 +461,7 @@ public partial class DataController
             try {
                 using var zipArchive = System.IO.Compression.ZipFile.OpenRead(filePath);
                 fileCount = zipArchive.Entries.Count(e => !string.IsNullOrEmpty(e.Name));
-                
+
                 // GitHub ZIPs have format: reponame-branchname/...
                 // Try to detect repo name from first directory
                 var firstEntry = zipArchive.Entries.FirstOrDefault(e => e.FullName.Contains('/'));
@@ -648,8 +474,12 @@ public partial class DataController
                         detectedName = topDir;
                     }
                 }
-            } catch {
-                // Ignore ZIP inspection errors
+            } catch (InvalidDataException) {
+                // Not a ZIP (or a damaged one): refused now rather than failing later inside the import.
+                System.IO.File.Delete(filePath);
+                result.Success = false;
+                result.ErrorMessage = "The file is not a valid ZIP archive.";
+                return Ok(result);
             }
 
             result.Success = true;
@@ -662,8 +492,8 @@ public partial class DataController
             return Ok(result);
         } catch (Exception ex) {
             result.Success = false;
-            result.ErrorMessage = $"Upload failed: {ex.Message}";
-            return StatusCode(500, result);
+            result.ErrorMessage = "Upload failed: " + da.RecurseExceptionAsString(ex);
+            return Ok(result);
         }
     }
 
@@ -688,10 +518,11 @@ public partial class DataController
 
     /// <summary>
     /// Gets all active SignalR connections across all hubs.
-    /// Requires admin access.
+    /// App admins only: the connections belong to every tenant, and the framework reserves cross-tenant data
+    /// for AppAdmin (see DataController.Tenants.cs). The client menu already shows the page to app admins only.
     /// </summary>
-    [HttpGet("~/api/Admin/SignalRConnections")]
-    [Authorize(Policy = Policies.Admin)]
+    [HttpGet($"~/{DataObjects.Endpoints.Admin.SignalRConnections}")]
+    [Authorize(Policy = Policies.AppAdmin)]
     public ActionResult<DataObjects.SignalRConnectionsResponse> GetSignalRConnections()
     {
         var response = new DataObjects.SignalRConnectionsResponse {
@@ -699,30 +530,28 @@ public partial class DataController
         };
 
         try {
-            // Get connections from freecicdHub
             var connections = Hubs.freecicdHub.GetActiveConnectionsList();
-            
+
             var hubInfo = new DataObjects.SignalRHubInfo {
                 HubName = "freecicdHub",
                 Connections = connections
             };
-            
+
             response.Hubs.Add(hubInfo);
             response.TotalConnectionCount = connections.Count;
         } catch (Exception ex) {
             response.Success = false;
-            response.ErrorMessage = $"Error retrieving connections: {ex.Message}";
+            response.ErrorMessage = "Error retrieving connections: " + da.RecurseExceptionAsString(ex);
         }
 
         return Ok(response);
     }
 
     /// <summary>
-    /// Sends an alert message to a specific SignalR connection.
-    /// Requires admin access.
+    /// Sends an alert message to a specific SignalR connection (any tenant). App admins only.
     /// </summary>
-    [HttpPost("~/api/Admin/SendAlert")]
-    [Authorize(Policy = Policies.Admin)]
+    [HttpPost($"~/{DataObjects.Endpoints.Admin.SendAlert}")]
+    [Authorize(Policy = Policies.AppAdmin)]
     public async Task<ActionResult<DataObjects.SendAlertResponse>> SendAlertToConnection([FromBody] DataObjects.SendAlertRequest request)
     {
         var response = new DataObjects.SendAlertResponse {
@@ -732,38 +561,23 @@ public partial class DataController
         if (string.IsNullOrWhiteSpace(request.ConnectionId)) {
             response.Success = false;
             response.ErrorMessage = "Connection ID is required.";
-            return BadRequest(response);
+            return Ok(response);
         }
 
         if (string.IsNullOrWhiteSpace(request.Message)) {
             response.Success = false;
             response.ErrorMessage = "Message is required.";
-            return BadRequest(response);
+            return Ok(response);
         }
 
         try {
-            // Check if connection exists
             if (!Hubs.freecicdHub.ConnectionExists(request.ConnectionId)) {
                 response.Success = false;
                 response.ErrorMessage = "Connection not found. The user may have disconnected.";
-                return NotFound(response);
+                return Ok(response);
             }
 
-            // Create the SignalR update
-            var update = new DataObjects.SignalRUpdate {
-                UpdateType = DataObjects.SignalRUpdateType.AdminAlert,
-                Message = request.Message,
-                UserId = CurrentUser.UserId,
-                UserDisplayName = CurrentUser.DisplayName ?? "Admin",
-                ObjectAsString = request.MessageType,
-                Object = new {
-                    AutoHide = request.AutoHide,
-                    MessageType = request.MessageType,
-                    SenderName = CurrentUser.DisplayName ?? "Admin"
-                }
-            };
-
-            // Send to specific connection using injected hub context
+            var update = AdminAlertUpdate(request);
             if (_signalR != null) {
                 await _signalR.Clients.Client(request.ConnectionId).SignalRUpdate(update);
                 response.Success = true;
@@ -773,19 +587,18 @@ public partial class DataController
             }
         } catch (Exception ex) {
             response.Success = false;
-            response.ErrorMessage = $"Error sending alert: {ex.Message}";
-            return StatusCode(500, response);
+            response.ErrorMessage = "Error sending alert: " + da.RecurseExceptionAsString(ex);
+            return Ok(response);
         }
 
         return Ok(response);
     }
 
     /// <summary>
-    /// Sends an alert message to all connected clients.
-    /// Requires admin access.
+    /// Sends an alert message to all connected clients of every tenant. App admins only.
     /// </summary>
-    [HttpPost("~/api/Admin/BroadcastAlert")]
-    [Authorize(Policy = Policies.Admin)]
+    [HttpPost($"~/{DataObjects.Endpoints.Admin.BroadcastAlert}")]
+    [Authorize(Policy = Policies.AppAdmin)]
     public async Task<ActionResult<DataObjects.SendAlertResponse>> BroadcastAlert([FromBody] DataObjects.SendAlertRequest request)
     {
         var response = new DataObjects.SendAlertResponse();
@@ -793,25 +606,11 @@ public partial class DataController
         if (string.IsNullOrWhiteSpace(request.Message)) {
             response.Success = false;
             response.ErrorMessage = "Message is required.";
-            return BadRequest(response);
+            return Ok(response);
         }
 
         try {
-            // Create the SignalR update
-            var update = new DataObjects.SignalRUpdate {
-                UpdateType = DataObjects.SignalRUpdateType.AdminAlert,
-                Message = request.Message,
-                UserId = CurrentUser.UserId,
-                UserDisplayName = CurrentUser.DisplayName ?? "Admin",
-                ObjectAsString = request.MessageType,
-                Object = new {
-                    AutoHide = request.AutoHide,
-                    MessageType = request.MessageType,
-                    SenderName = CurrentUser.DisplayName ?? "Admin"
-                }
-            };
-
-            // Send to all clients using injected hub context
+            var update = AdminAlertUpdate(request);
             if (_signalR != null) {
                 await _signalR.Clients.All.SignalRUpdate(update);
                 response.Success = true;
@@ -821,12 +620,562 @@ public partial class DataController
             }
         } catch (Exception ex) {
             response.Success = false;
-            response.ErrorMessage = $"Error broadcasting alert: {ex.Message}";
-            return StatusCode(500, response);
+            response.ErrorMessage = "Error broadcasting alert: " + da.RecurseExceptionAsString(ex);
+            return Ok(response);
         }
 
         return Ok(response);
     }
 
+    /// <summary>The AdminAlert SignalR update for an alert request, sent by SendAlertToConnection and BroadcastAlert alike.</summary>
+    private DataObjects.SignalRUpdate AdminAlertUpdate(DataObjects.SendAlertRequest request)
+    {
+        return new DataObjects.SignalRUpdate {
+            UpdateType = DataObjects.SignalRUpdateType.AdminAlert,
+            Message = request.Message,
+            UserId = CurrentUser.UserId,
+            UserDisplayName = CurrentUser.DisplayName ?? "Admin",
+            ObjectAsString = request.MessageType,
+            Object = new {
+                AutoHide = request.AutoHide,
+                MessageType = request.MessageType,
+                SenderName = CurrentUser.DisplayName ?? "Admin"
+            }
+        };
+    }
+
     #endregion SignalR Admin Endpoints
+}
+
+/// <summary>
+/// Decides which Azure DevOps credentials a FreeCICD API call runs with.
+/// </summary>
+public static class DevOpsAccess
+{
+    /// <summary>
+    /// What the wizard sends as PAT and OrgName for a logged-in user. These are never credentials.
+    /// </summary>
+    public static readonly string[] LoggedInPlaceholders = {
+        DataObjects.DevOpsPlaceholders.Pat,
+        DataObjects.DevOpsPlaceholders.OrgName,
+    };
+
+    public const string NoCredentialsMessage = "No PAT or OrgName provided and user is not logged in.";
+
+    /// <summary>The request headers the import calls take an anonymous caller's own PAT and organization from.</summary>
+    public const string PatHeader = "DevOpsPAT";
+    public const string OrgHeader = "DevOpsOrg";
+
+    public const string ImportNoCredentialsMessage = $"PAT and OrgName are required. Pass via {PatHeader} and {OrgHeader} headers.";
+
+    /// <summary>
+    /// The Azure DevOps organization, PAT, project, repository and branch configured for this server (blank when not
+    /// set). One reading of IConfigurationHelper for the controller, the AtlasService and the PipelineMonitorService.
+    /// </summary>
+    public sealed record Configured(string OrgName, string Pat, string ProjectId, string RepoId, string Branch)
+    {
+        public static Configured FromConfig(IConfigurationHelper? config) =>
+            new(config?.OrgName ?? "", config?.PAT ?? "", config?.ProjectId ?? "", config?.RepoId ?? "", config?.Branch ?? "");
+    }
+
+    /// <summary>
+    /// A logged-in user always works with the configured PAT and OrgName (and the configured project when no projectId
+    /// was sent); anything sent as pat/orgName is ignored, since a logged-in user acting under their own PAT is not a
+    /// supported scenario. An anonymous caller must send their own PAT and OrgName and works with those and their own
+    /// project only, never with the configured credentials. Returns the refusal message when an anonymous caller sends
+    /// no credentials, or no projectId where one is required.
+    /// </summary>
+    public static (string pat, string orgName, string projectId, bool usesConfig, string? error) Resolve(
+        bool loggedIn, string? pat, string? orgName, string? projectId, bool requireProject,
+        Configured config){
+        if (loggedIn) {
+            return (config.Pat, config.OrgName, projectId ?? config.ProjectId, true, null);
+        }
+
+        bool ownCredentials = !string.IsNullOrWhiteSpace(pat) && !string.IsNullOrWhiteSpace(orgName)
+            && !LoggedInPlaceholders.Contains(pat) && !LoggedInPlaceholders.Contains(orgName);
+
+        if (ownCredentials && (!requireProject || !string.IsNullOrWhiteSpace(projectId))) {
+            return (pat!, orgName!, projectId ?? "", false, null);
+        }
+
+        return ("", "", "", false, NoCredentialsMessage);
+    }
+
+    /// <summary>
+    /// With the caller's own PAT and OrgName the pipeline YAML is generated for and saved to the project, repository and
+    /// branch the request names, never the configured repository. Returns the refusal message listing what is missing, or null.
+    /// </summary>
+    public static string? MissingTarget(DataObjects.DevOpsPipelineRequest request)
+    {
+        var missing = new List<string>();
+        if (string.IsNullOrWhiteSpace(request.ProjectId)) { missing.Add("ProjectId"); }
+        if (string.IsNullOrWhiteSpace(request.RepoId)) { missing.Add("RepoId"); }
+        if (string.IsNullOrWhiteSpace(request.Branch)) { missing.Add("Branch"); }
+
+        return missing.Count == 0 ? null
+            : "With your own PAT and OrgName the pipeline YAML is generated for and saved to the project, repository and branch you name; missing: " + string.Join(", ", missing) + ".";
+    }
+}
+
+// ---- API.HostEnvironment ----
+// Host Environment API endpoints: what is installed on this server and on the DEV, PROD and CMS servers.
+// Admins only: the scan includes environment variables, the PATH, disks and patch state, which are server
+// internals, and the framework keeps those behind [Authorize(Policy = Policies.Admin)]. The client hides the
+// Host Environment menu from non-admins (Helpers.App.cs) and the in-body check is belt and braces.
+
+public partial class DataController
+{
+    /// <summary>
+    /// Gets the host environment information — installed runtimes, SDKs, tools, and system info.
+    /// Scans the server machine for installed development tools and frameworks.
+    /// The scan is cached; refresh=true asks for a re-scan (rate limited).
+    /// </summary>
+    [HttpGet($"~/{DataObjects.Endpoints.HostEnvironment.GetEnvironment}")]
+    [Authorize(Policy = Policies.Admin)]
+    public async Task<ActionResult<DataObjects.HostEnvironmentResponse>> GetHostEnvironment([FromQuery] string? connectionId = null, [FromQuery] bool refresh = false)
+    {
+        if (!CurrentUser.Enabled || !CurrentUser.Admin) {
+            return Unauthorized(_returnCodeAccessDenied);
+        }
+
+        return Ok(await da.GetHostEnvironmentAsync(connectionId, refresh));
+    }
+
+    /// <summary>
+    /// Gets host environment data per deployment environment (DEV, PROD, CMS).
+    /// Reads pipeline-generated JSON files (HostEnvironment_AzureDev.json, etc.) from the app root.
+    /// </summary>
+    [HttpGet($"~/{DataObjects.Endpoints.HostEnvironment.GetEnvironmentByHost}")]
+    [Authorize(Policy = Policies.Admin)]
+    public async Task<ActionResult<Dictionary<string, DataObjects.HostEnvironmentResponse?>>> GetHostEnvironmentByHost()
+    {
+        if (!CurrentUser.Enabled || !CurrentUser.Admin) {
+            return Unauthorized(_returnCodeAccessDenied);
+        }
+
+        return Ok(await da.GetHostEnvironmentByEnvironmentAsync());
+    }
+
+    /// <summary>
+    /// Gets health findings per environment (DEV, PROD, CMS and THIS_SERVER), computed from the same
+    /// pipeline-generated JSON files and this server's Host Stats history. Nothing runs on the scanned servers.
+    /// </summary>
+    [HttpGet($"~/{DataObjects.Endpoints.HostHealth.GetHealth}")]
+    [Authorize(Policy = Policies.Admin)]
+    public async Task<ActionResult<Dictionary<string, DataObjects.HostHealthReport>>> GetHostHealth()
+    {
+        if (!CurrentUser.Enabled || !CurrentUser.Admin) {
+            return Unauthorized(_returnCodeAccessDenied);
+        }
+
+        return Ok(await da.GetHostHealthAsync());
+    }
+}
+
+// ---- API.HostStats ----
+// Host Stats API endpoints: live "Task Manager" stats of the server FreeCICD runs on.
+// Admins only, like the Host Environment endpoints: the process table, the IIS worker list and the
+// storage folder are details of this server, and the framework keeps server internals behind
+// [Authorize(Policy = Policies.Admin)] (DataController.Utilities.cs). The in-body check is belt and braces.
+
+public partial class DataController
+{
+    /// <summary>
+    /// Gets history between "from" and "to" (epoch ms) at a resolution that gives at most "points" points,
+    /// as avg series with min/max bands, plus boot markers. "device" narrows the series:
+    /// cpu, cores, mem, disk:NAME, net:NAME or iis (empty for the headline series of every device).
+    /// </summary>
+    [HttpGet($"~/{DataObjects.Endpoints.HostStats.History}")]
+    [Authorize(Policy = Policies.Admin)]
+    public ActionResult<DataObjects.HostStatsHistoryResponse> GetHostStatsHistory([FromQuery] long? from = null, [FromQuery] long? to = null, [FromQuery] int? points = 600, [FromQuery] string? device = null)
+    {
+        if (!CurrentUser.Enabled || !CurrentUser.Admin) {
+            return Unauthorized(_returnCodeAccessDenied);
+        }
+
+        return Ok(da.GetHostStatsHistory(from, to, points, device));
+    }
+    /// <summary>
+    /// Gets raw 1-second samples newer than "since" (epoch ms, at most 120), plus the process tables.
+    /// Without "since" the last 60 seconds are returned.
+    /// </summary>
+    [HttpGet($"~/{DataObjects.Endpoints.HostStats.Live}")]
+    [Authorize(Policy = Policies.Admin)]
+    public ActionResult<DataObjects.HostStatsLiveResponse> GetHostStatsLive([FromQuery] long? since = null)
+    {
+        if (!CurrentUser.Enabled || !CurrentUser.Admin) {
+            return Unauthorized(_returnCodeAccessDenied);
+        }
+
+        return Ok(da.GetHostStatsLive(since, includeStorageDetail: true));
+    }
+
+    /// <summary>
+    /// Gets static facts (CPU, memory, disks, adapters, uptime) and storage use per tier.
+    /// </summary>
+    [HttpGet($"~/{DataObjects.Endpoints.HostStats.Summary}")]
+    [Authorize(Policy = Policies.Admin)]
+    public ActionResult<DataObjects.HostStatsSummary> GetHostStatsSummary()
+    {
+        if (!CurrentUser.Enabled || !CurrentUser.Admin) {
+            return Unauthorized(_returnCodeAccessDenied);
+        }
+
+        return Ok(da.GetHostStatsSummary(includeStorageDetail: true));
+    }
+
+    /// <summary>
+    /// Joins the caller's SignalR connection to the host stats group. The HostStatsService pushes
+    /// one sample a second to this group, and only while it has members. POST only (the page sends an empty
+    /// body), and the connection must be the caller's own.
+    /// </summary>
+    [HttpPost($"~/{DataObjects.Endpoints.HostStats.Join}")]
+    [Authorize(Policy = Policies.Admin)]
+    public async Task<ActionResult<DataObjects.BooleanResponse>> JoinHostStats([FromQuery] string connectionId)
+    {
+        if (!CurrentUser.Enabled || !CurrentUser.Admin) {
+            return Unauthorized(_returnCodeAccessDenied);
+        }
+
+        return Ok(await ChangeGroupMembership(connectionId, da.GetHostStatsGroupName(), join: true));
+    }
+
+    /// <summary>
+    /// Removes the caller's SignalR connection from the host stats group.
+    /// </summary>
+    [HttpPost($"~/{DataObjects.Endpoints.HostStats.Leave}")]
+    [Authorize(Policy = Policies.Admin)]
+    public async Task<ActionResult<DataObjects.BooleanResponse>> LeaveHostStats([FromQuery] string connectionId)
+    {
+        if (!CurrentUser.Enabled || !CurrentUser.Admin) {
+            return Unauthorized(_returnCodeAccessDenied);
+        }
+
+        return Ok(await ChangeGroupMembership(connectionId, da.GetHostStatsGroupName(), join: false));
+    }
+
+    /// <summary>
+    /// Development only: generates clearly labelled synthetic history so the history ranges can be shown
+    /// without waiting days. Requires HostStats:AllowDemoSeed and an admin user. days=0 removes it again.
+    /// </summary>
+    [HttpPost($"~/{DataObjects.Endpoints.HostStats.SeedDemoHistory}")]
+    [Authorize(Policy = Policies.Admin)]
+    public ActionResult<DataObjects.BooleanResponse> SeedHostStatsDemoHistory([FromQuery] int days = 30)
+    {
+        if (!CurrentUser.Enabled || !CurrentUser.Admin) {
+            return Unauthorized(_returnCodeAccessDenied);
+        }
+
+        return Ok(da.SeedHostStatsDemoHistory(days));
+    }
+}
+
+// ---- API.NuGetInventory ----
+// NuGet Inventory API endpoints
+
+public partial class DataController
+{
+    /// <summary>
+    /// Gets the NuGet package inventory for the entire Azure DevOps organization.
+    /// Scans all projects/repos/branches for .csproj files and extracts package references.
+    /// Sends progressive SignalR updates to the requesting client.
+    /// Signed-in users only: the scan runs with the configured PAT, like the pipelines dashboard.
+    /// </summary>
+    [HttpGet($"~/{DataObjects.Endpoints.NuGetInventory.GetInventory}")]
+    [Authorize]
+    public async Task<ActionResult<DataObjects.NuGetInventoryResponse>> GetNuGetInventory([FromQuery] string? connectionId = null)
+    {
+        if (!CurrentUser.Enabled) {
+            return Unauthorized(_returnCodeAccessDenied);
+        }
+
+        var config = GetReleasePipelinesDevOpsConfig();
+        return Ok(await da.GetNuGetInventoryAsync(config.Pat, config.OrgName, connectionId));
+    }
+}
+
+// ---- Atlas.API ----
+// App Atlas API endpoints (/Atlas page). Admin only. The registry is served from cached data:
+// these endpoints never call Azure DevOps or the apps, and never return the PAT or any IP address.
+
+public partial class DataController
+{
+    /// <summary>
+    /// Adds (join) or removes the caller's SignalR connection to or from a live group and records the membership, so
+    /// the background services know whether anyone is listening. Every Join/Leave endpoint calls this after its own
+    /// access check. A blank connection id, or one the caller does not own (OwnsSignalRConnection), is refused with a
+    /// message and never touches the group.
+    /// </summary>
+    private async Task<DataObjects.BooleanResponse> ChangeGroupMembership(string connectionId, string group, bool join)
+    {
+        var output = new DataObjects.BooleanResponse();
+        if (string.IsNullOrWhiteSpace(connectionId)) {
+            output.Messages.Add("ConnectionId is required");
+            return output;
+        }
+        if (!OwnsSignalRConnection(connectionId)) {
+            output.Messages.Add("That SignalR connection is not yours");
+            return output;
+        }
+        if (_signalR != null) {
+            if (join) {
+                await _signalR.Groups.AddToGroupAsync(connectionId, group);
+            } else {
+                await _signalR.Groups.RemoveFromGroupAsync(connectionId, group);
+            }
+            freecicdHub.TrackGroup(connectionId, group, join);
+            output.Result = true;
+        }
+        return output;
+    }
+    /// <summary>
+    /// Gets the decommission review: every IIS application and unused pool with its evidence and the saved decisions.
+    /// </summary>
+    [HttpGet($"~/{DataObjects.Endpoints.Atlas.GetDecommission}")]
+    [Authorize(Policy = Policies.Admin)]
+    public async Task<ActionResult<DataObjects.AtlasDecommissionResponse>> GetAtlasDecommission()
+    {
+        if (!CurrentUser.Enabled || !CurrentUser.Admin) {
+            return Unauthorized(_returnCodeAccessDenied);
+        }
+
+        return Ok(await da.GetAtlasDecommissionAsync());
+    }
+    /// <summary>
+    /// Gets the App Registry: every deployed app across DEV, PROD and CMS with versions, drift, links,
+    /// FreeCRM detection and the last up-check results.
+    /// </summary>
+    [HttpGet($"~/{DataObjects.Endpoints.Atlas.GetRegistry}")]
+    [Authorize(Policy = Policies.Admin)]
+    public async Task<ActionResult<DataObjects.AtlasRegistryResponse>> GetAtlasRegistry()
+    {
+        if (!CurrentUser.Enabled || !CurrentUser.Admin) {
+            return Unauthorized(_returnCodeAccessDenied);
+        }
+
+        return Ok(await da.GetAtlasRegistryAsync());
+    }
+
+    /// <summary>
+    /// Adds the caller's SignalR connection to the Atlas group, which receives the AtlasService's refresh progress
+    /// (AtlasRefreshProgress updates) while the page is open. Same shape as Host Stats' join: POST, admin only, and
+    /// the connection must be the caller's own (a link cannot add someone else's socket to the admin feed).
+    /// </summary>
+    [HttpPost($"~/{DataObjects.Endpoints.Atlas.Join}")]
+    [Authorize(Policy = Policies.Admin)]
+    public async Task<ActionResult<DataObjects.BooleanResponse>> JoinAtlas([FromQuery] string connectionId)
+    {
+        if (!CurrentUser.Enabled || !CurrentUser.Admin) {
+            return Unauthorized(_returnCodeAccessDenied);
+        }
+        return Ok(await ChangeGroupMembership(connectionId, DataObjects.SignalRUpdateType.AtlasGroup, join: true));
+    }
+
+    /// <summary>Removes the caller's SignalR connection from the Atlas group.</summary>
+    [HttpPost($"~/{DataObjects.Endpoints.Atlas.Leave}")]
+    [Authorize(Policy = Policies.Admin)]
+    public async Task<ActionResult<DataObjects.BooleanResponse>> LeaveAtlas([FromQuery] string connectionId)
+    {
+        if (!CurrentUser.Enabled || !CurrentUser.Admin) {
+            return Unauthorized(_returnCodeAccessDenied);
+        }
+        return Ok(await ChangeGroupMembership(connectionId, DataObjects.SignalRUpdateType.AtlasGroup, join: false));
+    }
+
+    /// <summary>
+    /// True when the SignalR connection belongs to the signed-in user: the hub records each connection's user id
+    /// (ClaimTypes.NameIdentifier) when it opens. Used by every Join/Leave endpoint, so a cookie-carrying link cannot
+    /// add someone else's socket to an admin-only group.
+    /// </summary>
+    private bool OwnsSignalRConnection(string connectionId)
+    {
+        var info = freecicdHub.GetConnectionInfo(connectionId);
+        return info != null && CurrentUser.UserId != Guid.Empty && string.Equals(info.UserIdentifier, CurrentUser.UserId.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Asks the background service to re-read Azure DevOps, re-run the FreeCRM detector and the up-check now
+    /// (at most once a minute). Returns at once; the page reloads the registry a little later.
+    /// </summary>
+    [HttpPost($"~/{DataObjects.Endpoints.Atlas.Refresh}")]
+    [Authorize(Policy = Policies.Admin)]
+    public ActionResult<DataObjects.BooleanResponse> RefreshAtlas()
+    {
+        if (!CurrentUser.Enabled || !CurrentUser.Admin) {
+            return Unauthorized(_returnCodeAccessDenied);
+        }
+
+        return Ok(da.RequestAtlasRefresh());
+    }
+
+    /// <summary>
+    /// Saves decisions for the given items (others are kept). The server records who decided and when.
+    /// </summary>
+    [HttpPost($"~/{DataObjects.Endpoints.Atlas.SaveDecommissionDecisions}")]
+    [Authorize(Policy = Policies.Admin)]
+    public async Task<ActionResult<DataObjects.BooleanResponse>> SaveAtlasDecommissionDecisions([FromBody] List<DataObjects.AtlasDecommissionDecision> decisions)
+    {
+        if (!CurrentUser.Enabled || !CurrentUser.Admin) {
+            return Unauthorized(_returnCodeAccessDenied);
+        }
+
+        return Ok(await da.SaveAtlasDecommissionDecisionsAsync(decisions, CurrentUser));
+    }
+}
+
+// ---- Atlas.Report.API ----
+// App Atlas: deploy verification endpoints (docs/105_feature_app_atlas_deploy_verification.md).
+
+public partial class DataController
+{
+    /// <summary>
+    /// The absolute URL of the report endpoint the pipelines post to: Atlas:ReportUrl from this instance's
+    /// configuration. It is never taken from the request (Host, X-Forwarded-Proto), which any signed-in caller could
+    /// set and so point every pipeline, and the shared key, at a host of their choosing. The one exception is a
+    /// loopback request on an instance with nothing configured, so a developer's local run still gets a step. An
+    /// instance without the setting (DEV, by design) writes no variable group and no verify step.
+    /// </summary>
+    private string AtlasReportUrl()
+    {
+        var configured = (configurationHelper?.AtlasReportUrl ?? "").Trim();
+        if (configured.Length > 0) {
+            return configured;
+        }
+        var request = context?.Request;
+        if (request == null || !(request.Host.Host is "localhost" or "127.0.0.1" or "[::1]" or "::1")) {
+            return "";
+        }
+        // The Host header is the client's to set; the socket's remote address is not. Both must say loopback.
+        var remote = context?.Connection?.RemoteIpAddress;
+        if (remote != null && !System.Net.IPAddress.IsLoopback(remote)) {
+            return "";
+        }
+        return $"{request.Scheme}://{request.Host}{request.PathBase}/{DataObjects.Endpoints.Atlas.Report}";
+    }
+
+    /// <summary>
+    /// The App Atlas options a signed-in wizard caller's pipeline is generated with. The report URL and key are this
+    /// server's own, never the client's; the gather wish is honoured by the generator for FreeCICD's own project only.
+    /// </summary>
+    private DataObjects.AtlasVerifyOptions AtlasVerifyOptionsFor(DataObjects.DevOpsPipelineRequest request) => new() {
+        Enabled = request.VerifyAfterDeploy,
+        ReportUrl = AtlasReportUrl(),
+        ReportKey = da.GetAtlasReportKey() ?? "",
+        GatherServerInfo = request.GatherServerInfo,
+    };
+
+    /// <summary>A stored picture. Admins only, like the rest of the Atlas; cached for an hour since a deployment's picture only changes with a new report.</summary>
+    [HttpGet($"~/{DataObjects.Endpoints.Atlas.Preview}/{{environment}}/{{folder}}/{{file}}")]
+    [Authorize(Policy = Policies.Admin)]
+    public IActionResult GetAtlasPreview(string environment, string folder, string file)
+    {
+        if (!CurrentUser.Enabled || !CurrentUser.Admin) {
+            return Unauthorized(_returnCodeAccessDenied);
+        }
+        var path = da.GetAtlasPreviewFile(environment, folder, file);
+        if (path == null) {
+            // As the framework's File/View: an image request for a missing file gets an empty answer.
+            return new EmptyResult();
+        }
+        Response.Headers.CacheControl = "private, max-age=3600";
+        Response.Headers["X-Content-Type-Options"] = "nosniff"; // stored bytes are served as image/*, never sniffed into anything else
+        return PhysicalFile(path, DataObjects.AtlasReportLimits.ContentTypeFor(file), System.IO.File.GetLastWriteTimeUtc(path), null);
+    }
+
+    /// <summary>Whether a report key exists and its first characters, so an admin can tell which key a pipeline carries. Never the key.</summary>
+    [HttpGet($"~/{DataObjects.Endpoints.Atlas.ReportKeyInfo}")]
+    [Authorize(Policy = Policies.Admin)]
+    public ActionResult<DataObjects.AtlasReportKeyInfo> GetAtlasReportKeyInfo()
+    {
+        if (!CurrentUser.Enabled || !CurrentUser.Admin) {
+            return Unauthorized(_returnCodeAccessDenied);
+        }
+        return Ok(da.GetAtlasReportKeyInfo());
+    }
+    /// <summary>
+    /// Receives a deploy report from a deployment job: the "report" form field holds the JSON, the file parts hold
+    /// the pictures. [AllowAnonymous] on purpose: the caller is a pipeline agent, not a user, and it proves itself
+    /// in the Authorization header (bearer) with the shared key from the Settings table, which the pipelines read
+    /// from their variable group. The key is never accepted from the query string, which would put it in the IIS
+    /// logs. With no key configured every call is refused.
+    /// Unlike the browser endpoints this one answers a refused report with a 400 (and a bad key with a 401): the
+    /// verify template (verify-deploy-template.yml) reads only IsSuccessStatusCode to tell "stored" from "refused".
+    /// </summary>
+    [HttpPost($"~/{DataObjects.Endpoints.Atlas.Report}")]
+    [AllowAnonymous]
+    [RequestSizeLimit(DataObjects.AtlasReportLimits.MaxRequestBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = DataObjects.AtlasReportLimits.MaxRequestBytes)]
+    public async Task<ActionResult<DataObjects.BooleanResponse>> PostAtlasDeployReport()
+    {
+        var presented = AtlasReportStore.BearerToken(Request.Headers.Authorization.FirstOrDefault());
+        if (!da.AtlasReportKeyMatches(presented)) {
+            return Unauthorized(_returnCodeAccessDenied);
+        }
+
+        if (!Request.HasFormContentType) {
+            return BadRequest("Send multipart/form-data with a \"report\" field and the picture parts.");
+        }
+
+        var form = await Request.ReadFormAsync();
+        // Null when the part is missing or malformed; Validate reports which.
+        var report = AtlasReportStore.ParseReport(form["report"].FirstOrDefault());
+
+        var images = form.Files.Select(f => new DataObjects.AtlasReportImage { Name = f.Name, Length = f.Length, Open = f.OpenReadStream }).ToList();
+        var result = await da.SaveAtlasDeployReportAsync(report!, images);
+        return result.Result ? Ok(result) : BadRequest(result);
+    }
+
+    /// <summary>
+    /// Queues FreeCICD's own pipeline: its gather stages rescan every server (IIS, host environment) and ship the
+    /// results with the deploy, which then verifies itself. Azure DevOps runs it once; a second click while it runs
+    /// just queues another run behind it.
+    /// </summary>
+    [HttpPost($"~/{DataObjects.Endpoints.Atlas.RefreshPreviews}")]
+    [Authorize(Policy = Policies.Admin)]
+    public async Task<ActionResult<DataObjects.BooleanResponse>> RefreshAtlasPreviews()
+    {
+        if (!CurrentUser.Enabled || !CurrentUser.Admin) {
+            return Unauthorized(_returnCodeAccessDenied);
+        }
+        var output = new DataObjects.BooleanResponse();
+        var registry = await da.GetAtlasRegistryAsync();
+        var self = registry.Apps.FirstOrDefault(a => DataObjects.IsAtlasSelfProject(a.Name) && a.PipelineId.HasValue);
+        if (self?.PipelineId == null) {
+            output.Messages.Add($"No pipeline named {DataObjects.AtlasSelfProjectName} is linked in the registry, so the rescan cannot be queued from here.");
+            return Ok(output);
+        }
+        var config = GetReleasePipelinesDevOpsConfig();
+        return Ok(await da.RunPipelineAsync(config.Pat, config.OrgName, config.ProjectId, self.PipelineId.Value));
+    }
+
+    /// <summary>
+    /// Replaces the report key and pushes it into the FreeCICD_AtlasReport variable group, so every pipeline that
+    /// links the group uses the new key on its next run. Reports with the old key are refused from now on.
+    /// </summary>
+    [HttpPost($"~/{DataObjects.Endpoints.Atlas.RotateReportKey}")]
+    [Authorize(Policy = Policies.Admin)]
+    public async Task<ActionResult<DataObjects.BooleanResponse>> RotateAtlasReportKey()
+    {
+        if (!CurrentUser.Enabled || !CurrentUser.Admin) {
+            return Unauthorized(_returnCodeAccessDenied);
+        }
+        var rotated = da.RotateAtlasReportKey(CurrentUser);
+        if (!rotated.Result) {
+            return Ok(rotated);
+        }
+        var reportUrl = AtlasReportUrl();
+        if (reportUrl.Length == 0) {
+            // This instance does not collect reports (no Atlas:ReportUrl), so it does not own the pipelines' group either.
+            rotated.Messages.Add("The key was rotated. This instance has no Atlas:ReportUrl configured, so the " + DataObjects.AtlasReportVariableGroupName + " variable group was not written; rotate on the instance that collects reports.");
+            return Ok(rotated);
+        }
+        var config = GetReleasePipelinesDevOpsConfig();
+        var pushed = await da.SaveAtlasReportVariableGroupAsync(config.ProjectId, config.Pat, config.OrgName, reportUrl, da.GetAtlasReportKey());
+        if (!pushed.Result) {
+            // The new key is in force; the pipelines just do not have it yet.
+            rotated.Messages.Add("The key was rotated but could not be written to the " + DataObjects.AtlasReportVariableGroupName + " variable group; saving any pipeline in the wizard writes it. " + String.Join(" ", pushed.Messages));
+        }
+        return Ok(rotated);
+    }
 }

@@ -47,11 +47,11 @@
                         <label for="users-filter-keyword"><Language Tag="Search" /></label>
                         <div class="fixed-200">
                             <input type="text"
-                                   id="users-filter-keyword"
-                                   class="form-control"
-                                   @bind="Filter.Keyword"
-                                   @bind:after="LoadFilter"
-                                   placeholder="@FilterSearchPlaceholder" />
+                                    id="users-filter-keyword"
+                                    class="form-control"
+                                    @bind="Filter.Keyword"
+                                    @bind:after="LoadFilter"
+                                    placeholder="@FilterSearchPlaceholder" />
                         </div>
                     </div>
 
@@ -150,11 +150,11 @@
             <div class="mb-2">
                 <div class="form-check form-switch">
                     <input type="checkbox"
-                        id="users-filter-IncludeDeletedRecords"
-                        class="form-check-input"
-                        @bind="Model.User.UserPreferences.IncludeDeletedItems"
-                        @bind:after="LoadFilter"
-                    />
+                            id="users-filter-IncludeDeletedRecords"
+                            class="form-check-input"
+                            @bind="Model.User.UserPreferences.IncludeDeletedItems"
+                            @bind:after="LoadFilter"
+                            />
                     <label for="users-filter-IncludeDeletedRecords" class="form-check-label">
                         <Language Tag="IncludeDeletedRecords" />
                     </label>
@@ -169,14 +169,14 @@
                 <Language Tag="NoItemsToShow" />
             } else {
                 <PagedRecordset ActionHandlers="ActionHandlers"
-                    CenterItems="CenterItems"
-                    Configuration="Config"
-                    Formatters="Formatters"
-                    NavigationCallbackHander="NavigationCallbackHander"
-                    NavigationLocation="PagedRecordset.NavLocation.Both"
-                    RecordData="Data"
-                    RowClasses="_rowClasses"
-                    UseBootstrap="true" />
+                        CenterItems="CenterItems"
+                        Configuration="Config"
+                        Formatters="Formatters"
+                        NavigationCallbackHander="NavigationCallbackHander"
+                        NavigationLocation="PagedRecordset.NavLocation.Both"
+                        RecordData="Data"
+                        RowClasses="_rowClasses"
+                        UseBootstrap="true" />
             }
         }
     }

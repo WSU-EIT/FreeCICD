@@ -26,7 +26,7 @@ namespace FreeCICD
             try {
                 cookiePrefix += assembly.FullName;
 
-                if (cookiePrefix.Contains(",")) { 
+                if (cookiePrefix.Contains(",")) {
                     cookiePrefix = cookiePrefix.Substring(0, cookiePrefix.IndexOf(",")).Trim();
                 }
 
@@ -45,15 +45,17 @@ namespace FreeCICD
                 builder.Services.AddSignalR().AddAzureSignalR("Endpoint=" + azureSignalRUrl);
             }
 
-            // Add CORS policy for SignalR when running with different origins (e.g., Aspire AppHost)
-            builder.Services.AddCors(options =>
-            {
-                options.AddPolicy("SignalRPolicy", policy =>
-                {
-                    policy.SetIsOriginAllowed(_ => true) // Allow any origin in development
-                          .AllowAnyHeader()
-                          .AllowAnyMethod()
-                          .AllowCredentials();
+            // CORS policy for SignalR when running with different origins (e.g., Aspire AppHost). Any origin with
+            // credentials is a development convenience only: outside Development the policy allows no cross-origin
+            // caller, and same-origin requests (the normal case) are unaffected by CORS.
+            builder.Services.AddCors(options => {
+                options.AddPolicy("SignalRPolicy", policy => {
+                    if (isDevelopment) {
+                        policy.SetIsOriginAllowed(_ => true)
+                              .AllowAnyHeader()
+                              .AllowAnyMethod()
+                              .AllowCredentials();
+                    }
                 });
             });
 
@@ -162,9 +164,6 @@ namespace FreeCICD
             }, builder);
 
             builder.Services.AddTransient<IConfigurationHelper>(x => ActivatorUtilities.CreateInstance<ConfigurationHelper>(x, configurationHelperLoader));
-
-            // Register the background pipeline monitor service
-            builder.Services.AddHostedService<PipelineMonitorService>();
 
             var policies = new List<string> {
                 "AppAdmin",

@@ -128,7 +128,8 @@
         <div class="loading-progress-text"></div>
     }
 
-    <div class="container-fluid page-view">
+    @* FreeCICD a11y: the page content is the <main> landmark (WCAG 1.3.1, axe landmark-one-main / region). *@
+    <main class="container-fluid page-view">
         @if (Model.AppSettings.MaintenanceMode && (Model.User.AppAdmin || BypassMaintenanceMode)) {
             <div class="alert alert-danger">
                 <h1 class="page-title">
@@ -167,7 +168,7 @@
 
             <div class="pb-3">@Body</div>
         }
-    </div>
+    </main>
 
     <div id="password-generator" style="display:none;"> </div>
 </div>
@@ -201,189 +202,6 @@ protected bool versionInfoLoaded = false;
 
 protected DotNetObjectReference<MainLayout>? dotNetHelper;
 
-    public void Dispose() {
-        dotNetHelper?.Dispose();
-
-        Model.Subscribers_OnChange.Remove("MainLayout");
-        Model.OnChange -= StateHasChanged;
-
-        NavManager.LocationChanged -= LocationChanged;
-    }
-
-    protected override async Task OnInitializedAsync() {
-        if (!Model.Subscribers_OnChange.Contains("MainLayout")) {
-            Model.Subscribers_OnChange.Add("MainLayout");
-            Model.OnChange += StateHasChanged;
-        }
-
-        NavManager.LocationChanged += LocationChanged;
-
-        if (!Helpers.Initialized) {
-            Helpers.Init(jsRuntime, Model, Http, LocalStorage, DialogService, TooltipService, NavManager);
-
-            List<string>? globallyDisabledModules = await Helpers.GetOrPost<List<string>>("api/Data/GetGloballyDisabledModules");
-            Model.GloballyDisabledModules = globallyDisabledModules;
-
-            List<string>? globallyEnabledModules = await Helpers.GetOrPost<List<string>>("api/Data/GetGloballyEnabledModules");
-            Model.GloballyEnabledModules = globallyEnabledModules;
-        }
-
-        if (String.IsNullOrWhiteSpace(Model.Fingerprint)) {
-            await Helpers.GetFingerprint();
-        }
-
-        if (!Model.LoggedIn && StartupValidated) {
-            await ValidateLogin();
-        }
-
-        timer = new System.Threading.Timer(async (object? stateInfo) => {
-            await ThemeWatcher();
-            MessageWatcher();
-            await SavePendingUserPreferences();
-        }, new System.Threading.AutoResetEvent(false), 0, 500);
-
-        updateTimer = new System.Threading.Timer(async (object? stateInfo) => {
-            await CheckForUpdates();
-        }, new System.Threading.AutoResetEvent(false), 0, 10000);
-
-        // Timer to send SignalR client state updates (every 5 seconds)
-        clientStateTimer = new System.Threading.Timer(async (object? stateInfo) => {
-            await SendClientStateIfChanged();
-        }, new System.Threading.AutoResetEvent(false), 5000, 5000);
-    }
-
-    protected async override Task OnAfterRenderAsync(bool firstRender) {
-        if (firstRender) {
-            dotNetHelper = DotNetObjectReference.Create(this);
-            await jsRuntime.InvokeVoidAsync("SetDotNetHelper", dotNetHelper);
-
-            // See if a Theme is stored.
-            var theme = await LocalStorage.GetItemAsync<string>("Theme");
-            if (String.IsNullOrWhiteSpace(theme)) {
-                theme = "light";
-            }
-            Helpers.SetTheme(theme);
-
-            await ValidateStartupState();
-            StartupValidated = true;
-
-            await Helpers.LoadDefaultLanguage();
-
-            await jsRuntime.InvokeVoidAsync("Loaded");
-
-            StateHasChanged();
-        } else {
-            if (!Validating && !Model.LoggedIn && Model.Loaded && StartupValidated) {
-                await ValidateLogin();
-            }
-
-            if (!Validating && Model.LoggedIn && StartupValidated && Model.User.Admin && !DeletedRecordCountsLoaded) {
-                DeletedRecordCountsLoaded = true;
-                await Helpers.GetDeletedRecordCount();
-                StateHasChanged();
-            }
-        }
-
-        Loading = false;
-
-
-        if (Model.Loaded) {
-            if (Model.LoggedIn && !hubConfigured) {
-                hubConfigured = true;
-
-                hubConnection = new HubConnectionBuilder()
-                    .WithUrl(Model.ApplicationUrl + "freecicdHub")
-                    .WithStatefulReconnect()
-                    .WithAutomaticReconnect()
-                    .Build();
-
-                hubConnection.On<DataObjects.SignalRUpdate>("SignalRUpdate", async (update) => {
-                    await ProcessSignalRUpdate(update);
-                });
-
-                await hubConnection.StartAsync();
-                
-                // Store connection ID for display in SignalR admin page
-                if (hubConnection.ConnectionId != null) {
-                    Model.SignalrClientRegistration = new DataObjects.SignalrClientRegistration {
-                        ConnectionId = hubConnection.ConnectionId
-                    };
-                }
-
-                await hubConnection.InvokeAsync("JoinTenantId", Model.TenantId);
-                
-                // Register browser fingerprint to link connections from same browser
-                if (!string.IsNullOrWhiteSpace(Model.Fingerprint)) {
-                    await hubConnection.InvokeAsync("RegisterFingerprint", Model.Fingerprint);
-                }
-                
-                // Send initial client state
-                await SendClientState();
-            }
-
-            if (!versionInfoLoaded) {
-                var info = await Helpers.GetOrPost<DataObjects.VersionInfo>("api/Data/GetVersionInfo");
-                if (info != null) {
-                    versionInfo = info;
-                    versionInfoLoaded = true;
-                }
-            }
-        }
-    }
-
-    /// <summary>
-    /// Sends current client state to the SignalR hub.
-    /// </summary>
-    protected async Task SendClientState()
-    {
-        if (hubConnection?.State == HubConnectionState.Connected) {
-            try {
-                var state = new DataObjects.SignalRClientState {
-                    CurrentPage = Model.View ?? NavManager.ToBaseRelativePath(NavManager.Uri),
-                    HasFocus = await jsRuntime.InvokeAsync<bool>("eval", "document.hasFocus()"),
-                    IsVisible = await jsRuntime.InvokeAsync<bool>("eval", "document.visibilityState === 'visible'"),
-                    ScreenWidth = await jsRuntime.InvokeAsync<int>("eval", "window.screen.width"),
-                    ScreenHeight = await jsRuntime.InvokeAsync<int>("eval", "window.screen.height"),
-                    Timezone = await jsRuntime.InvokeAsync<string>("eval", "Intl.DateTimeFormat().resolvedOptions().timeZone"),
-                    Language = await jsRuntime.InvokeAsync<string>("eval", "navigator.language")
-                };
-                
-                await hubConnection.InvokeAsync("UpdateClientState", state);
-            } catch {
-                // Ignore errors - best effort
-            }
-        }
-    }
-
-    /// <summary>
-    /// Sends client state only when it has changed (debounced).
-    /// </summary>
-    protected async Task SendClientStateIfChanged()
-    {
-        if (hubConnection?.State != HubConnectionState.Connected) return;
-        
-        try {
-            var currentView = Model.View;
-            var currentFocus = await jsRuntime.InvokeAsync<bool>("eval", "document.hasFocus()");
-            
-            // Only send if view or focus changed
-            if (currentView != lastClientStateView || currentFocus != lastClientStateFocus) {
-                lastClientStateView = currentView;
-                lastClientStateFocus = currentFocus;
-                await SendClientState();
-            }
-        } catch {
-            // Ignore errors
-        }
-    }
-
-    [JSInvokable]
-    public void DotNetHelperHandler(params string[] arguments) {
-        if (arguments != null) {
-            Model.DotNetHelperHandler(arguments.ToList());
-        }
-    }
-
     protected bool BypassMaintenanceMode {
         get {
             if (Model.User.AppAdmin) {
@@ -394,6 +212,47 @@ protected DotNetObjectReference<MainLayout>? dotNetHelper;
             }
 
             return false;
+        }
+    }
+
+    protected bool IncludeCustomCss {
+        get {
+            if (Model.Tenant.TenantSettings.Theme == "custom") {
+                return true;
+            } else if (!String.IsNullOrWhiteSpace(Model.Tenant.TenantSettings.ThemeFontCssImport)) {
+                return true;
+            } else if (!String.IsNullOrWhiteSpace(Model.Tenant.TenantSettings.ThemeFont)) {
+                return true;
+            }
+
+            return false;
+        }
+    }
+
+    protected string IncludeCustomCssFont {
+        get {
+            string output = String.Empty;
+
+            if (!String.IsNullOrWhiteSpace(Model.Tenant.TenantSettings.ThemeFont)) {
+                output = "html, body {" + Environment.NewLine +
+                    "  font-family: " + Model.Tenant.TenantSettings.ThemeFont + ";" + Environment.NewLine +
+                    "}";
+            }
+
+            return output;
+        }
+    }
+
+    public bool IsSignalRConnected =>
+        hubConnection?.State == HubConnectionState.Connected;
+
+    protected string PageAreaClass {
+        get {
+            if (Model.AppSettings.MaintenanceMode && !BypassMaintenanceMode) {
+                return "maintenance-mode";
+            }
+
+            return String.Empty;
         }
     }
 
@@ -448,42 +307,27 @@ protected DotNetObjectReference<MainLayout>? dotNetHelper;
         Model.Messages = Model.Messages.Where(x => x.Id != messageId).ToList();
     }
 
+    public void Dispose() {
+        dotNetHelper?.Dispose();
+
+        Model.Subscribers_OnChange.Remove("MainLayout");
+        Model.OnChange -= StateHasChanged;
+
+        NavManager.LocationChanged -= LocationChanged;
+    }
+
     public async ValueTask DisposeAsync() {
         if (hubConnection is not null) {
             await hubConnection.DisposeAsync();
         }
     }
 
-    protected bool IncludeCustomCss {
-        get {
-            if (Model.Tenant.TenantSettings.Theme == "custom") {
-                return true;
-            } else if (!String.IsNullOrWhiteSpace(Model.Tenant.TenantSettings.ThemeFontCssImport)) {
-                return true;
-            } else if (!String.IsNullOrWhiteSpace(Model.Tenant.TenantSettings.ThemeFont)) {
-                return true;
-            }
-
-            return false;
+    [JSInvokable]
+    public void DotNetHelperHandler(params string[] arguments) {
+        if (arguments != null) {
+            Model.DotNetHelperHandler(arguments.ToList());
         }
     }
-
-    protected string IncludeCustomCssFont {
-        get {
-            string output = String.Empty;
-
-            if (!String.IsNullOrWhiteSpace(Model.Tenant.TenantSettings.ThemeFont)) {
-                output = "html, body {" + Environment.NewLine +
-                    "  font-family: " + Model.Tenant.TenantSettings.ThemeFont + ";" + Environment.NewLine +
-                    "}";
-            }
-
-            return output;
-        }
-    }
-
-    public bool IsSignalRConnected =>
-        hubConnection?.State == HubConnectionState.Connected;
 
     void LocationChanged(object? sender, LocationChangedEventArgs e) {
         // Remove any messages
@@ -535,14 +379,144 @@ protected DotNetObjectReference<MainLayout>? dotNetHelper;
         }
     }
 
-    protected string PageAreaClass {
-        get {
-            if (Model.AppSettings.MaintenanceMode && !BypassMaintenanceMode) {
-                return "maintenance-mode";
+    protected async override Task OnAfterRenderAsync(bool firstRender) {
+        if (firstRender) {
+            dotNetHelper = DotNetObjectReference.Create(this);
+            await jsRuntime.InvokeVoidAsync("SetDotNetHelper", dotNetHelper);
+
+            // See if a Theme is stored.
+            var theme = await LocalStorage.GetItemAsync<string>("Theme");
+            if (String.IsNullOrWhiteSpace(theme)) {
+                theme = "light";
+            }
+            Helpers.SetTheme(theme);
+
+            await ValidateStartupState();
+            StartupValidated = true;
+
+            await Helpers.LoadDefaultLanguage();
+
+            await jsRuntime.InvokeVoidAsync("Loaded");
+
+            StateHasChanged();
+        } else {
+            if (!Validating && !Model.LoggedIn && Model.Loaded && StartupValidated) {
+                await ValidateLogin();
             }
 
-            return String.Empty;
+            if (!Validating && Model.LoggedIn && StartupValidated && Model.User.Admin && !DeletedRecordCountsLoaded) {
+                DeletedRecordCountsLoaded = true;
+                await Helpers.GetDeletedRecordCount();
+                StateHasChanged();
+            }
         }
+
+        Loading = false;
+
+
+        if (Model.Loaded) {
+            if (Model.LoggedIn && !hubConfigured) {
+                hubConfigured = true;
+
+                hubConnection = new HubConnectionBuilder()
+                    .WithUrl(Model.ApplicationUrl + "freecicdHub")
+                    .WithStatefulReconnect()
+                    .WithAutomaticReconnect()
+                    .Build();
+
+                hubConnection.On<DataObjects.SignalRUpdate>("SignalRUpdate", async (update) => {
+                    await ProcessSignalRUpdate(update);
+                });
+
+                // An automatic reconnect that could not resume the old session gets a new connection id and no groups.
+                // Record the new id (pages compare against it and re-join their own groups) and re-join the tenant.
+                hubConnection.Reconnected += async (newConnectionId) => {
+                    if (!string.IsNullOrWhiteSpace(newConnectionId)) {
+                        Model.SignalrClientRegistration = new DataObjects.SignalrClientRegistration {
+                            ConnectionId = newConnectionId
+                        };
+                    }
+                    try {
+                        await hubConnection.InvokeAsync("JoinTenantId", Model.TenantId);
+                        if (!string.IsNullOrWhiteSpace(Model.Fingerprint)) {
+                            await hubConnection.InvokeAsync("RegisterFingerprint", Model.Fingerprint);
+                        }
+                        await SendClientState();
+                    } catch {
+                        // The next reconnect tries again.
+                    }
+                };
+
+                await hubConnection.StartAsync();
+                
+                // Store connection ID for display in SignalR admin page
+                if (hubConnection.ConnectionId != null) {
+                    Model.SignalrClientRegistration = new DataObjects.SignalrClientRegistration {
+                        ConnectionId = hubConnection.ConnectionId
+                    };
+                }
+
+                await hubConnection.InvokeAsync("JoinTenantId", Model.TenantId);
+                
+                // Register browser fingerprint to link connections from same browser
+                if (!string.IsNullOrWhiteSpace(Model.Fingerprint)) {
+                    await hubConnection.InvokeAsync("RegisterFingerprint", Model.Fingerprint);
+                }
+                
+                // Send initial client state
+                await SendClientState();
+            }
+
+            if (!versionInfoLoaded) {
+                var info = await Helpers.GetOrPost<DataObjects.VersionInfo>("api/Data/GetVersionInfo");
+                if (info != null) {
+                    versionInfo = info;
+                    versionInfoLoaded = true;
+                }
+            }
+        }
+    }
+
+    protected override async Task OnInitializedAsync() {
+        if (!Model.Subscribers_OnChange.Contains("MainLayout")) {
+            Model.Subscribers_OnChange.Add("MainLayout");
+            Model.OnChange += StateHasChanged;
+        }
+
+        NavManager.LocationChanged += LocationChanged;
+
+        if (!Helpers.Initialized) {
+            Helpers.Init(jsRuntime, Model, Http, LocalStorage, DialogService, TooltipService, NavManager);
+
+            List<string>? globallyDisabledModules = await Helpers.GetOrPost<List<string>>("api/Data/GetGloballyDisabledModules");
+            Model.GloballyDisabledModules = globallyDisabledModules;
+
+            List<string>? globallyEnabledModules = await Helpers.GetOrPost<List<string>>("api/Data/GetGloballyEnabledModules");
+            Model.GloballyEnabledModules = globallyEnabledModules;
+        }
+
+        if (String.IsNullOrWhiteSpace(Model.Fingerprint)) {
+            await Helpers.GetFingerprint();
+        }
+
+        if (!Model.LoggedIn && StartupValidated) {
+            await ValidateLogin();
+        }
+
+        timer = new System.Threading.Timer(async (object? stateInfo) => {
+            await ThemeWatcher();
+            MessageWatcher();
+            await SavePendingUserPreferences();
+        }, new System.Threading.AutoResetEvent(false), 0, 500);
+
+        updateTimer = new System.Threading.Timer(async (object? stateInfo) => {
+            await CheckForUpdates();
+        }, new System.Threading.AutoResetEvent(false), 0, 10000);
+
+        // Timer to send SignalR client state updates (every 5 seconds)
+        clientStateTimer = new System.Threading.Timer(async (object? stateInfo) => {
+            await SendClientStateIfChanged();
+        }, new System.Threading.AutoResetEvent(false), 5000, 5000);
     }
 
     protected async Task ProcessSignalRUpdate(DataObjects.SignalRUpdate update) {
@@ -788,6 +762,52 @@ protected DotNetObjectReference<MainLayout>? dotNetHelper;
 
                 LastUserPreferencesJson = json;
             }
+        }
+    }
+
+    /// <summary>
+    /// Sends current client state to the SignalR hub.
+    /// </summary>
+    protected async Task SendClientState()
+    {
+        if (hubConnection?.State == HubConnectionState.Connected) {
+            try {
+                var state = new DataObjects.SignalRClientState {
+                    CurrentPage = Model.View ?? NavManager.ToBaseRelativePath(NavManager.Uri),
+                    HasFocus = await jsRuntime.InvokeAsync<bool>("eval", "document.hasFocus()"),
+                    IsVisible = await jsRuntime.InvokeAsync<bool>("eval", "document.visibilityState === 'visible'"),
+                    ScreenWidth = await jsRuntime.InvokeAsync<int>("eval", "window.screen.width"),
+                    ScreenHeight = await jsRuntime.InvokeAsync<int>("eval", "window.screen.height"),
+                    Timezone = await jsRuntime.InvokeAsync<string>("eval", "Intl.DateTimeFormat().resolvedOptions().timeZone"),
+                    Language = await jsRuntime.InvokeAsync<string>("eval", "navigator.language")
+                };
+                
+                await hubConnection.InvokeAsync("UpdateClientState", state);
+            } catch {
+                // Ignore errors - best effort
+            }
+        }
+    }
+
+    /// <summary>
+    /// Sends client state only when it has changed (debounced).
+    /// </summary>
+    protected async Task SendClientStateIfChanged()
+    {
+        if (hubConnection?.State != HubConnectionState.Connected) return;
+        
+        try {
+            var currentView = Model.View;
+            var currentFocus = await jsRuntime.InvokeAsync<bool>("eval", "document.hasFocus()");
+            
+            // Only send if view or focus changed
+            if (currentView != lastClientStateView || currentFocus != lastClientStateFocus) {
+                lastClientStateView = currentView;
+                lastClientStateFocus = currentFocus;
+                await SendClientState();
+            }
+        } catch {
+            // Ignore errors
         }
     }
 

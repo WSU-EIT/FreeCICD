@@ -1,0 +1,209 @@
+﻿@* WizardStepEnvironments.razor - Environment settings configuration step *@
+
+<p>Select environments to configure (optional):</p>
+
+@foreach (var envKey in EnvironmentOptions.Keys)
+{
+    <div class="form-check mb-2">
+        <input type="checkbox" 
+                class="form-check-input" 
+                checked="@(EnvSettings.ContainsKey(envKey))" 
+                id="envCheck_@envKey" 
+                @onchange="@(e => OnEnvironmentChanged?.Invoke(envKey, e))"
+                disabled="@IsDisabled" />
+        <label class="form-check-label" for="envCheck_@envKey">@envKey Environment</label>
+    </div>
+    
+    @if (EnvSettings.ContainsKey(envKey))
+    {
+        var envSetting = EnvSettings[envKey];
+        // Check if this environment was imported
+        bool envImported = ImportedFields?.Contains($"Env_{envKey}") ?? false;
+        string cardClass = envImported ? "card mb-3 ms-4 border-info border-2 bg-info bg-opacity-10" : "card bg-light mb-3 ms-4";
+
+        <div class="@cardClass">
+            <div class="card-body">
+                <h6 class="card-title d-flex align-items-center">
+                    @envKey Environment Settings
+                    @if (envImported)
+                    {
+                        <span class="badge bg-info text-dark ms-2 fw-normal">
+                            <i class="fa fa-download me-1"></i>Imported
+                        </span>
+                    }
+                </h6>
+                
+                <label class="form-label">IIS Deployment Type:</label>
+                <select class="form-select @(IsFieldImported($"Env_{envKey}_IISDeploymentType") ? "border-info border-2" : "")"
+                        @onchange="@(e => OnDeploymentTypeChanged?.Invoke(envKey, e))" disabled="@IsDisabled">
+                    @foreach (var type in DeploymentTypes) {
+                        <option value="@type" selected="@(envSetting.IISDeploymentType == type ? "selected" : null)">@type</option>
+                    }
+                </select>
+
+                @RenderIisField(envKey, IisKind.Website, envSetting.WebsiteName, v => envSetting.WebsiteName = v, envSetting.AllowCustomWebsiteName, envSetting)
+
+                @if (HasVirtualPath(envSetting.IISDeploymentType))
+                {
+                    @RenderIisField(envKey, IisKind.VirtualPath, envSetting.VirtualPath, v => envSetting.VirtualPath = v, envSetting.AllowCustomVirtualPath, envSetting)
+                }
+
+                @if (envSetting.IISDeploymentType.Contains("Auth"))
+                {
+                    <label class="form-label mt-2">Auth User:</label>
+                    <input type="text" 
+                            class="form-control" 
+                            @bind="envSetting.AuthUser" 
+                            @bind:event="oninput" 
+                            placeholder="Enter the Auth User" 
+                            disabled="@IsDisabled" />
+                }
+
+                @RenderIisField(envKey, IisKind.AppPool, envSetting.AppPoolName, v => envSetting.AppPoolName = v, envSetting.AllowCustomAppPoolName, envSetting)
+
+                <label class="form-label mt-2">Variable Group Name:</label>
+                <input type="text" 
+                        class="form-control @(IsFieldImported($"Env_{envKey}_VariableGroupName") ? "border-info border-2" : "")" 
+                        @bind="envSetting.VariableGroupName" 
+                        @bind:event="oninput" 
+                        placeholder="Enter variable group name"
+                        disabled="@IsDisabled" />
+
+                @if (VerifyAfterDeploy)
+                {
+                    <label class="form-label mt-2" for="envPublicPaths_@envKey">Public pages:</label>
+                    <input type="text"
+                            class="form-control @(IsFieldImported($"Env_{envKey}_PublicPaths") ? "border-info border-2" : "")"
+                            id="envPublicPaths_@envKey"
+                            style="min-height: 44px;"
+                            @bind="envSetting.PublicPaths"
+                            @bind:event="oninput"
+                            placeholder="/, /About"
+                            aria-describedby="envPublicPathsHelp_@envKey"
+                            disabled="@IsDisabled" />
+                    <div class="form-text" id="envPublicPathsHelp_@envKey">
+                        Paths under the site, comma separated. They are visited anonymously after each deploy, so list only pages that need no sign-in.
+                    </div>
+                }
+            </div>
+        </div>
+    }
+}
+
+@* One choice for every environment: the server adds the step with its own report URL and key when the pipeline is saved. *@
+<div class="form-check mt-3 d-flex align-items-center" style="min-height: 44px;">
+    <input type="checkbox"
+            class="form-check-input me-2"
+            checked="@VerifyAfterDeploy"
+            id="verifyAfterDeployCheck"
+            @onchange="@OnVerifyAfterDeployChangedInternal"
+            disabled="@IsDisabled" />
+    <label class="form-check-label" for="verifyAfterDeployCheck">Verify after deploy (screenshot the public pages and report to the App Atlas)</label>
+</div>
+
+@if (ShowGatherServerInfo)
+{
+    @* FreeCICD's own pipeline only: the server refuses it for any other project. *@
+    <div class="form-check mt-2 d-flex align-items-center" style="min-height: 44px;">
+        <input type="checkbox"
+                class="form-check-input me-2"
+                checked="@GatherServerInfo"
+                id="gatherServerInfoCheck"
+                @onchange="@OnGatherServerInfoChangedInternal"
+                disabled="@IsDisabled" />
+        <label class="form-check-label" for="gatherServerInfoCheck">Gather server info (this is FreeCICD itself: scan IIS and the host environment on each server, and ship the results with the deploy)</label>
+    </div>
+}
+
+@code {
+    [Parameter] public Dictionary<GlobalSettings.EnvironmentType, GlobalSettings.EnvironmentOptions> EnvironmentOptions { get; set; } = new();
+    [Parameter] public Dictionary<GlobalSettings.EnvironmentType, DataObjects.EnvSetting> EnvSettings { get; set; } = new();
+    [Parameter] public bool GatherServerInfo { get; set; }
+    [Parameter] public EventCallback<bool> GatherServerInfoChanged { get; set; }
+    /// <summary>
+    /// The names IIS reports for one field of an environment. The website name is passed for the virtual path list,
+    /// which is the applications under that site.
+    /// </summary>
+    [Parameter] public Func<GlobalSettings.EnvironmentType, IisKind, string, IEnumerable<string>>? GetIisOptionsFunc { get; set; }
+    [Parameter] public HashSet<string>? ImportedFields { get; set; }
+    [Parameter] public bool IsDisabled { get; set; }
+    [Parameter] public Action<GlobalSettings.EnvironmentType, ChangeEventArgs>? OnDeploymentTypeChanged { get; set; }
+
+    [Parameter] public Action<GlobalSettings.EnvironmentType, ChangeEventArgs>? OnEnvironmentChanged { get; set; }
+    /// <summary>A website, virtual path or app pool picked from the IIS list.</summary>
+    [Parameter] public EventCallback<IisChange> OnIisFieldChanged { get; set; }
+    /// <summary>True only when the selected project is FreeCICD itself; the box is not rendered otherwise.</summary>
+    [Parameter] public bool ShowGatherServerInfo { get; set; }
+    [Parameter] public bool VerifyAfterDeploy { get; set; } = true;
+    [Parameter] public EventCallback<bool> VerifyAfterDeployChanged { get; set; }
+
+    public const string IisWebsite = "IISWebsite";
+    public const string IisWebsiteAuth = "IISWebsiteAuth";
+    public const string IisWebApplication = "IISWebApplication";
+    public const string IisWebApplicationAuth = "IISWebApplicationAuth";
+
+    /// <summary>The IIS deployment types the pipeline template knows, in the order the list offers them.</summary>
+    public static readonly string[] DeploymentTypes = [IisWebsite, IisWebsiteAuth, IisWebApplication, IisWebApplicationAuth];
+
+    /// <summary>True for the deployment types that install under a site's virtual path.</summary>
+    public static bool HasVirtualPath(string? deploymentType) => deploymentType is IisWebApplication or IisWebApplicationAuth;
+
+    /// <summary>The IIS settings an environment carries, each edited by <see cref="RenderIisField"/>.</summary>
+    public enum IisKind { Website, VirtualPath, AppPool }
+
+    /// <summary>A value picked from the IIS list for one environment's field.</summary>
+    public sealed record IisChange(GlobalSettings.EnvironmentType Env, IisKind Field, string Value);
+
+    private static readonly Dictionary<IisKind, (string Label, string Placeholder, string? InputPlaceholder, string ImportKey)> IisText = new() {
+        [IisKind.Website] = ("Website Name", "-- Select Website --", null, "WebsiteName"),
+        [IisKind.VirtualPath] = ("Virtual Path", "-- Select Virtual Path --", "Enter virtual path", "VirtualPath"),
+        [IisKind.AppPool] = ("App Pool Name", "-- Select App Pool --", null, "AppPoolName"),
+    };
+
+    /// <summary>
+    /// One IIS setting of an environment: a pick list from the scanned IIS data when there is one, and the text box
+    /// that holds the value. After a value was picked (<paramref name="allowCustom"/> false) the text box stays
+    /// read-only while the value is in the list.
+    /// </summary>
+    private RenderFragment RenderIisField(GlobalSettings.EnvironmentType envKey, IisKind field, string value, Action<string> setValue, bool allowCustom, DataObjects.EnvSetting envSetting) => __builder =>
+    {
+        var names = IisText[field];
+        var options = IisOptions(envKey, field, envSetting);
+        var isLocked = !allowCustom && options.Any(o => string.Equals(value, o, StringComparison.OrdinalIgnoreCase));
+        var imported = IsFieldImported($"Env_{envKey}_{names.ImportKey}");
+        @if (options.Any()) {
+            <label class="form-label mt-2">@names.Label (choose from IIS):</label>
+            <select class="form-select" @onchange="@(e => OnIisFieldChanged.InvokeAsync(new(envKey, field, e?.Value?.ToString() ?? "")))" disabled="@IsDisabled">
+                <option value="">@names.Placeholder</option>
+                @foreach (var opt in options) {
+                    <option value="@opt" selected="@(string.Equals(value, opt, StringComparison.OrdinalIgnoreCase) ? "selected" : null)">@opt</option>
+                }
+            </select>
+        }
+
+        <label class="form-label mt-2">@names.Label:</label>
+        <input type="text"
+                class="form-control @(isLocked ? "bg-light" : "") @(imported ? "border-info border-2" : "")"
+                value="@value"
+                @oninput="@(e => setValue(e?.Value?.ToString() ?? ""))"
+                placeholder="@names.InputPlaceholder"
+                disabled="@(IsDisabled || isLocked)" />
+    };
+
+    private bool IsFieldImported(string fieldName) => ImportedFields?.Contains(fieldName) ?? false;
+
+    private List<string> IisOptions(GlobalSettings.EnvironmentType envKey, IisKind field, DataObjects.EnvSetting envSetting)
+    {
+        return GetIisOptionsFunc?.Invoke(envKey, field, envSetting.WebsiteName)?.ToList() ?? new List<string>();
+    }
+
+    private async Task OnGatherServerInfoChangedInternal(ChangeEventArgs e)
+    {
+        await GatherServerInfoChanged.InvokeAsync(e.Value != null && bool.TryParse(e.Value.ToString(), out bool on) && on);
+    }
+
+    private async Task OnVerifyAfterDeployChangedInternal(ChangeEventArgs e)
+    {
+        await VerifyAfterDeployChanged.InvokeAsync(e.Value != null && bool.TryParse(e.Value.ToString(), out bool on) && on);
+    }
+}

@@ -4,6 +4,20 @@
 @inject BlazorDataModel Model
 @code {
     [Parameter] public string? TenantCode { get; set; }
+
+    protected async Task CheckLogin()
+    {
+        var user = await Helpers.GetCurrentUser();
+
+        if (user != null && user.ActionResponse.Result) {
+            if (Model.View == "processlogin") {
+                await Helpers.ReloadModel();
+                Helpers.NavigateToRoot();
+            }
+        } else {
+            Helpers.SetTimeout(() => CheckLogin(), 500);
+        }
+    }
     // This page is hit immediately after a local login to make sure the entire login has been
     // processed and the Model has completely loaded and logged the user in before redirecting
     // to the main application home page.
@@ -21,19 +35,5 @@
     {
         Model.View = "processlogin";
         Helpers.SetTimeout(() => CheckLogin(), 500);
-    }
-
-    protected async Task CheckLogin()
-    {
-        var user = await Helpers.GetCurrentUser();
-
-        if (user != null && user.ActionResponse.Result) {
-            if (Model.View == "processlogin") {
-                await Helpers.ReloadModel();
-                Helpers.NavigateToRoot();
-            }
-        } else {
-            Helpers.SetTimeout(() => CheckLogin(), 500);
-        }
     }
 }

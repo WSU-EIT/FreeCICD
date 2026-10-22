@@ -1,171 +1,138 @@
-﻿@* Pipeline Dashboard Component *@
+@* Pipeline Dashboard Component *@
 @* Displays a list of Azure DevOps pipelines with filtering, sorting, grouping, and Card/Table views *@
 
-@implements IDisposable
 @using Humanizer
-@inject BlazorDataModel Model
-@inject NavigationManager Navigation
-@inject IJSRuntime JSRuntime
+@inherits AppLoadingPageBase
 
 @code {
-    protected bool _loadedData = false;
-    protected bool _loading = true;
-    protected string _pageName = "pipelines";
-    protected DataObjects.PipelineDashboardResponse? _dashboardResponse;
-    protected string? _errorMessage;
+    protected override string PageName => AppViews.Pipelines;
+    protected override Task LoadAsync() => LoadDashboardData();
+    protected override string InitialLoadingMessage => "Loading pipelines...";
 
-    // Filter state
-    protected string _searchTerm = "";
-    protected string _selectedStatus = "";
-    protected string _selectedResult = "";
-    protected string _selectedRepository = "";
-    protected string _selectedTrigger = "";
-    protected bool _failedOnly = false;
+    protected DataObjects.PipelineDashboardResponse? _dashboardResponse;
+
+    // Filter state (one value from the filter bar; the search term is not saved with the preferences)
+    protected DashboardView.FilterState _filters = new();
 
     // Health trends state
     protected DataObjects.OrgHealthResponse? _healthData;
     protected bool _healthLoading = false;
     protected bool _healthExpanded = false;
 
-    // View state
-    protected string _viewMode = "table";      // Changed from "card" to "table"
-    protected bool _groupByFolder = false;     // Changed from true to false
-    protected string _sortBy = "lastrun-desc";
+    // View state, saved with the preferences
+    protected string _viewMode = "table";
+    protected bool _groupByFolder = false;
+    protected string _sortBy = DashboardView.DefaultSortKey; // a DashboardView.Sorts key
 
-    // Group expansion state - now tracks full paths for nested folders
+    // The full paths of the expanded folders
     protected HashSet<string> _expandedGroups = [];
+
+    // What the markup shows, computed by Recompute() when the data, filters, sort or grouping change.
+    // Rendering only reads these, so a render does no filtering, sorting or counting.
+    protected List<DataObjects.PipelineListItem> _filtered = [];
+    protected List<FolderNode> _rootFolders = [];
+    protected List<string> _repositories = [];
+    protected DashboardView.StatusCounts _footerCounts = new();
+
+    // Pipeline id -> index in _dashboardResponse.Pipelines, so batch and live updates find their item directly.
+    protected Dictionary<int, int> _indexById = [];
 
     // Folder node model for recursive hierarchy
     public class FolderNode
     {
-        public string Name { get; set; } = "";
-        public string FullPath { get; set; } = "";
-        public List<FolderNode> SubFolders { get; set; } = [];
-        public List<DataObjects.PipelineListItem> Pipelines { get; set; } = [];
+        public DashboardView.StatusCounts Counts { get; set; } = new();
         public int Depth { get; set; } = 0;
+        public string FullPath { get; set; } = "";
+        public string GroupId { get; set; } = "";
+        public string Name { get; set; } = "";
+        public List<DataObjects.PipelineListItem> Pipelines { get; set; } = [];
+        public List<FolderNode> SubFolders { get; set; } = [];
 
-        // Recursively get all pipelines including subfolders
-        public List<DataObjects.PipelineListItem> GetAllPipelines()
-        {
-            var all = new List<DataObjects.PipelineListItem>(Pipelines);
-            foreach (var sub in SubFolders) {
-                all.AddRange(sub.GetAllPipelines());
-            }
-            return all;
-        }
-
-        // Get total count including subfolders
-        public int GetTotalPipelineCount()
-        {
-            return Pipelines.Count + SubFolders.Sum(s => s.GetTotalPipelineCount());
-        }
+        // Totals including subfolders, filled bottom-up once when the hierarchy is built.
+        public int TotalCount { get; set; }
     }
 
-    // Computed properties
-    protected List<string> AvailableRepositories => _dashboardResponse?.Pipelines?
-        .Select(p => p.CodeRepoName ?? p.RepositoryName).Where(r => !string.IsNullOrWhiteSpace(r))
-        
-        .Distinct()
-        .OrderBy(r => r)
-        .ToList() ?? [];
+    /// <summary>Recomputes everything the markup reads. Call after changing the data, filters, sort or grouping.</summary>
+    protected void Recompute()
+    {
+        _filtered = FilterAndSort(_dashboardResponse?.Pipelines ?? []);
+        _rootFolders = _groupByFolder ? BuildFolderHierarchy(_filtered) : [];
+        _footerCounts = DashboardView.StatusCounts.Of(_filtered);
+    }
 
-    protected List<DataObjects.PipelineListItem> FilteredPipelines {
-        get {
-            if (_dashboardResponse?.Pipelines == null) return [];
+    /// <summary>The id index and the repository list, which change only with the data, never with a filter.</summary>
+    protected void RebuildIndex()
+    {
+        _indexById = [];
+        var all = _dashboardResponse?.Pipelines ?? [];
+        for (int i = 0; i < all.Count; i++) {
+            _indexById[all[i].Id] = i;
+        }
+        RebuildRepositories();
+    }
 
-            var pipelines = _dashboardResponse.Pipelines.AsEnumerable();
+    protected void RebuildRepositories()
+    {
+        _repositories = (_dashboardResponse?.Pipelines ?? []).Select(DashboardView.DisplayRepoName)
+            .Where(r => !string.IsNullOrWhiteSpace(r))
+            .Distinct()
+            .OrderBy(r => r)
+            .ToList();
+    }
 
-            // Apply search filter
-            if (!string.IsNullOrWhiteSpace(_searchTerm)) {
-                var search = _searchTerm.ToLower();
-                pipelines = pipelines.Where(p =>
-                    (p.Name?.ToLower().Contains(search) == true) ||
-                    (p.CodeRepoName?.ToLower().Contains(search) == true) || (p.RepositoryName?.ToLower().Contains(search) == true) ||
-                    (p.Path?.ToLower().Contains(search) == true));
-            }
+    protected List<DataObjects.PipelineListItem> FilterAndSort(List<DataObjects.PipelineListItem> all)
+    {
+        var pipelines = all.AsEnumerable();
+        var f = _filters;
+        bool Same(string? a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 
-            // Apply status filter
-            if (!string.IsNullOrWhiteSpace(_selectedStatus)) {
-                pipelines = pipelines.Where(p =>
-                    p.LastRunStatus?.ToLower() == _selectedStatus.ToLower());
-            }
+        if (!string.IsNullOrWhiteSpace(f.SearchTerm)) {
+            var search = f.SearchTerm.Trim();
+            bool Has(string? value) => value?.Contains(search, StringComparison.OrdinalIgnoreCase) == true;
+            pipelines = pipelines.Where(p => Has(p.Name) || Has(p.CodeRepoName) || Has(p.RepositoryName) || Has(p.Path));
+        }
 
-            // Apply result filter
-            if (!string.IsNullOrWhiteSpace(_selectedResult)) {
-                pipelines = pipelines.Where(p =>
-                    p.LastRunResult?.ToLower() == _selectedResult.ToLower());
-            }
+        if (!string.IsNullOrWhiteSpace(f.Status)) {
+            pipelines = pipelines.Where(p => Same(p.LastRunStatus, f.Status));
+        }
 
-            // Apply repository filter
-            if (!string.IsNullOrWhiteSpace(_selectedRepository)) {
-                pipelines = pipelines.Where(p =>
-                    (p.CodeRepoName ?? p.RepositoryName) == _selectedRepository);
-            }
+        if (!string.IsNullOrWhiteSpace(f.Result)) {
+            pipelines = pipelines.Where(p => Same(p.LastRunResult, f.Result));
+        }
 
-            // Apply trigger filter
-            if (!string.IsNullOrWhiteSpace(_selectedTrigger)) {
-                pipelines = _selectedTrigger.ToLower() switch {
-                    "manual" => pipelines.Where(p => p.TriggerType == DataObjects.TriggerType.Manual),
-                    "codepush" => pipelines.Where(p => p.TriggerType == DataObjects.TriggerType.CodePush),
-                    "scheduled" => pipelines.Where(p => p.TriggerType == DataObjects.TriggerType.Scheduled),
-                    "pullrequest" => pipelines.Where(p => p.TriggerType == DataObjects.TriggerType.PullRequest),
-                    "pipelinecompletion" => pipelines.Where(p => p.TriggerType == DataObjects.TriggerType.PipelineCompletion),
-                    "other" => pipelines.Where(p => p.TriggerType == DataObjects.TriggerType.Other || 
-                                                    p.TriggerType == DataObjects.TriggerType.ResourceTrigger),
-                    _ => pipelines
-                };
-            }
+        if (!string.IsNullOrWhiteSpace(f.Repository)) {
+            pipelines = pipelines.Where(p => DashboardView.DisplayRepoName(p) == f.Repository);
+        }
 
-            // Apply failed only filter
-            if (_failedOnly) {
-                pipelines = pipelines.Where(p =>
-                    p.LastRunResult?.ToLower() == "failed");
-            }
-
-            // Apply sorting
-            pipelines = _sortBy switch {
-                "name-asc" => pipelines.OrderBy(p => p.Name),
-                "name-desc" => pipelines.OrderByDescending(p => p.Name),
-                "lastrun-desc" => pipelines.OrderByDescending(p => p.LastRunTime ?? DateTime.MinValue),
-                "lastrun-asc" => pipelines.OrderBy(p => p.LastRunTime ?? DateTime.MinValue),
-                "status-failed" => pipelines.OrderByDescending(p => p.LastRunResult?.ToLower() == "failed")
-                    .ThenBy(p => p.Name),
-                "status-success" => pipelines.OrderByDescending(p => p.LastRunResult?.ToLower() == "succeeded")
-                    .ThenBy(p => p.Name),
-                "trigger-type" => pipelines.OrderBy(p => (int)p.TriggerType)
-                    .ThenBy(p => p.Name),
-                "trigger-manual" => pipelines.OrderByDescending(p => p.TriggerType == DataObjects.TriggerType.Manual)
-                    .ThenBy(p => (int)p.TriggerType)
-                    .ThenBy(p => p.Name),
-                "trigger-automated" => pipelines.OrderByDescending(p => p.IsAutomatedTrigger)
-                    .ThenBy(p => (int)p.TriggerType)
-                    .ThenBy(p => p.Name),
-                // Duration sorting (nulls go to end)
-                "duration-desc" => pipelines.OrderByDescending(p => p.Duration ?? TimeSpan.Zero),
-                "duration-asc" => pipelines.OrderBy(p => p.Duration ?? TimeSpan.MaxValue),
-                // Branch sorting
-                "branch-asc" => pipelines.OrderBy(p => p.CodeBranch ?? p.TriggerBranch ?? p.DefaultBranch ?? ""),
-                "branch-desc" => pipelines.OrderByDescending(p => p.CodeBranch ?? p.TriggerBranch ?? p.DefaultBranch ?? ""),
-                // Repository sorting
-                "repository-asc" => pipelines.OrderBy(p => p.CodeRepoName ?? p.RepositoryName ?? ""),
-                "repository-desc" => pipelines.OrderByDescending(p => p.CodeRepoName ?? p.RepositoryName ?? ""),
-                _ => pipelines.OrderByDescending(p => p.LastRunTime ?? DateTime.MinValue)
+        if (!string.IsNullOrWhiteSpace(f.Trigger)) {
+            pipelines = f.Trigger.ToLower() switch {
+                "manual" => pipelines.Where(p => p.TriggerType == DataObjects.TriggerType.Manual),
+                "codepush" => pipelines.Where(p => p.TriggerType == DataObjects.TriggerType.CodePush),
+                "scheduled" => pipelines.Where(p => p.TriggerType == DataObjects.TriggerType.Scheduled),
+                "pullrequest" => pipelines.Where(p => p.TriggerType == DataObjects.TriggerType.PullRequest),
+                "pipelinecompletion" => pipelines.Where(p => p.TriggerType == DataObjects.TriggerType.PipelineCompletion),
+                "other" => pipelines.Where(p => p.TriggerType == DataObjects.TriggerType.Other ||
+                                                p.TriggerType == DataObjects.TriggerType.ResourceTrigger),
+                _ => pipelines
             };
-
-            return pipelines.ToList();
         }
-    }
 
-    // Build hierarchical folder structure from filtered pipelines
-    protected List<FolderNode> RootFolders {
-        get {
-            return BuildFolderHierarchy(FilteredPipelines);
+        if (f.FailedOnly) {
+            pipelines = pipelines.Where(p => Same(p.LastRunResult, "failed"));
         }
+
+        return DashboardView.Sort(_sortBy).Apply(pipelines).ToList();
     }
 
     protected List<FolderNode> BuildFolderHierarchy(List<DataObjects.PipelineListItem> pipelines)
     {
         var rootNodes = new Dictionary<string, FolderNode>();
+        FolderNode NewNode(string name, string fullPath, int depth) => new FolderNode {
+            Name = name,
+            FullPath = fullPath,
+            GroupId = fullPath.Replace(" ", "-").Replace("/", "-").ToLower(),
+            Depth = depth
+        };
 
         foreach (var pipeline in pipelines) {
             var path = pipeline.Path?.TrimStart('\\', '/') ?? "";
@@ -174,11 +141,7 @@
             if (segments.Length == 0) {
                 // Pipeline is at root level - use "Uncategorized"
                 if (!rootNodes.TryGetValue("Uncategorized", out var uncatNode)) {
-                    uncatNode = new FolderNode {
-                        Name = "Uncategorized",
-                        FullPath = "Uncategorized",
-                        Depth = 0
-                    };
+                    uncatNode = NewNode("Uncategorized", "Uncategorized", 0);
                     rootNodes["Uncategorized"] = uncatNode;
                 }
                 uncatNode.Pipelines.Add(pipeline);
@@ -186,26 +149,16 @@
                 // Navigate/create folder hierarchy
                 var rootName = segments[0];
                 if (!rootNodes.TryGetValue(rootName, out var currentNode)) {
-                    currentNode = new FolderNode {
-                        Name = rootName,
-                        FullPath = rootName,
-                        Depth = 0
-                    };
+                    currentNode = NewNode(rootName, rootName, 0);
                     rootNodes[rootName] = currentNode;
                 }
 
                 // Navigate through remaining segments
                 for (int i = 1; i < segments.Length; i++) {
                     var segmentName = segments[i];
-                    var fullPath = string.Join("/", segments.Take(i + 1));
-                    
                     var childNode = currentNode.SubFolders.FirstOrDefault(s => s.Name == segmentName);
                     if (childNode == null) {
-                        childNode = new FolderNode {
-                            Name = segmentName,
-                            FullPath = fullPath,
-                            Depth = i
-                        };
+                        childNode = NewNode(segmentName, string.Join("/", segments.Take(i + 1)), i);
                         currentNode.SubFolders.Add(childNode);
                     }
                     currentNode = childNode;
@@ -216,34 +169,25 @@
             }
         }
 
-        // Sort folders and their subfolders recursively
         var result = rootNodes.Values.OrderBy(f => f.Name).ToList();
-        SortFoldersRecursively(result);
+        SortAndCountFolders(result);
         return result;
     }
 
-    protected void SortFoldersRecursively(List<FolderNode> folders)
+    // Folders are sorted by name; pipelines keep the order of the list they came from (the chosen sort).
+    // Counts are summed bottom-up here so rendering a folder does not walk its subtree.
+    protected void SortAndCountFolders(List<FolderNode> folders)
     {
         foreach (var folder in folders) {
             folder.SubFolders = folder.SubFolders.OrderBy(s => s.Name).ToList();
-            folder.Pipelines = folder.Pipelines.OrderBy(p => p.Name).ToList();
-            SortFoldersRecursively(folder.SubFolders);
-        }
-    }
+            SortAndCountFolders(folder.SubFolders);
 
-    protected Dictionary<string, List<DataObjects.PipelineListItem>> GroupedPipelines {
-        get {
-            var filtered = FilteredPipelines;
-            if (!_groupByFolder) {
-                return new Dictionary<string, List<DataObjects.PipelineListItem>> {
-                    { "All Pipelines", filtered }
-                };
+            folder.Counts = DashboardView.StatusCounts.Of(folder.Pipelines);
+            folder.TotalCount = folder.Pipelines.Count;
+            foreach (var sub in folder.SubFolders) {
+                folder.Counts.Add(sub.Counts);
+                folder.TotalCount += sub.TotalCount;
             }
-
-            return filtered
-                .GroupBy(p => GetFolderName(p.Path))
-                .OrderBy(g => g.Key)
-                .ToDictionary(g => g.Key, g => g.ToList());
         }
     }
 
@@ -251,39 +195,25 @@
     protected int _loadedCount = 0;
     protected int _totalCount = 0;
     protected bool _isProgressiveLoading = false;
-    protected string _loadingMessage = "Loading pipelines...";
     protected string _loadingDetail = "";
 
     // Auto-refresh (live monitoring) state
     protected bool _autoRefresh = false;
     protected bool _autoRefreshJoining = false;
-    protected DateTime? _lastLiveUpdate = null;
-    protected DateTime? _lastLiveCheck = null;
-    protected int _liveChangedCount = 0;
-    protected int _livePipelinesChecked = 0;
-    protected int _liveRunningCount = 0;
-    protected bool _livePulse = false;
+    protected int _liveSwitchKey = 0; // bumped to re-create the switch when a toggle is refused without a render in between
+    protected DashboardView.LiveMonitorState _live = new();
 
-    public void Dispose()
+    /// <summary>The live monitor's SignalR group, joined while live updates are on.</summary>
+    protected readonly SignalRGroupMembership _monitor = new(DataObjects.Endpoints.PipelineDashboard.MonitorJoin, DataObjects.Endpoints.PipelineDashboard.MonitorLeave);
+    protected bool _monitorRejoining = false;
+
+    public override void Dispose()
     {
-        Model.OnChange -= OnDataModelUpdated;
-        Model.OnSignalRUpdate -= OnSignalRUpdate;
+        base.Dispose();
 
-        // Leave the live monitor group if active
-        if (_autoRefresh) {
-            _autoRefresh = false;
-            string connectionId = Model.SignalrClientRegistration?.ConnectionId ?? "";
-            if (!string.IsNullOrWhiteSpace(connectionId)) {
-                _ = Helpers.GetOrPost<DataObjects.BooleanResponse>(
-                    "api/Pipelines/monitor/leave?connectionId=" + Uri.EscapeDataString(connectionId));
-            }
-        }
-    }
-
-    protected override void OnInitialized()
-    {
-        Model.OnChange += OnDataModelUpdated;
-        Model.OnSignalRUpdate += OnSignalRUpdate;
+        // Leave the live monitor group if it was joined (a no-op otherwise).
+        _autoRefresh = false;
+        _ = _monitor.LeaveAsync();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -291,35 +221,31 @@
         if (firstRender) {
             await LoadPreferences();
         }
-
-        if (Model.Loaded && Model.LoggedIn) {
-            if (!_loadedData) {
-                _loadedData = true;
-                await LoadDashboardData();
-            }
-        }
+        await base.OnAfterRenderAsync(firstRender);
     }
 
     /// <summary>
-    /// Handles SignalR updates for progressive dashboard loading.
+    /// The progressive load (skeleton, enriched batches, progress text, done) and the live monitor's updates.
     /// </summary>
-    protected void OnSignalRUpdate(DataObjects.SignalRUpdate update)
+    protected override void OnSignalRUpdate(DataObjects.SignalRUpdate update)
     {
         if (update == null) return;
 
+        // Ignore updates addressed to another connection (another browser's progressive load).
+        // Updates without a connection id (the live monitor's) are for every page.
+        string connectionId = Helpers.CurrentConnectionId();
+        if (!string.IsNullOrWhiteSpace(update.ConnectionId) && !string.IsNullOrWhiteSpace(connectionId) && update.ConnectionId != connectionId) return;
+
         switch (update.UpdateType) {
             case DataObjects.SignalRUpdateType.DashboardPipelinesSkeleton:
-                // Received skeleton - show placeholder cards immediately
                 HandleSkeletonUpdate(update);
                 break;
 
             case DataObjects.SignalRUpdateType.DashboardPipelineBatch:
-                // Received enriched batch - update existing items
                 HandleBatchUpdate(update);
                 break;
 
             case DataObjects.SignalRUpdateType.DashboardLoadComplete:
-                // Loading complete
                 _isProgressiveLoading = false;
                 _loading = false;
                 _loadingMessage = "";
@@ -328,7 +254,7 @@
                 break;
 
             case DataObjects.SignalRUpdateType.LoadingDevOpsInfoStatusUpdate:
-                // Status message update — shows current pipeline being loaded
+                // The pipeline being loaded right now
                 if (!string.IsNullOrWhiteSpace(update.Message)) {
                     _loadingDetail = update.Message;
                     InvokeAsync(StateHasChanged);
@@ -336,7 +262,6 @@
                 break;
 
             case DataObjects.SignalRUpdateType.PipelineLiveStatusUpdate:
-                // Live status update from background monitor service
                 HandleLiveStatusUpdate(update);
                 break;
         }
@@ -347,40 +272,33 @@
     /// </summary>
     private void HandleSkeletonUpdate(DataObjects.SignalRUpdate update)
     {
-        try {
-            if (update.Object is System.Text.Json.JsonElement jsonElement) {
-                var skeletonItems = System.Text.Json.JsonSerializer.Deserialize<List<DataObjects.PipelineListItem>>(
-                    jsonElement.GetRawText(),
-                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                
-                if (skeletonItems != null) {
-                    _dashboardResponse ??= new DataObjects.PipelineDashboardResponse();
-                    
-                    // Handle "connecting" state (empty list) vs actual skeleton
-                    if (skeletonItems.Count == 0) {
-                        // First signal - just show we're connecting
-                        _isProgressiveLoading = true;
-                        _loading = false;
-                        _loadingMessage = update.Message ?? "Connecting to Azure DevOps...";
-                        _totalCount = 0;
-                        _loadedCount = 0;
-                    } else {
-                        // Actual skeleton with pipeline names
-                        _dashboardResponse.Pipelines = skeletonItems;
-                        _dashboardResponse.TotalCount = skeletonItems.Count;
-                        _totalCount = skeletonItems.Count;
-                        _loadedCount = 0;
-                        _isProgressiveLoading = true;
-                        _loading = false;
-                        _loadingMessage = update.Message ?? $"Found {skeletonItems.Count} pipelines";
-                        InitializeExpandedGroups();
-                    }
-                    InvokeAsync(StateHasChanged);
-                }
-            }
-        } catch {
-            // Ignore deserialization errors
+        var skeletonItems = Helpers.SignalRPayload<List<DataObjects.PipelineListItem>>(update);
+        if (skeletonItems == null) return;
+
+        _dashboardResponse ??= new DataObjects.PipelineDashboardResponse();
+
+        // Handle "connecting" state (empty list) vs actual skeleton
+        if (skeletonItems.Count == 0) {
+            // First signal - just show we're connecting
+            _isProgressiveLoading = true;
+            _loading = false;
+            _loadingMessage = update.Message ?? "Connecting to Azure DevOps...";
+            _totalCount = 0;
+            _loadedCount = 0;
+        } else {
+            // Actual skeleton with pipeline names
+            _dashboardResponse.Pipelines = skeletonItems;
+            _dashboardResponse.TotalCount = skeletonItems.Count;
+            _totalCount = skeletonItems.Count;
+            _loadedCount = 0;
+            _isProgressiveLoading = true;
+            _loading = false;
+            _loadingMessage = update.Message ?? $"Found {skeletonItems.Count} pipelines";
+            RebuildIndex();
+            InitializeExpandedGroups();
+            Recompute();
         }
+        InvokeAsync(StateHasChanged);
     }
 
     /// <summary>
@@ -388,121 +306,83 @@
     /// </summary>
     private void HandleBatchUpdate(DataObjects.SignalRUpdate update)
     {
-        try {
-            if (update.Object is System.Text.Json.JsonElement jsonElement) {
-                var batchItems = System.Text.Json.JsonSerializer.Deserialize<List<DataObjects.PipelineListItem>>(
-                    jsonElement.GetRawText(),
-                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                
-                if (batchItems != null && _dashboardResponse?.Pipelines != null) {
-                    foreach (var enrichedItem in batchItems) {
-                        var existingItem = _dashboardResponse.Pipelines.FirstOrDefault(p => p.Id == enrichedItem.Id);
-                        if (existingItem != null) {
-                            // Update existing item with enriched data
-                            var index = _dashboardResponse.Pipelines.IndexOf(existingItem);
-                            _dashboardResponse.Pipelines[index] = enrichedItem;
-                        }
-                    }
-                    _loadedCount += batchItems.Count;
+        var batchItems = Helpers.SignalRPayload<List<DataObjects.PipelineListItem>>(update);
+        if (batchItems == null || _dashboardResponse?.Pipelines == null) return;
 
-                    // Parse message — format is "Loaded X of Y pipelines|Name1, Name2, Name3"
-                    var msg = update.Message ?? "";
-                    var pipeIndex = msg.IndexOf('|');
-                    if (pipeIndex > 0) {
-                        _loadingMessage = msg[..pipeIndex];
-                        _loadingDetail = msg[(pipeIndex + 1)..];
-                    } else {
-                        _loadingMessage = !string.IsNullOrWhiteSpace(msg) ? msg : $"Loaded {_loadedCount} of {_totalCount} pipelines";
-                    }
-                    InvokeAsync(StateHasChanged);
-                }
+        foreach (var enrichedItem in batchItems) {
+            if (_indexById.TryGetValue(enrichedItem.Id, out var index)) {
+                _dashboardResponse.Pipelines[index] = enrichedItem;
             }
-        } catch {
-            // Ignore deserialization errors
         }
+        _loadedCount += batchItems.Count;
+
+        // Parse message — format is "Loaded X of Y pipelines|Name1, Name2, Name3"
+        var msg = update.Message ?? "";
+        var pipeIndex = msg.IndexOf('|');
+        if (pipeIndex > 0) {
+            _loadingMessage = msg[..pipeIndex];
+            _loadingDetail = msg[(pipeIndex + 1)..];
+        } else {
+            _loadingMessage = !string.IsNullOrWhiteSpace(msg) ? msg : $"Loaded {_loadedCount} of {_totalCount} pipelines";
+        }
+        // An enriched item can name the code repository the skeleton did not have.
+        RebuildRepositories();
+        Recompute();
+        InvokeAsync(StateHasChanged);
     }
 
-    protected void OnDataModelUpdated()
+    protected override void OnDataModelUpdated()
     {
-        if (Model.View == _pageName) {
-            StateHasChanged();
+        base.OnDataModelUpdated();
+
+        // A SignalR reconnect that could not resume gets a new connection id and no groups. If live updates are
+        // on, join the monitor group again with the new id, or the switch stays on while nothing arrives.
+        // A refused re-join leaves the membership empty, so it is not retried on every model change.
+        if (_autoRefresh && !_autoRefreshJoining && !_monitorRejoining && _monitor.JoinedConnectionId.Length > 0
+            && Helpers.CurrentConnectionId().Length > 0 && !_monitor.IsJoined) {
+            _monitorRejoining = true;
+            _ = InvokeAsync(async () => {
+                try {
+                    await _monitor.EnsureJoinedAsync();
+                } finally {
+                    _monitorRejoining = false;
+                }
+            });
         }
     }
 
     /// <summary>
     /// Handles live status updates from the background pipeline monitor service.
-    /// Called on every poll cycle — even when nothing changed (heartbeat).
+    /// Called on every poll cycle — even when nothing changed (heartbeat). The heartbeat only re-renders the
+    /// live indicators; the dashboard re-renders when a pipeline actually changed.
     /// </summary>
     private void HandleLiveStatusUpdate(DataObjects.SignalRUpdate update)
     {
-        try {
-            DataObjects.PipelineLiveUpdate? liveUpdate = null;
+        var liveUpdate = Helpers.SignalRPayload<DataObjects.PipelineLiveUpdate>(update);
+        if (liveUpdate == null) return;
 
-            if (update.Object is System.Text.Json.JsonElement jsonElement) {
-                liveUpdate = System.Text.Json.JsonSerializer.Deserialize<DataObjects.PipelineLiveUpdate>(
-                    jsonElement.GetRawText(),
-                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        _live.LastCheck = liveUpdate.Timestamp;
+        _live.PipelinesChecked = liveUpdate.PipelinesChecked;
+        _live.RunningCount = liveUpdate.RunningCount;
+
+        bool anyChanged = false;
+        if (liveUpdate.ChangedPipelines?.Count > 0 && _dashboardResponse?.Pipelines != null) {
+            foreach (var changed in liveUpdate.ChangedPipelines) {
+                if (!_indexById.TryGetValue(changed.Id, out var index)) continue;
+
+                // Every field of the new build, including its trigger, links and duration (null while it runs).
+                changed.ApplyTo(_dashboardResponse.Pipelines[index]);
+                anyChanged = true;
             }
-
-            if (liveUpdate == null) return;
-
-            // Always update heartbeat tracking
-            _lastLiveCheck = liveUpdate.Timestamp;
-            _livePipelinesChecked = liveUpdate.PipelinesChecked;
-            _liveRunningCount = liveUpdate.RunningCount;
-
-            // Trigger a brief pulse animation
-            _livePulse = true;
-            InvokeAsync(async () => {
-                StateHasChanged();
-                await Task.Delay(1500);
-                _livePulse = false;
-                StateHasChanged();
-            });
-
-            // Apply any actual changes to pipeline data
-            if (liveUpdate.ChangedPipelines?.Count > 0 && _dashboardResponse?.Pipelines != null) {
-                bool anyChanged = false;
-
-                foreach (var changed in liveUpdate.ChangedPipelines) {
-                    var existing = _dashboardResponse.Pipelines.FirstOrDefault(p => p.Id == changed.Id);
-                    if (existing != null) {
-                        // Detect if the build ID changed (new build started)
-                        bool buildChanged = existing.LastRunBuildId != changed.LastRunBuildId;
-
-                        existing.LastRunStatus = changed.LastRunStatus;
-                        existing.LastRunResult = changed.LastRunResult;
-                        existing.LastRunTime = changed.LastRunTime;
-                        existing.LastRunBuildId = changed.LastRunBuildId;
-                        existing.LastRunBuildNumber = changed.LastRunBuildNumber;
-                        existing.TriggerBranch = changed.TriggerBranch;
-                        existing.TriggeredByUser = changed.TriggeredByUser;
-                        existing.TriggeredByAvatarUrl = changed.TriggeredByAvatarUrl;
-                        if (!string.IsNullOrWhiteSpace(changed.TriggerReason)) {
-                            existing.TriggerReason = changed.TriggerReason;
-                        }
-                        if (changed.Stages?.Count > 0) {
-                            existing.Stages = changed.Stages;
-                        }
-
-                        // Clear stale data when build is in-progress or a new build started
-                        var statusLower = changed.LastRunStatus?.ToLower() ?? "";
-                        if (statusLower is "inprogress" or "notstarted" || buildChanged) {
-                            existing.Duration = null;
-                        }
-
-                        anyChanged = true;
-                    }
-                }
-
-                if (anyChanged) {
-                    _lastLiveUpdate = liveUpdate.Timestamp;
-                    _liveChangedCount = liveUpdate.ChangedPipelines.Count;
-                }
-            }
-        } catch {
-            // Ignore deserialization errors from live updates
         }
+
+        if (anyChanged) {
+            _live.LastUpdate = liveUpdate.Timestamp;
+            _live.ChangedCount = liveUpdate.ChangedPipelines!.Count;
+            Recompute();
+            InvokeAsync(StateHasChanged);
+        }
+        _live.Notify();
     }
 
     /// <summary>
@@ -510,76 +390,72 @@
     /// </summary>
     protected async Task ToggleAutoRefresh()
     {
+        if (Helpers.CurrentConnectionId().Length == 0) {
+            // Without a connection the server cannot send updates, so the switch stays off.
+            _liveSwitchKey++;
+            Model.AddMessage("Live updates need the real-time connection, which is not connected yet. Try again in a moment.", MessageType.Warning);
+            StateHasChanged();
+            return;
+        }
+
         _autoRefresh = !_autoRefresh;
         _autoRefreshJoining = true;
         StateHasChanged();
 
-        try {
-            string connectionId = Model.SignalrClientRegistration?.ConnectionId ?? "";
-            if (!string.IsNullOrWhiteSpace(connectionId)) {
-                if (_autoRefresh) {
-                    await Helpers.GetOrPost<DataObjects.BooleanResponse>(
-                        "api/Pipelines/monitor/join?connectionId=" + Uri.EscapeDataString(connectionId));
-                } else {
-                    await Helpers.GetOrPost<DataObjects.BooleanResponse>(
-                        "api/Pipelines/monitor/leave?connectionId=" + Uri.EscapeDataString(connectionId));
-                    _lastLiveUpdate = null;
-                    _lastLiveCheck = null;
-                    _liveChangedCount = 0;
-                    _livePipelinesChecked = 0;
-                    _liveRunningCount = 0;
-                }
+        if (_autoRefresh) {
+            if (!await _monitor.EnsureJoinedAsync()) {
+                _autoRefresh = false;
+                Model.AddMessage(string.IsNullOrWhiteSpace(_monitor.LastError) ? "Could not change live updates. Please try again." : _monitor.LastError, MessageType.Danger);
             }
-        } catch {
-            // If join/leave fails, revert the toggle
-            _autoRefresh = !_autoRefresh;
-        } finally {
-            _autoRefreshJoining = false;
-            StateHasChanged();
+        } else {
+            // Leaving is best effort (the hub drops the group with the connection), so turning off always succeeds.
+            await _monitor.LeaveAsync();
+            _live.Reset();
         }
-    }
 
-    protected async Task LoadDashboardData()
-    {
-        _loading = true;
-        _errorMessage = null;
+        _autoRefreshJoining = false;
         StateHasChanged();
-
-        try {
-            var response = await Helpers.GetOrPost<DataObjects.PipelineDashboardResponse>(
-                DataObjects.Endpoints.PipelineDashboard.GetPipelinesList +
-                "?connectionId=" + Uri.EscapeDataString((string.Empty + Model?.SignalrClientRegistration?.ConnectionId).Trim()));
-
-            if (response != null) {
-                _dashboardResponse = response;
-                if (!response.Success && !string.IsNullOrWhiteSpace(response.ErrorMessage)) {
-                    _errorMessage = response.ErrorMessage;
-                }
-                // Initialize all groups as expanded
-                InitializeExpandedGroups();
-            } else {
-                _errorMessage = "Failed to load pipelines. Please try again.";
-            }
-        } catch (Exception ex) {
-            _errorMessage = $"Error loading pipelines: {ex.Message}";
-        } finally {
-            _loading = false;
-            StateHasChanged();
-        }
     }
 
+    protected Task LoadDashboardData() => RunLoadAsync("Loading pipelines...", "Error loading pipelines", async () => {
+        var response = await Helpers.GetOrPost<DataObjects.PipelineDashboardResponse>(
+            DataObjects.Endpoints.PipelineDashboard.GetPipelinesList + Helpers.ConnectionIdQuery());
+
+        if (response != null) {
+            _dashboardResponse = response;
+            if (!response.Success && !string.IsNullOrWhiteSpace(response.ErrorMessage)) {
+                _errorMessage = response.ErrorMessage;
+            }
+            RebuildIndex();
+            InitializeExpandedGroups();
+            Recompute();
+
+            // Rows that could not be filled in completely are still listed; say once what is missing and why.
+            if (response.Warnings.Count > 0) {
+                Model.AddMessage(String.Join("<br />", response.Warnings.Select(System.Net.WebUtility.HtmlEncode)), MessageType.Warning, AutoHide: false);
+            }
+        } else {
+            Model.UnknownError();
+        }
+    });
+
+    /// <summary>
+    /// Expands every folder of the whole list, not only those passing the current filter, so clearing a filter
+    /// does not reveal collapsed folders. The paths are the ones BuildFolderHierarchy gives its folders.
+    /// </summary>
     protected void InitializeExpandedGroups()
     {
         _expandedGroups.Clear();
-        // Expand all folders recursively
-        ExpandFoldersRecursively(RootFolders);
-    }
-
-    protected void ExpandFoldersRecursively(List<FolderNode> folders)
-    {
-        foreach (var folder in folders) {
-            _expandedGroups.Add(folder.FullPath);
-            ExpandFoldersRecursively(folder.SubFolders);
+        foreach (var pipeline in _dashboardResponse?.Pipelines ?? []) {
+            var segments = (pipeline.Path ?? "").Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length == 0) {
+                _expandedGroups.Add("Uncategorized");
+                continue;
+            }
+            _expandedGroups.Add(segments[0]);
+            for (int i = 1; i < segments.Length; i++) {
+                _expandedGroups.Add(string.Join("/", segments.Take(i + 1)));
+            }
         }
     }
 
@@ -595,29 +471,7 @@
 
     protected void NavigateToWizard()
     {
-        Navigation.NavigateTo(Helpers.BuildUrl("Wizard"));
-    }
-
-    protected void NavigateToWizardWithImport(int pipelineId)
-    {
-        Navigation.NavigateTo(Helpers.BuildUrl("Wizard") + "?import=" + pipelineId);
-    }
-
-    protected void OpenInAzureDevOps(string? url)
-    {
-        if (!string.IsNullOrWhiteSpace(url)) {
-            Navigation.NavigateTo(url, true);
-        }
-    }
-
-    protected void OnEditPipeline(DataObjects.PipelineListItem pipeline)
-    {
-        NavigateToWizardWithImport(pipeline.Id);
-    }
-
-    protected void OnViewPipeline(DataObjects.PipelineListItem pipeline)
-    {
-        OpenInAzureDevOps(pipeline.ResourceUrl);
+        Helpers.NavigateTo("Wizard");
     }
 
     /// <summary>
@@ -625,41 +479,33 @@
     /// </summary>
     protected async Task OnCopyYaml(DataObjects.PipelineListItem pipeline)
     {
-        try {
-            // Fetch the YAML content
-            var request = new DataObjects.PipelineYamlRequest {
-                PipelineId = pipeline.Id
-            };
+        var response = await Helpers.GetOrPost<DataObjects.PipelineYamlResponse>(
+            DataObjects.Endpoints.PipelineDashboard.GetPipelineYaml.Replace("{id}", pipeline.Id.ToString()));
 
-            var response = await Helpers.GetOrPost<DataObjects.PipelineYamlResponse>(
-                DataObjects.Endpoints.PipelineDashboard.GetPipelineYaml.Replace("{id}", pipeline.Id.ToString()));
-
-            if (response?.Success == true && !string.IsNullOrWhiteSpace(response.Yaml)) {
-                await Helpers.CopyToClipboard(response.Yaml);
-                Model.AddMessage($"YAML for '{pipeline.Name}' copied to clipboard!", MessageType.Success);
-            } else {
-                Model.AddMessage(response?.ErrorMessage ?? "Failed to fetch YAML content.", MessageType.Danger);
-            }
-        } catch (Exception ex) {
-            Model.AddMessage($"Error copying YAML: {ex.Message}", MessageType.Danger);
+        if (response?.Success == true && !string.IsNullOrWhiteSpace(response.Yaml)) {
+            await Helpers.CopyToClipboard(response.Yaml);
+            Model.AddMessage($"YAML for '{pipeline.Name}' copied to clipboard!", MessageType.Success);
+        } else if (response == null) {
+            Model.UnknownError();
+        } else {
+            Model.ErrorMessage(response.ErrorMessage ?? "The pipeline has no YAML content.");
         }
     }
 
     /// <summary>
-    /// Loads org-wide health trends (lazy, user-triggered).
+    /// Loads org-wide health trends (lazy, user-triggered). A failed load is retried the next time the panel opens.
     /// </summary>
     protected async Task ToggleHealthPanel()
     {
         _healthExpanded = !_healthExpanded;
 
-        if (_healthExpanded && _healthData == null) {
+        if (_healthExpanded && _healthData?.Success != true) {
             _healthLoading = true;
             StateHasChanged();
 
-            try {
-                _healthData = await Helpers.GetOrPost<DataObjects.OrgHealthResponse>("api/Pipelines/health?top=10");
-            } catch {
-                _healthData = new DataObjects.OrgHealthResponse { ErrorMessage = "Failed to load health data" };
+            _healthData = await Helpers.GetOrPost<DataObjects.OrgHealthResponse>(DataObjects.Endpoints.PipelineDashboard.GetHealth + "?top=10");
+            if (_healthData?.Success != true && string.IsNullOrWhiteSpace(_healthData?.ErrorMessage)) {
+                _healthData = new DataObjects.OrgHealthResponse { ErrorMessage = "Failed to load health data." };
             }
 
             _healthLoading = false;
@@ -672,31 +518,33 @@
     /// </summary>
     protected async Task OnRunPipeline(DataObjects.PipelineListItem pipeline)
     {
-        try {
-            var response = await Helpers.GetOrPost<DataObjects.BooleanResponse>(
-                $"api/Pipelines/{pipeline.Id}/run", new { }, true);
+        var response = await Helpers.GetOrPost<DataObjects.BooleanResponse>(
+            DataObjects.Endpoints.PipelineDashboard.RunPipeline.Replace("{pipelineId}", pipeline.Id.ToString()), new { }, true);
 
-            if (response?.Result == true) {
-                Model.AddMessage(response.Messages.FirstOrDefault() ?? $"Pipeline '{pipeline.Name}' queued successfully!", MessageType.Success);
-            } else {
-                Model.AddMessage(response?.Messages.FirstOrDefault() ?? $"Failed to run pipeline '{pipeline.Name}'.", MessageType.Danger);
-            }
-        } catch (Exception ex) {
-            Model.AddMessage($"Error running pipeline: {ex.Message}", MessageType.Danger);
+        if (response?.Result == true) {
+            Model.AddMessage(response.Messages.FirstOrDefault() ?? $"Pipeline '{pipeline.Name}' queued successfully!", MessageType.Success);
+        } else if (response == null) {
+            Model.UnknownError();
+        } else {
+            Model.ErrorMessages(response.Messages);
         }
     }
 
     // Filter/Sort/View handlers
-    protected void OnFiltersUpdated()
+    protected void OnFiltersChanged(DashboardView.FilterState filters)
     {
-        StateHasChanged();
-        _ = SavePreferences();
+        // The search term is not part of the saved preferences, so typing does not write to localStorage.
+        bool saved = filters with { SearchTerm = "" } != _filters with { SearchTerm = "" };
+        _filters = filters;
+        Recompute();
+        if (saved) {
+            _ = SavePreferences();
+        }
     }
 
     protected void OnViewModeChanged(string mode)
     {
         _viewMode = mode;
-        StateHasChanged();
         _ = SavePreferences();
     }
 
@@ -706,92 +554,33 @@
         if (groupBy) {
             InitializeExpandedGroups();
         }
-        StateHasChanged();
+        Recompute();
         _ = SavePreferences();
     }
 
     protected void OnSortByChanged(string sortBy)
     {
         _sortBy = sortBy;
-        StateHasChanged();
+        Recompute();
         _ = SavePreferences();
     }
 
-    // Handle sort changes from table column clicks
+    // A table header click: the sort for that column and direction, if the column has one.
     protected void OnTableSortChanged((string Column, bool Ascending) sort)
     {
-        // Map column name to dropdown value
-        _sortBy = (sort.Column, sort.Ascending) switch {
-            ("name", true) => "name-asc",
-            ("name", false) => "name-desc",
-            ("lastrun", true) => "lastrun-asc",
-            ("lastrun", false) => "lastrun-desc",
-            ("status", true) => "status-success",
-            ("status", false) => "status-failed",
-            ("trigger", true) => "trigger-manual",
-            ("trigger", false) => "trigger-automated",
-            // Duration sorting
-            ("duration", true) => "duration-asc",
-            ("duration", false) => "duration-desc",
-            // Branch sorting
-            ("branch", true) => "branch-asc",
-            ("branch", false) => "branch-desc",
-            // Repository sorting
-            ("repository", true) => "repository-asc",
-            ("repository", false) => "repository-desc",
-            _ => _sortBy
-        };
-        StateHasChanged();
+        _sortBy = DashboardView.SortForHeader(sort.Column, sort.Ascending)?.Key ?? _sortBy;
+        Recompute();
         _ = SavePreferences();
-    }
-
-    // Get current sort column for table view
-    protected string GetCurrentSortColumn()
-    {
-        return _sortBy switch {
-            "name-asc" or "name-desc" => "name",
-            "lastrun-asc" or "lastrun-desc" => "lastrun",
-            "status-failed" or "status-success" => "status",
-            "trigger-type" or "trigger-manual" or "trigger-automated" => "trigger",
-            "duration-asc" or "duration-desc" => "duration",
-            "branch-asc" or "branch-desc" => "branch",
-            "repository-asc" or "repository-desc" => "repository",
-            _ => "lastrun"
-        };
-    }
-
-    // Get current sort direction for table view
-    protected bool GetCurrentSortAscending()
-    {
-        return _sortBy switch {
-            "name-asc" => true,
-            "name-desc" => false,
-            "lastrun-asc" => true,
-            "lastrun-desc" => false,
-            "status-success" => true,
-            "status-failed" => false,
-            "trigger-manual" => true,
-            "trigger-automated" or "trigger-type" => false,
-            "duration-asc" => true,
-            "duration-desc" => false,
-            "branch-asc" => true,
-            "branch-desc" => false,
-            "repository-asc" => true,
-            "repository-desc" => false,
-            _ => false
-        };
     }
 
     protected void OnExpandAll()
     {
         InitializeExpandedGroups();
-        StateHasChanged();
     }
 
     protected void OnCollapseAll()
     {
         _expandedGroups.Clear();
-        StateHasChanged();
     }
 
     protected void OnGroupExpandedChanged(string groupName, bool isExpanded)
@@ -803,61 +592,28 @@
         }
     }
 
-    // Helper methods
-    protected string GetFolderName(string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path)) return "Uncategorized";
-        
-        // Remove leading backslash and get first folder segment
-        var cleanPath = path.TrimStart('\\', '/');
-        var segments = cleanPath.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries);
-        
-        return segments.Length > 0 ? segments[0] : "Uncategorized";
-    }
-
-    protected (int succeeded, int failed, int partial, int running, int queued) GetGroupStats(List<DataObjects.PipelineListItem> pipelines)
-    {
-        int succeeded = 0, failed = 0, partial = 0, running = 0, queued = 0;
-
-        foreach (var p in pipelines) {
-            var status = p.LastRunStatus?.ToLower() ?? "";
-            var result = p.LastRunResult?.ToLower() ?? "";
-
-            if (status == "inprogress" || status == "running") {
-                running++;
-            } else if (status == "notstarted" || status == "queued") {
-                queued++;
-            } else if (status == "completed" || status == "finished") {
-                switch (result) {
-                    case "succeeded": succeeded++; break;
-                    case "failed": failed++; break;
-                    case "partiallysucceeded": partial++; break;
-                }
-            }
-        }
-
-        return (succeeded, failed, partial, running, queued);
-    }
-
-    // Get stats for a folder node including all nested subfolders
-    protected (int succeeded, int failed, int partial, int running, int queued) GetFolderStats(FolderNode folder)
-    {
-        return GetGroupStats(folder.GetAllPipelines());
-    }
-
     // localStorage persistence
+    // Older versions wrote the preferences as raw JSON text; reading the item as a string returns that text as is,
+    // and also unwraps the string this version stores. Values that cannot be read keep the defaults.
+    protected const string PreferencesKey = "pipelineDashboardPrefs";
+
     protected async Task LoadPreferences()
     {
-        try {
-            var prefs = await JSRuntime.InvokeAsync<PipelineDashboardPreferences?>("localStorage.getItem", "pipelineDashboardPrefs");
-            if (prefs != null) {
-                _viewMode = prefs.ViewMode ?? "card";
-                _groupByFolder = prefs.GroupByFolder;
-                _sortBy = prefs.SortBy ?? "lastrun-desc";
-            }
-        } catch {
-            // Ignore localStorage errors
-        }
+        var prefs = PipelineDashboardPreferences.Parse(await Helpers.GetLocalStorageItem<string>(PreferencesKey));
+        if (prefs == null) return;
+
+        if (prefs.ViewMode == "card" || prefs.ViewMode == "table") { _viewMode = prefs.ViewMode; }
+        if (prefs.GroupByFolder.HasValue) { _groupByFolder = prefs.GroupByFolder.Value; }
+        if (DashboardView.FindSort(prefs.SortBy) != null) { _sortBy = prefs.SortBy!; }
+        _filters = _filters with {
+            Status = prefs.Status ?? _filters.Status,
+            Result = prefs.Result ?? _filters.Result,
+            Repository = prefs.Repository ?? _filters.Repository,
+            Trigger = prefs.Trigger ?? _filters.Trigger,
+            FailedOnly = prefs.FailedOnly ?? _filters.FailedOnly,
+        };
+        Recompute();
+        StateHasChanged();
     }
 
     protected async Task SavePreferences()
@@ -866,10 +622,14 @@
             var prefs = new PipelineDashboardPreferences {
                 ViewMode = _viewMode,
                 GroupByFolder = _groupByFolder,
-                SortBy = _sortBy
+                SortBy = _sortBy,
+                Status = _filters.Status,
+                Result = _filters.Result,
+                Repository = _filters.Repository,
+                Trigger = _filters.Trigger,
+                FailedOnly = _filters.FailedOnly
             };
-            var json = System.Text.Json.JsonSerializer.Serialize(prefs);
-            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "pipelineDashboardPrefs", json);
+            await Helpers.SetLocalStorageItem(PreferencesKey, Helpers.SerializeObject(prefs));
         } catch {
             // Ignore localStorage errors
         }
@@ -877,19 +637,51 @@
 
     public class PipelineDashboardPreferences
     {
-        public string? ViewMode { get; set; }
-        public bool GroupByFolder { get; set; }
+        public bool? FailedOnly { get; set; }
+        public bool? GroupByFolder { get; set; }
+        public string? Repository { get; set; }
+        public string? Result { get; set; }
         public string? SortBy { get; set; }
+        public string? Status { get; set; }
+        public string? Trigger { get; set; }
+        public string? ViewMode { get; set; }
+
+        // Parses the stored text. Returns null when it is missing or not a JSON object; a field that is missing or of
+        // the wrong type is null (older stored values only have ViewMode, GroupByFolder and SortBy).
+        public static PipelineDashboardPreferences? Parse(string? json)
+        {
+            if (string.IsNullOrWhiteSpace(json)) { return null; }
+
+            try {
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                if (root.ValueKind != System.Text.Json.JsonValueKind.Object) { return null; }
+
+                string? Text(string name) => root.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() : null;
+                bool? Flag(string name) => root.TryGetProperty(name, out var v) && (v.ValueKind == System.Text.Json.JsonValueKind.True || v.ValueKind == System.Text.Json.JsonValueKind.False) ? v.GetBoolean() : null;
+
+                return new PipelineDashboardPreferences {
+                    ViewMode = Text(nameof(ViewMode)),
+                    GroupByFolder = Flag(nameof(GroupByFolder)),
+                    SortBy = Text(nameof(SortBy)),
+                    Status = Text(nameof(Status)),
+                    Result = Text(nameof(Result)),
+                    Repository = Text(nameof(Repository)),
+                    Trigger = Text(nameof(Trigger)),
+                    FailedOnly = Flag(nameof(FailedOnly))
+                };
+            } catch (System.Text.Json.JsonException) {
+                return null;
+            }
+        }
     }
 }
 
-@if (Model.Loaded && Model.LoggedIn && Model.View == _pageName) {
-    <div class="container-fluid px-0" style="max-width: 1400px;">
+<div class="container-fluid px-0 pipeline-dashboard" style="max-width: 1400px;">
         @* Page Header *@
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h1 class="page-title mb-0">
-                <i class="fa fa-rocket me-2"></i>
-                Pipeline Dashboard
+                <Icon Name="Pipelines" /> Pipeline Dashboard
             </h1>
             <div class="d-flex gap-2 align-items-center">
                 @* Auto-Refresh Toggle *@
@@ -897,29 +689,22 @@
                     <div class="d-flex align-items-center me-2">
                         <div class="form-check form-switch mb-0" title="@(_autoRefresh ? "Live updates active — polling every 5 seconds" : "Enable live updates to see pipeline status changes in real-time")">
                             <input type="checkbox" role="switch" class="form-check-input"
-                                   id="autoRefreshToggle"
-                                   checked="@_autoRefresh"
-                                   disabled="@_autoRefreshJoining"
-                                   @onchange="ToggleAutoRefresh" />
+                                    @key="_liveSwitchKey"
+                                    id="autoRefreshToggle"
+                                    checked="@_autoRefresh"
+                                    disabled="@_autoRefreshJoining"
+                                    @onchange="ToggleAutoRefresh" />
                             <label for="autoRefreshToggle" class="form-check-label small @(_autoRefresh ? "text-success" : "text-muted")">
                                 @if (_autoRefreshJoining) {
                                     <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                                } else if (_autoRefresh && _livePulse) {
-                                                    <i class="fa fa-circle text-success me-1" style="font-size: 0.6em; vertical-align: middle; opacity: 1;"></i>
-                                                } else if (_autoRefresh) {
-                                                    <i class="fa fa-circle text-success me-1" style="font-size: 0.5em; vertical-align: middle; opacity: 0.4;"></i>
+                                } else if (_autoRefresh) {
+                                    <DashboardLiveIndicator State="_live" Part="dot" />
                                 }
                                 Live
                             </label>
                         </div>
-                        @if (_autoRefresh && _lastLiveCheck.HasValue) {
-                            <span class="ms-2 small text-muted" style="white-space: nowrap;">
-                                @if (_liveRunningCount > 0) {
-                                    <span class="text-info me-1" title="@_liveRunningCount pipeline(s) currently running">
-                                        <i class="fa fa-spinner fa-spin" style="font-size: 0.7em;"></i> @_liveRunningCount
-                                    </span>
-                                }
-                            </span>
+                        @if (_autoRefresh) {
+                            <DashboardLiveIndicator State="_live" Part="running" />
                         }
                     </div>
                 }
@@ -950,12 +735,12 @@
                 @if (_totalCount > 0) {
                     <div class="ms-3">
                         <div class="progress" style="width: 150px; height: 8px;">
-                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
-                                 role="progressbar" 
-                                 style="width: @((_loadedCount * 100 / _totalCount))%"
-                                 aria-valuenow="@_loadedCount" 
-                                 aria-valuemin="0" 
-                                 aria-valuemax="@_totalCount">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated"
+                                    role="progressbar"
+                                    style="width: @((_loadedCount * 100 / _totalCount))%"
+                                    aria-valuenow="@_loadedCount"
+                                    aria-valuemin="0"
+                                    aria-valuemax="@_totalCount">
                             </div>
                         </div>
                     </div>
@@ -965,12 +750,7 @@
 
         @* Loading State (only when no progressive updates yet) *@
         @if (_loading && !_isProgressiveLoading) {
-            <div class="d-flex flex-column justify-content-center align-items-center my-5">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-                <div class="mt-3 text-muted">@_loadingMessage</div>
-            </div>
+            <FreeCICD_App_UI_Loading Message="@_loadingMessage" />
         }
         @* Error State *@
         else if (!string.IsNullOrWhiteSpace(_errorMessage) && !_isProgressiveLoading) {
@@ -986,34 +766,14 @@
         @if ((_dashboardResponse?.Pipelines?.Any() == true) || (!_loading && !_isProgressiveLoading && string.IsNullOrWhiteSpace(_errorMessage))) {
             @* Filter Bar *@
             <FreeCICD_App_UI_Dashboard_FilterBar
-                SearchTerm="@_searchTerm"
-                SearchTermChanged="@(val => { _searchTerm = val; StateHasChanged(); })"
-                SelectedStatus="@_selectedStatus"
-                SelectedStatusChanged="@(val => _selectedStatus = val)"
-                SelectedResult="@_selectedResult"
-                SelectedResultChanged="@(val => _selectedResult = val)"
-                SelectedRepository="@_selectedRepository"
-                SelectedRepositoryChanged="@(val => _selectedRepository = val)"
-                SelectedTrigger="@_selectedTrigger"
-                SelectedTriggerChanged="@(val => _selectedTrigger = val)"
-                FailedOnly="@_failedOnly"
-                FailedOnlyChanged="@(val => _failedOnly = val)"
-                Repositories="@AvailableRepositories"
-                OnFiltersUpdated="@OnFiltersUpdated" />
+                    Filters="@_filters"
+                    FiltersChanged="@OnFiltersChanged"
+                    Repositories="@_repositories" />
 
-            @* View Controls *@
-            <FreeCICD_App_UI_Dashboard_ViewControls
-                ViewMode="@_viewMode"
-                ViewModeChanged="@OnViewModeChanged"
-                GroupByFolder="@_groupByFolder"
-                GroupByFolderChanged="@OnGroupByFolderChanged"
-                SortBy="@_sortBy"
-                SortByChanged="@OnSortByChanged"
-                ExpandAllRequested="@OnExpandAll"
-                CollapseAllRequested="@OnCollapseAll" />
+            @RenderViewControls()
 
             @* Empty State (after filtering) *@
-            @if (!FilteredPipelines.Any()) {
+            @if (_filtered.Count == 0) {
                 <div class="card shadow-sm border-0">
                     <div class="card-body text-center py-5">
                         @if (_dashboardResponse?.Pipelines?.Any() == true) {
@@ -1032,9 +792,9 @@
                     </div>
                 </div>
             }
-            @* Grouped View - Now uses recursive folder hierarchy *@
+            @* Grouped by folder, nested *@
             else if (_groupByFolder) {
-                @foreach (var folder in RootFolders) {
+                @foreach (var folder in _rootFolders) {
                     @RenderFolderNode(folder)
                 }
             }
@@ -1042,13 +802,9 @@
             else {
                 @if (_viewMode == "card") {
                     <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 row-cols-xl-4 g-4">
-                        @foreach (var pipeline in FilteredPipelines) {
-                            <div class="col">
-                                <FreeCICD_App_UI_Dashboard_PipelineCard Pipeline="@pipeline"
-                                    OnEdit="@(() => OnEditPipeline(pipeline))"
-                                    OnView="@(() => OnViewPipeline(pipeline))"
-                                    OnCopyYaml="@OnCopyYaml"
-                                    OnRunPipeline="@OnRunPipeline" />
+                        @foreach (var pipeline in _filtered) {
+                            <div class="col" @key="pipeline.Id">
+                                @RenderPipelineCard(pipeline)
                             </div>
                         }
                     </div>
@@ -1056,14 +812,12 @@
                     <div class="card shadow-sm border-0">
                         <div class="card-body p-0">
                             <FreeCICD_App_UI_Dashboard_TableView
-                                Pipelines="@FilteredPipelines"
-                                SortColumn="@GetCurrentSortColumn()"
-                                SortAscending="@GetCurrentSortAscending()"
-                                OnSortChanged="@OnTableSortChanged"
-                                OnEdit="@OnEditPipeline"
-                                OnView="@OnViewPipeline"
-                                OnCopyYaml="@OnCopyYaml"
-                                OnRunPipeline="@OnRunPipeline" />
+                                    Pipelines="@_filtered"
+                                    SortColumn="@DashboardView.Sort(_sortBy).Column"
+                                    SortAscending="@DashboardView.Sort(_sortBy).Ascending"
+                                    OnSortChanged="@OnTableSortChanged"
+                                    OnCopyYaml="@OnCopyYaml"
+                                    OnRunPipeline="@OnRunPipeline" />
                         </div>
                     </div>
                 }
@@ -1121,9 +875,9 @@
                                         var successPct = _healthData.Summary.TotalSucceeded * 100.0 / _healthData.Summary.TotalBuildsAnalyzed;
                                         var failPct = _healthData.Summary.TotalFailed * 100.0 / _healthData.Summary.TotalBuildsAnalyzed;
                                         var otherPct = 100 - successPct - failPct;
-                                        <div class="progress-bar bg-success" style="width: @(successPct.ToString("F1"))%"></div>
-                                        <div class="progress-bar bg-danger" style="width: @(failPct.ToString("F1"))%"></div>
-                                        <div class="progress-bar bg-secondary-subtle" style="width: @(otherPct.ToString("F1"))%"></div>
+                                        <div class="progress-bar bg-success" style="width: @Helpers.CssPercent(successPct)%"></div>
+                                        <div class="progress-bar bg-danger" style="width: @Helpers.CssPercent(failPct)%"></div>
+                                        <div class="progress-bar bg-secondary-subtle" style="width: @Helpers.CssPercent(otherPct)%"></div>
                                     }
                                 </div>
 
@@ -1139,20 +893,10 @@
                                                 </span>
                                                 <div class="d-flex align-items-center gap-0" style="gap: 1px !important;">
                                                     @foreach (var result in trend.RecentResults) {
-                                                        var dotColor = result switch {
-                                                            "succeeded" => "text-success",
-                                                            "failed" => "text-danger",
-                                                            "partiallysucceeded" => "text-warning",
-                                                            "inprogress" => "text-info",
-                                                            _ => "text-secondary"
-                                                        };
-                                                        var dotIcon = result switch {
-                                                            "succeeded" => "fa-circle",
-                                                            "failed" => "fa-circle",
-                                                            "inprogress" => "fa-spinner fa-spin",
-                                                            _ => "fa-circle"
-                                                        };
-                                                        <i class="fa @dotIcon @dotColor" style="font-size: 0.55em; margin: 0 1px;"></i>
+                                                        @* A recent result is a finished build's result, or "inprogress" for one still running. *@
+                                                        var dotKind = result == "inprogress" ? DashboardView.RunKind.Running : DashboardView.Classify("completed", result);
+                                                        var dotIcon = dotKind == DashboardView.RunKind.Running ? "fa-spinner fa-spin" : "fa-circle";
+                                                        <i class="fa @dotIcon @DashboardView.Status(dotKind).TextClass" style="font-size: 0.55em; margin: 0 1px;"></i>
                                                     }
                                                 </div>
                                                 <span class="small text-muted ms-auto" style="min-width: 30px; text-align: right;">@(trend.SuccessRate)%</span>
@@ -1173,101 +917,428 @@
             @* Summary Footer *@
             <div class="mt-4 d-flex justify-content-between align-items-center text-muted small">
                 <div>
-                    Showing @FilteredPipelines.Count
-                    @if (_dashboardResponse?.Pipelines?.Count != FilteredPipelines.Count) {
+                    Showing @_filtered.Count
+                    @if (_dashboardResponse?.Pipelines?.Count != _filtered.Count) {
                         <span>of @(_dashboardResponse?.Pipelines?.Count ?? 0)</span>
                     }
                     pipeline(s)
-                    @if (_groupByFolder && RootFolders.Count > 1) {
-                        <span>in @RootFolders.Count folders</span>
+                    @if (_groupByFolder && _rootFolders.Count > 1) {
+                        <span>in @_rootFolders.Count folders</span>
                     }
-                    @if (_autoRefresh && _lastLiveCheck.HasValue) {
-                        @if (_lastLiveUpdate.HasValue) {
-                            <span class="ms-2 text-success" title="Last change detected at @_lastLiveUpdate.Value.ToLocalTime().ToString("T") — @_liveChangedCount pipeline(s) updated">
-                                <i class="fa fa-bolt me-1" style="font-size: 0.8em;"></i>@_liveChangedCount changed
-                            </span>
-                        }
-                        <span class="ms-2 text-muted" title="Checking @_livePipelinesChecked pipelines every 5 seconds">
-                            <i class="fa fa-eye me-1" style="font-size: 0.8em;"></i>Checked @_lastLiveCheck.Value.ToLocalTime().ToString("T")
-                        </span>
+                    @if (_autoRefresh) {
+                        <DashboardLiveIndicator State="_live" Part="footer" />
                     }
                 </div>
                 <div>
-                    @{
-                        var allStats = GetGroupStats(FilteredPipelines);
-                    }
-                    @if (allStats.succeeded > 0) {
-                        <span class="me-2"><i class="fa fa-check text-success me-1"></i>@allStats.succeeded</span>
-                    }
-                    @if (allStats.failed > 0) {
-                        <span class="me-2"><i class="fa fa-times text-danger me-1"></i>@allStats.failed</span>
-                    }
-                    @if (allStats.partial > 0) {
-                        <span class="me-2"><i class="fa fa-exclamation-triangle text-warning me-1"></i>@allStats.partial</span>
-                    }
-                    @if (allStats.running > 0) {
-                        <span class="me-2"><i class="fa fa-spinner fa-spin text-info me-1"></i>@allStats.running</span>
+                    @foreach (var (kind, count) in new[] {
+                        (DashboardView.RunKind.Succeeded, _footerCounts.Succeeded), (DashboardView.RunKind.Failed, _footerCounts.Failed),
+                        (DashboardView.RunKind.Partial, _footerCounts.Partial), (DashboardView.RunKind.Running, _footerCounts.Running) }) {
+                        if (count > 0) {
+                            var style = DashboardView.Status(kind);
+                            <span class="me-2" title="@count @style.Label"><i class="fa @style.Icon @style.TextClass me-1"></i>@count</span>
+                        }
                     }
                 </div>
             </div>
         }
     </div>
-}
 
 @code {
-    // Render a folder node recursively
+    /// <summary>
+    /// One folder as a collapsible group: a header with the folder name and its status counts, then its subfolders
+    /// and its own pipelines. Nested folders are indented and coloured by depth.
+    /// </summary>
     private RenderFragment RenderFolderNode(FolderNode folder) => __builder =>
     {
-        var stats = GetFolderStats(folder);
-        var isExpanded = _expandedGroups.Contains(folder.FullPath);
-        var totalCount = folder.GetTotalPipelineCount();
+        var expanded = _expandedGroups.Contains(folder.FullPath);
+        <div @key="folder.FullPath" class="pipeline-group card mb-3 shadow-sm border-0" style="@(folder.Depth <= 0 ? "" : $"margin-left: {Helpers.CssPercent(folder.Depth * 1.5)}rem;")">
+            @* The accordion pattern: a heading holding a real button, so Tab reaches it and Enter or Space toggles it. *@
+            <div class="card-header p-0 @(expanded ? "" : "border-bottom-0")">
+                <h6 class="mb-0">
+                <button type="button" class="d-flex justify-content-between align-items-center w-100 px-3 py-3 border-0 bg-transparent text-reset text-start"
+                        @onclick="@(() => OnGroupExpandedChanged(folder.FullPath, !expanded))"
+                        aria-expanded="@(expanded ? "true" : "false")"
+                        aria-controls="group-content-@folder.GroupId">
+                    <span class="d-flex align-items-center gap-2">
+                        <i class="fa @(expanded ? "fa-chevron-down" : "fa-chevron-right") text-muted" aria-hidden="true"></i>
+                        <i class="fa fa-folder@(expanded ? "-open" : "") @FolderColorClass(folder.Depth)" aria-hidden="true"></i>
+                        <span class="fw-semibold @FolderHeaderSizeClass(folder.Depth)">@folder.Name</span>
+                        <span class="badge bg-secondary rounded-pill">@folder.TotalCount</span>
+                    </span>
 
-        <FreeCICD_App_UI_Dashboard_PipelineGroup
-            GroupId="@folder.FullPath.Replace(" ", "-").Replace("/", "-").ToLower()"
-            GroupName="@folder.Name"
-            PipelineCount="@totalCount"
-            SucceededCount="@stats.succeeded"
-            FailedCount="@stats.failed"
-            PartialCount="@stats.partial"
-            RunningCount="@stats.running"
-            QueuedCount="@stats.queued"
-            IsExpanded="@isExpanded"
-            IsExpandedChanged="@(expanded => OnGroupExpandedChanged(folder.FullPath, expanded))"
-            Depth="@folder.Depth">
+                    <span class="d-flex gap-2">
+                        @foreach (var (kind, count) in new[] {
+                            (DashboardView.RunKind.Succeeded, folder.Counts.Succeeded), (DashboardView.RunKind.Failed, folder.Counts.Failed),
+                            (DashboardView.RunKind.Partial, folder.Counts.Partial), (DashboardView.RunKind.Running, folder.Counts.Running),
+                            (DashboardView.RunKind.Queued, folder.Counts.Queued) }) {
+                            if (count > 0) {
+                                var style = DashboardView.Status(kind);
+                                <span class="badge @style.BadgeClass" title="@count @style.Label">
+                                    <i class="fa @style.Icon me-1"></i>@count
+                                </span>
+                            }
+                        }
+                    </span>
+                </button>
+                </h6>
+            </div>
 
-            @* Render subfolders first *@
-            @foreach (var subFolder in folder.SubFolders) {
-                @RenderFolderNode(subFolder)
-            }
+            @if (expanded) {
+                <div class="card-body pt-3" id="group-content-@folder.GroupId">
+                    @* Subfolders first, then the pipelines in this folder. *@
+                    @foreach (var subFolder in folder.SubFolders) {
+                        @RenderFolderNode(subFolder)
+                    }
 
-            @* Then render pipelines in this folder *@
-            @if (folder.Pipelines.Any()) {
-                @if (_viewMode == "card") {
-                    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 row-cols-xl-4 g-3 @(folder.SubFolders.Any() ? "mt-2" : "")">
-                        @foreach (var pipeline in folder.Pipelines) {
-                            <div class="col">
-                                <FreeCICD_App_UI_Dashboard_PipelineCard Pipeline="@pipeline"
-                                    OnEdit="@(() => OnEditPipeline(pipeline))"
-                                    OnView="@(() => OnViewPipeline(pipeline))"
+                    @if (folder.Pipelines.Count > 0) {
+                        @if (_viewMode == "card") {
+                            <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 row-cols-xl-4 g-3 @(folder.SubFolders.Count > 0 ? "mt-2" : "")">
+                                @foreach (var pipeline in folder.Pipelines) {
+                                    <div class="col" @key="pipeline.Id">
+                                        @RenderPipelineCard(pipeline)
+                                    </div>
+                                }
+                            </div>
+                        } else {
+                            <div class="@(folder.SubFolders.Count > 0 ? "mt-2" : "")">
+                                <FreeCICD_App_UI_Dashboard_TableView
+                                    Pipelines="@folder.Pipelines"
+                                    SortColumn="@DashboardView.Sort(_sortBy).Column"
+                                    SortAscending="@DashboardView.Sort(_sortBy).Ascending"
+                                    OnSortChanged="@OnTableSortChanged"
                                     OnCopyYaml="@OnCopyYaml"
                                     OnRunPipeline="@OnRunPipeline" />
                             </div>
                         }
+                    }
+                </div>
+            }
+        </div>
+    };
+
+    // Root folders are gold, then blue, green and grey as they nest; nested headers get a little smaller.
+    private static string FolderColorClass(int depth) => depth switch {
+        0 => "text-warning",
+        1 => "text-info",
+        2 => "text-success",
+        _ => "text-secondary"
+    };
+
+    private static string FolderHeaderSizeClass(int depth) => depth switch {
+        0 => "",
+        1 => "fs-6",
+        _ => "small"
+    };
+
+    /// <summary>The view mode toggle (Card/Table), the group-by-folder switch, the sort list and, when grouped, expand/collapse all.</summary>
+    private RenderFragment RenderViewControls() => __builder =>
+    {
+        <div class="pipeline-view-controls mb-3">
+            <div class="d-flex flex-wrap gap-3 align-items-center justify-content-between">
+                <div class="d-flex flex-wrap gap-3 align-items-center">
+                    <div class="btn-group" role="group" aria-label="View mode">
+                        <button type="button"
+                                class="btn @(_viewMode == "card" ? "btn-primary" : "btn-outline-primary")"
+                                @onclick="@(() => OnViewModeChanged("card"))"
+                                title="Card View">
+                            <i class="fa fa-th-large me-1"></i>
+                            Cards
+                        </button>
+                        <button type="button"
+                                class="btn @(_viewMode == "table" ? "btn-primary" : "btn-outline-primary")"
+                                @onclick="@(() => OnViewModeChanged("table"))"
+                                title="Table View">
+                            <i class="fa fa-list me-1"></i>
+                            Table
+                        </button>
                     </div>
-                } else {
-                    <div class="@(folder.SubFolders.Any() ? "mt-2" : "")">
-                        <FreeCICD_App_UI_Dashboard_TableView
-                            Pipelines="@folder.Pipelines"
-                            SortColumn="@GetCurrentSortColumn()"
-                            SortAscending="@GetCurrentSortAscending()"
-                            OnSortChanged="@OnTableSortChanged"
-                            OnEdit="@OnEditPipeline"
-                            OnView="@OnViewPipeline"
-                            OnCopyYaml="@OnCopyYaml"
-                            OnRunPipeline="@OnRunPipeline" />
+
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" role="switch" id="groupByFolderSwitch"
+                               checked="@_groupByFolder" @onchange="@(e => OnGroupByFolderChanged((bool)(e.Value ?? false)))" />
+                        <label class="form-check-label" for="groupByFolderSwitch">
+                            <i class="fa-regular fa-folder me-1"></i>
+                            Group by Folder
+                        </label>
+                    </div>
+
+                    <div class="d-flex align-items-center gap-2">
+                        <label class="form-label mb-0 text-muted small">Sort:</label>
+                        <select class="form-select form-select-sm" style="width: auto;" value="@_sortBy" @onchange="@(e => OnSortByChanged(e.Value?.ToString() ?? _sortBy))">
+                            @foreach (var sort in DashboardView.Sorts) {
+                                <option value="@sort.Key">@sort.Label</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+
+                @if (_groupByFolder) {
+                    <div class="btn-group" role="group" aria-label="Expand/Collapse">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="OnExpandAll" title="Expand All">
+                            <i class="fa fa-expand me-1"></i>
+                            Expand All
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="OnCollapseAll" title="Collapse All">
+                            <i class="fa fa-compress me-1"></i>
+                            Collapse All
+                        </button>
                     </div>
                 }
+            </div>
+        </div>
+    };
+
+    /// <summary>
+    /// One pipeline as a card: name, build number and branch in the header with the status badge, then repository,
+    /// commit, last run, trigger, stages, YAML file and variable groups, and the Edit / Runs / actions footer. The
+    /// badges are the same fragments the table row uses, so the two views cannot drift apart.
+    /// </summary>
+    private RenderFragment RenderPipelineCard(DataObjects.PipelineListItem pipeline) => __builder =>
+    {
+        var branch = DashboardView.DisplayBranch(pipeline);
+        var repoName = DashboardView.DisplayRepoName(pipeline);
+        <div class="card h-100 shadow-sm border-0 pipeline-card">
+            <div class="card-header bg-body border-bottom-0 py-3">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="flex-grow-1 me-2">
+                        <h6 class="card-title mb-0 d-flex align-items-center flex-wrap gap-1">
+                            <a href="@pipeline.ResourceUrl" target="_blank"
+                               class="text-decoration-none text-body pipeline-title-link text-truncate"
+                               title="@pipeline.Name - Open in Azure DevOps"
+                               style="max-width: 180px;">
+                                @pipeline.Name
+                            </a>
+                            @if (!string.IsNullOrWhiteSpace(pipeline.LastRunBuildNumber)) {
+                                <a href="@pipeline.PipelineRunsUrl" target="_blank"
+                                   class="text-muted small text-decoration-none link-underline-opacity-0 link-underline-opacity-75-hover"
+                                   title="View all runs for #@pipeline.LastRunBuildNumber">
+                                    #@Helpers.MaxStringLength(pipeline.LastRunBuildNumber, 10)
+                                </a>
+                            }
+                        </h6>
+                        @if (!string.IsNullOrWhiteSpace(branch)) {
+                            <div class="mt-1">
+                                <BranchBadge Branch="@branch" BranchUrl="@pipeline.CodeBranchUrl" MaxLength="18" />
+                            </div>
+                        }
+                    </div>
+                    @RenderRunStatusBadge(pipeline)
+                </div>
+            </div>
+
+            <div class="card-body pt-0">
+                @* The code repository is preferred over the repository that holds the YAML. *@
+                @if (!string.IsNullOrWhiteSpace(repoName)) {
+                    <div class="small mb-2">
+                        <a href="@DashboardView.DisplayRepoUrl(pipeline)" target="_blank"
+                           class="text-muted text-decoration-none link-underline-opacity-0 link-underline-opacity-75-hover"
+                           title="Open @repoName repository">
+                            <i class="fa fa-database me-1"></i>@repoName
+                        </a>
+                    </div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(pipeline.LastCommitId)) {
+                    <div class="small mb-2">
+                        @RenderCommitLink(pipeline)
+                    </div>
+                }
+
+                <div class="small text-muted d-flex align-items-center gap-2 flex-wrap mb-1">
+                    @RenderLastRun(pipeline, iconClass: "fa-calendar", linkClass: "text-muted")
+                    @if (pipeline.Duration.HasValue) {
+                        <span class="text-muted">•</span>
+                        <span title="@DashboardView.FormatDurationFull(pipeline.Duration)">
+                            <i class="fa-regular fa-clock me-1"></i>
+                            @DashboardView.FormatDuration(pipeline.Duration)
+                        </span>
+                    }
+                </div>
+
+                <div class="small text-muted d-flex align-items-center gap-2 flex-wrap">
+                    @RenderTriggerBadge(pipeline, avatarSize: 18)
+                </div>
+
+                @RenderStageBubbles(pipeline.Stages, label: "Stages:", cssClass: "small mt-1", iconSize: "0.8em")
+
+                @if (!string.IsNullOrWhiteSpace(pipeline.YamlFileName)) {
+                    <div class="small text-muted mt-1 text-truncate" title="@pipeline.YamlFileName">
+                        <i class="fa-regular fa-file-code me-1"></i>
+                        @System.IO.Path.GetFileName(pipeline.YamlFileName)
+                    </div>
+                }
+
+                @if (pipeline.VariableGroups?.Any() == true) {
+                    <div class="mt-2">
+                        @RenderVarGroupBadges(pipeline.VariableGroups)
+                    </div>
+                }
+            </div>
+
+            @* Real anchors, so right-click and middle-click open them in a new tab. *@
+            <div class="card-footer bg-body border-top-0 pt-0">
+                <div class="d-flex gap-2">
+                    <a href="@(Helpers.BuildUrl(pipeline.EditWizardUrl))"
+                       class="btn btn-sm btn-outline-primary flex-grow-1"
+                       title="Edit in Wizard">
+                        <i class="fa fa-pencil me-1"></i>
+                        Edit
+                    </a>
+                    <a href="@pipeline.PipelineRunsUrl" target="_blank"
+                       class="btn btn-sm btn-outline-info flex-grow-1"
+                       title="View pipeline runs">
+                        <i class="fa fa-list me-1"></i>
+                        Runs
+                    </a>
+                    <FreeCICD_App_UI_Dashboard_ActionsMenu Pipeline="@pipeline" OnRunPipeline="@OnRunPipeline" OnCopyYaml="@OnCopyYaml" />
+                </div>
+            </div>
+        </div>
+    };
+
+    // The badges below are shared by the card above and the table row (FreeCICD_App_UI_Dashboard_TableView), so the
+    // two views cannot drift apart. They are static and have no event handlers so the table can call them.
+
+    /// <summary>A pipeline's last-run status badge, linked to the build results when Azure DevOps gave a link.</summary>
+    public static RenderFragment RenderRunStatusBadge(DataObjects.PipelineListItem pipeline) => __builder =>
+    {
+        var status = DashboardView.Status(pipeline);
+        @if (!string.IsNullOrWhiteSpace(pipeline.LastRunResultsUrl)) {
+            <a href="@pipeline.LastRunResultsUrl" target="_blank"
+               class="text-decoration-none clickable-badge"
+               title="View build results in Azure DevOps">
+                <span class="badge @status.BadgeClass"><i class="fa @status.Icon me-1"></i>@status.Label</span>
+            </a>
+        } else {
+            <span class="badge @status.BadgeClass"><i class="fa @status.Icon me-1"></i>@status.Label</span>
+        }
+    };
+
+    /// <summary>
+    /// Who or what started the last run: the user's avatar and the trigger badge, linked to the pipeline's trigger
+    /// settings when Azure DevOps gave a link. A table cell must not be empty, so it can show a dash when unknown.
+    /// </summary>
+    public static RenderFragment RenderTriggerBadge(DataObjects.PipelineListItem pipeline, int avatarSize = 20, bool showDashWhenUnknown = false) => __builder =>
+    {
+        @if (!string.IsNullOrWhiteSpace(pipeline.TriggeredByAvatarUrl)) {
+            <img src="@pipeline.TriggeredByAvatarUrl"
+                 alt="@pipeline.TriggeredByUser"
+                 title="@pipeline.TriggeredByUser"
+                 class="rounded-circle"
+                 style="width: @(avatarSize)px; height: @(avatarSize)px; object-fit: cover;"
+                 onerror="this.style.display='none'" />
+        }
+        @if (string.IsNullOrWhiteSpace(pipeline.TriggerReason)) {
+            @if (showDashWhenUnknown) {
+                <span class="text-muted">—</span>
             }
-        </FreeCICD_App_UI_Dashboard_PipelineGroup>
+        } else {
+            var trigger = DashboardView.Trigger(pipeline);
+            @if (!string.IsNullOrWhiteSpace(pipeline.PipelineConfigUrl)) {
+                <a href="@pipeline.PipelineConfigUrl" target="_blank"
+                   class="text-decoration-none clickable-badge"
+                   title="@trigger.Tooltip. Configure pipeline triggers in Azure DevOps">
+                    <span class="badge @trigger.BadgeClass"><i class="fa @trigger.Icon me-1"></i>@trigger.Text</span>
+                </a>
+            } else {
+                <span class="badge @trigger.BadgeClass" title="@trigger.Tooltip"><i class="fa @trigger.Icon me-1"></i>@trigger.Text</span>
+            }
+        }
+    };
+
+    /// <summary>The last run's commit id, linked to the commit in Azure DevOps; nothing when the run has no commit.</summary>
+    public static RenderFragment RenderCommitLink(DataObjects.PipelineListItem pipeline) => __builder =>
+    {
+        @if (!string.IsNullOrWhiteSpace(pipeline.LastCommitId)) {
+            <a href="@pipeline.CommitUrl" target="_blank"
+               class="text-muted font-monospace text-decoration-none link-underline-opacity-0 link-underline-opacity-75-hover"
+               title="View commit @pipeline.LastCommitId in Azure DevOps">
+                <i class="fa fa-code-fork me-1"></i>@pipeline.LastCommitId
+            </a>
+        }
+    };
+
+    /// <summary>
+    /// When the pipeline last ran ("5 minutes ago", the exact time in the tooltip), linked to the build logs when
+    /// Azure DevOps gave a link. The card puts a calendar icon before it; the table marks the link as external.
+    /// </summary>
+    public static RenderFragment RenderLastRun(DataObjects.PipelineListItem pipeline, string? iconClass = null, string linkClass = "link-body-emphasis", bool showLinkIcon = false) => __builder =>
+    {
+        @if (pipeline.LastRunTime.HasValue) {
+            @if (!string.IsNullOrWhiteSpace(pipeline.LastRunLogsUrl)) {
+                <a href="@pipeline.LastRunLogsUrl" target="_blank"
+                   class="@linkClass text-decoration-none link-underline-opacity-0 link-underline-opacity-75-hover"
+                   title="View build logs - @Helpers.FormatDateTime(pipeline.LastRunTime)">
+                    @if (!string.IsNullOrWhiteSpace(iconClass)) {
+                        <i class="fa @iconClass me-1"></i>
+                    }
+                    @pipeline.LastRunTime.Value.Humanize()
+                    @if (showLinkIcon) {
+                        <i class="fa fa-external-link-square ms-1 small text-muted"></i>
+                    }
+                </a>
+            } else {
+                <span title="@Helpers.FormatDateTime(pipeline.LastRunTime)" class="cursor-help">
+                    @if (!string.IsNullOrWhiteSpace(iconClass)) {
+                        <i class="fa @iconClass me-1"></i>
+                    }
+                    @pipeline.LastRunTime.Value.Humanize()
+                </span>
+            }
+        } else {
+            <span class="text-muted">
+                @if (!string.IsNullOrWhiteSpace(iconClass)) {
+                    <i class="fa @iconClass me-1"></i>
+                }
+                Never run
+            </span>
+        }
+    };
+
+    /// <summary>The pipeline's variable group (Library) badges, one per environment; nothing when it has none.</summary>
+    public static RenderFragment RenderVarGroupBadges(List<DataObjects.PipelineVariableGroupRef>? variableGroups) => __builder =>
+    {
+        @if (variableGroups?.Any() == true) {
+            <div class="d-flex flex-wrap gap-1">
+                @foreach (var group in variableGroups) {
+                    var envLabel = DashboardView.EnvironmentLabel(group.Environment);
+                    var tooltip = group.Name + (group.VariableCount > 0 ? $" ({group.VariableCount} vars)" : "");
+
+                    @if (!string.IsNullOrWhiteSpace(group.ResourceUrl)) {
+                        <a href="@group.ResourceUrl" target="_blank"
+                           class="badge @Helpers.EnvBadgeClass(group.Environment) text-decoration-none library-link"
+                           title="@tooltip">
+                            @envLabel
+                            <i class="fa fa-external-link-square ms-1 small"></i>
+                        </a>
+                    } else {
+                        <span class="badge bg-secondary-subtle text-secondary-emphasis border" title="@tooltip (not found)">
+                            @envLabel
+                        </span>
+                    }
+                }
+            </div>
+        }
+    };
+
+    /// <summary>
+    /// The last run's stages as a row of small status icons in stage order, each named in its tooltip; nothing when
+    /// the run has no stages. The label goes before the icons (the card's "Stages:"), the icon size matches the text
+    /// around them, and anything in <paramref name="after"/> follows on the same row (the table's expand button).
+    /// </summary>
+    public static RenderFragment RenderStageBubbles(List<DataObjects.StageBubble>? stages, string? label = null, string cssClass = "", string iconSize = "0.85em", RenderFragment? after = null) => __builder =>
+    {
+        @if (stages?.Any() == true) {
+            <div class="@cssClass d-flex align-items-center gap-0 flex-wrap" style="gap: 2px !important;">
+                @if (!string.IsNullOrWhiteSpace(label)) {
+                    <span class="text-muted me-1" style="font-size: 0.8em;">@label</span>
+                }
+                @foreach (var stage in stages.OrderBy(s => s.Order)) {
+                    var stageStyle = DashboardView.Stage(stage.State, stage.Result);
+                    <i class="fa @stageStyle.Icon @stageStyle.TextClass" style="font-size: @iconSize; margin: 0 1px;" title="@stage.Name: @stageStyle.Label"></i>
+                }
+                @after
+            </div>
+        }
     };
 }

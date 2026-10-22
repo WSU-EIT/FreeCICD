@@ -17,7 +17,7 @@ public partial class DataAccess
 {
     public PluginExecuteResult ExecutePlugin(PluginExecuteRequest request, DataObjects.User? CurrentUser = null)
     {
-        var output = new PluginExecuteResult { 
+        var output = new PluginExecuteResult {
             Messages = new List<string>(),
             Objects = new List<object>(),
             Result = false,
@@ -71,11 +71,11 @@ public partial class DataAccess
             // Execute the plugin code. This will return a tuple of boolean Result, a List of Messages, and possibly an array of Objects.
             if (PluginsInterface != null) {
                 var result = PluginsInterface.ExecuteDynamicCSharpCode<(bool Result, List<string>? Messages, IEnumerable<object>? Objects)>(
-                    code, 
-                    objectArguments, 
-                    additionalAssemblies, 
-                    request.Plugin.Namespace, 
-                    request.Plugin.ClassName, 
+                    code,
+                    objectArguments,
+                    additionalAssemblies,
+                    request.Plugin.Namespace,
+                    request.Plugin.ClassName,
                     request.Plugin.Invoker
                 );
 
@@ -165,7 +165,8 @@ public partial class DataAccess
         }
     }
 
-    private void SavePluginsToCache() {
+    private void SavePluginsToCache()
+    {
         if (PluginsInterface != null) {
             // First, mark all records as StillExists = false;
 
@@ -199,7 +200,7 @@ public partial class DataAccess
                     // Always store the plugin code in the encrypted format.
                     if (!String.IsNullOrWhiteSpace(code)) {
                         if (!code.Contains(",0x")) {
-                            
+
                         }
                     }
 

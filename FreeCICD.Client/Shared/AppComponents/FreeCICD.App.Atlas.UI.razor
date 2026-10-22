@@ -1,0 +1,727 @@
+@* App Atlas: Portfolio Wall and Drift Matrix over the App Registry, with the decommission review shown in place on *@
+@* every card and row (disposition, note, evidence), the unused pools below, and the sysadmin email. The admin-only *@
+@* gate is the page's (FreeCICD.App.Atlas.Page.razor). Everything shown comes from the server's cached registry: *@
+@* opening this page never calls Azure DevOps and never contacts the apps. See docs/104_feature_app_atlas.md. *@
+@inject BlazorDataModel Model
+@implements IDisposable
+
+<div class="atlas">
+    @{
+        <div class="at-header">
+            <div>
+                <h1 class="page-title at-title"><Icon Name="Atlas" /> App Atlas</h1>
+                <p class="at-muted at-sub">
+                    Every app deployed on DEV, PROD and CMS, paired into one registry.
+                    @if (_registry != null) {
+                        <span>Built @Helpers.FormatDateTime(_registry.GeneratedUtc).</span>
+                    }
+                </p>
+            </div>
+            <div class="at-header-actions">
+                @if (_review != null && _review.Success) {
+                    <button type="button" class="btn btn-primary" aria-expanded="@(_emailOpen ? "true" : "false")" aria-controls="at-dc-email" @onclick="ToggleEmail">
+                        <i class="fa fa-envelope me-1" aria-hidden="true"></i>Sysadmin email (@_review.Counts.Remove)
+                    </button>
+                }
+                <button type="button" class="btn btn-outline-secondary" @onclick="Refresh" disabled="@_refreshing">
+                    <i class="fa fa-refresh me-1" aria-hidden="true"></i>Refresh links and checks
+                </button>
+                <button type="button" class="btn btn-outline-secondary" @onclick="RefreshPreviews" disabled="@_queueingPreviews" title="Queues FreeCICD's own pipeline: its gather stages rescan every server (IIS, host environment) and the results arrive with the deploy, in about fifteen minutes.">
+                    <i class="fa fa-server me-1" aria-hidden="true"></i>Rescan servers
+                </button>
+            </div>
+        </div>
+
+        @if (_progress != null) {
+            @* Live progress of a refresh, pushed by the AtlasService over SignalR (the Atlas group), like the dashboard. *@
+            <div class="at-progress @(_progress.Finished ? "at-progress-done" : "")" role="status" aria-live="polite">
+                <div class="at-progress-bar" aria-hidden="true"><i style="width: @(ProgressPercent)%"></i></div>
+                <span>
+                    @if (!_progress.Finished) {
+                        <i class="fa fa-spinner fa-spin me-1" aria-hidden="true"></i>
+                    } else {
+                        <i class="fa fa-check me-1" aria-hidden="true"></i>
+                    }
+                    @_progress.Message
+                </span>
+            </div>
+        }
+
+        @if (_loading) {
+            <p role="status" class="at-loading">Loading the App Registry…</p>
+        } else if (_registry == null || !_registry.Success) {
+            <div class="alert alert-warning" role="alert">
+                @(_registry?.ErrorMessage ?? "The App Registry could not be loaded.")
+            </div>
+        } else {
+            var summary = _registry.Summary;
+
+            <section aria-labelledby="at-sum-h">
+                <h2 id="at-sum-h" class="visually-hidden">Summary</h2>
+                <div class="at-tiles">
+                    <button type="button" class="at-tile" aria-pressed="@Pressed("freecicd")" @onclick="@(() => SetFilter("freecicd"))">
+                        <b>@summary.FreeCICDProjects</b><span>FreeCICD projects (@summary.Paired paired)</span>
+                    </button>
+                    <button type="button" class="at-tile" aria-pressed="@Pressed("insync")" @onclick="@(() => SetFilter("insync"))">
+                        <b>@summary.InSync</b><span>in sync (@summary.InSyncDevProd DEV↔PROD, @summary.InSyncDevCms DEV↔CMS)</span>
+                    </button>
+                    <button type="button" class="at-tile at-tile-hot" aria-pressed="@Pressed("drift")" @onclick="@(() => SetFilter("drift"))">
+                        <b>@summary.Drifting</b><span>drifting: PROD behind or ahead of DEV</span>
+                    </button>
+                    <button type="button" class="at-tile" aria-pressed="@Pressed("single")" @onclick="@(() => SetFilter("single"))">
+                        <b>@summary.DevOnly / @summary.ProdOnly</b><span>DEV only / PROD only</span>
+                    </button>
+                    <button type="button" class="at-tile" aria-pressed="@Pressed("legacy")" @onclick="@(() => SetFilter("legacy"))">
+                        <b>@summary.LegacyProdApplications</b><span>PROD applications on Octopus (@summary.LegacyProdOctopus) or manual (@summary.LegacyProdManual) paths</span>
+                    </button>
+                    <button type="button" class="at-tile" aria-pressed="@Pressed("stopped")" @onclick="@(() => SetFilter("stopped"))">
+                        <b>@summary.StoppedPools</b><span>stopped app pool@(summary.StoppedPools == 1 ? "" : "s")@(summary.StoppedPoolNames.Count > 0 ? $" ({String.Join(", ", summary.StoppedPoolNames)})" : "")</span>
+                    </button>
+                </div>
+            </section>
+
+            <details class="at-sources">
+                <summary>Data sources and assumptions</summary>
+                <ul>
+                    @foreach (var env in _registry.Environments) {
+                        <li>
+                            <b>@env.Name</b>:
+                            @if (env.Found) {
+                                <span>@env.Sites sites, @env.Applications applications, @env.AppPools app pools@(env.Server.Length > 0 ? $" on {env.Server}" : ""), scanned @Helpers.FormatDateTime(env.ScannedUtc).</span>
+                            } else {
+                                <span>no IISInfo file.</span>
+                            }
+                        </li>
+                    }
+                    <li><b>Azure DevOps</b>: @_registry.DevOpsStatus</li>
+                    <li>
+                        <b>Up-check</b>:
+                        @if (_registry.UpCheckEnabled) {
+                            <span>every @_registry.UpCheckMinutes minutes from the server@(_registry.UpCheckLastRunUtc.HasValue ? $", last run {Helpers.FormatDateTime(_registry.UpCheckLastRunUtc)}" : ", not run yet").</span>
+                        } else {
+                            <span>off (Atlas:UpCheckMinutes is 0 or Atlas:Enabled is false), so every status shows No data.</span>
+                        }
+                    </li>
+                    <li>
+                        <b>Previews</b>:
+                        <span>@_registry.Summary.Verified of @_registry.Summary.Apps apps have a fresh picture@(_registry.Summary.VerificationFailed > 0 ? $", {_registry.Summary.VerificationFailed} failed verification" : ""). Pictures come from each pipeline's verify stage, which runs on the build server after the deploy: it screenshots the public pages and reports here with the shared key.</span>
+                        @if (_reportKey != null) {
+                            <span> Report key: @(_reportKey.Configured ? $"configured, starts with {_reportKey.Hint}" : "not configured").</span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="RotateReportKey" disabled="@_rotatingKey" title="Replaces the key and writes it to the pipelines' FreeCICD_AtlasReport variable group. Reports with the old key are refused from now on.">Rotate key</button>
+                        }
+                    </li>
+                    <li>
+                        <b>Decommission review</b>:
+                        @if (_review != null && _review.Success) {
+                            <span>@_review.Counts.Applications applications and @_review.Counts.Pools unused pools from the scans; @_review.Counts.Remove marked Remove. Nothing is marked by the software; set a disposition on each card or row, then copy the email for the system administrator.@(_review.TrafficAvailable ? "" : " Request counts are not in the scans yet.")</span>
+                        } else {
+                            <span>@(_review?.ErrorMessage ?? "not loaded.")</span>
+                        }
+                    </li>
+                    @foreach (var note in _registry.Notes) {
+                        <li>@note</li>
+                    }
+                </ul>
+            </details>
+
+            @* The same filter bar and view controls as the Pipeline Dashboard. *@
+            <div class="pipeline-filter-bar mb-3">
+                <div class="row g-2 align-items-center">
+                    <div class="col-12 col-md-4 col-lg-3">
+                        <div class="input-group">
+                            <span class="input-group-text bg-white border-end-0">
+                                <i class="fa fa-search text-muted" aria-hidden="true"></i>
+                            </span>
+                            <input id="at-search-input" type="text" class="form-control border-start-0" placeholder="Search apps, URLs, repos, pools, builds..."
+                                    aria-label="Search apps" value="@_search" @oninput="OnSearch" autocomplete="off" />
+                            @if (!String.IsNullOrWhiteSpace(_search)) {
+                                <button class="btn btn-outline-secondary border-start-0" type="button" @onclick="ClearSearch" aria-label="Clear search">
+                                    <i class="fa fa-times" aria-hidden="true"></i>
+                                </button>
+                            }
+                        </div>
+                    </div>
+                    @foreach (var group in AtlasView.FilterGroups) {
+                        if (group.Key == "review" && _review == null) { continue; }
+                        <div class="col-6 col-md-2">
+                            <select class="form-select" aria-label="@group.AllLabel" value="@_filters.GetValueOrDefault(group.Key, "")" @onchange="@(e => SetGroupFilter(group.Key, e.Value?.ToString() ?? ""))">
+                                <option value="">@group.AllLabel</option>
+                                @foreach (var option in group.Options) {
+                                    <option value="@option.Key">@option.Label (@_chipCounts.GetValueOrDefault(option.Key))</option>
+                                }
+                            </select>
+                        </div>
+                    }
+                    @if (ActiveFilterCount > 0) {
+                        <div class="col-auto">
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="ClearFilters">
+                                <i class="fa fa-filter me-1" aria-hidden="true"></i>
+                                Clear Filters
+                                <span class="badge bg-primary ms-1">@ActiveFilterCount</span>
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="pipeline-view-controls mb-3">
+                <div class="d-flex flex-wrap gap-3 align-items-center justify-content-between">
+                    <div class="d-flex flex-wrap gap-3 align-items-center">
+                        <div class="btn-group" role="group" aria-label="View mode">
+                            <button type="button" class="btn @(_view == "wall" ? "btn-primary" : "btn-outline-primary")" aria-pressed="@(_view == "wall" ? "true" : "false")" @onclick="@(() => SetView("wall"))">
+                                <i class="fa fa-th-large me-1" aria-hidden="true"></i>
+                                Wall
+                            </button>
+                            <button type="button" class="btn @(_view == "matrix" ? "btn-primary" : "btn-outline-primary")" aria-pressed="@(_view == "matrix" ? "true" : "false")" @onclick="@(() => SetView("matrix"))">
+                                <i class="fa fa-table me-1" aria-hidden="true"></i>
+                                Matrix
+                            </button>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <label class="form-label mb-0 text-muted small" for="at-sort">Sort:</label>
+                            <select id="at-sort" class="form-select form-select-sm" style="width: auto;" value="@AtlasView.SortKey(_sort)" @onchange="@(e => SetSort(e.Value?.ToString() ?? ""))">
+                                @foreach (var sort in AtlasView.Sorts) {
+                                    <option value="@sort.Key">@sort.Label</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    @if (_view == "matrix") {
+                        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ExportCsv">
+                            <i class="fa fa-download me-1" aria-hidden="true"></i>Export CSV<span class="visually-hidden"> of the @_visible.Count apps shown</span>
+                        </button>
+                    }
+                </div>
+            </div>
+
+            @if (_emailOpen && _review != null) {
+                <section id="at-dc-email" class="at-dc-email" aria-labelledby="at-dc-email-h">
+                    <div class="at-dc-email-head">
+                        <h2 id="at-dc-email-h" class="at-h2">Email to the system administrator</h2>
+                        <span class="at-muted at-small">Everything marked Remove, grouped by server, with the evidence; Review items listed as "please confirm".</span>
+                        <button type="button" class="btn btn-outline-secondary" @onclick="CopyEmail"><i class="fa fa-copy me-1" aria-hidden="true"></i>Copy</button>
+                        <button type="button" class="btn btn-outline-secondary" @onclick="ExportReviewCsv"><i class="fa fa-download me-1" aria-hidden="true"></i>Review CSV</button>
+                        <button type="button" class="btn btn-outline-secondary" @onclick="ToggleEmail">Close</button>
+                    </div>
+                    <label for="at-dc-email-text" class="visually-hidden">Email text</label>
+                    <textarea id="at-dc-email-text" class="form-control at-dc-email-text" readonly>@_emailText</textarea>
+                    <p role="status" class="at-small at-muted">@_copyStatus</p>
+                </section>
+            }
+
+            <p role="status" class="at-count">@ResultText@(_reviewStatus.Length > 0 ? " " + _reviewStatus : "")</p>
+
+            @switch (_view) {
+                case "matrix":
+                    <section aria-labelledby="at-matrix-h">
+                        <h2 id="at-matrix-h" class="at-h2">Drift matrix</h2>
+                        @RenderMatrix()
+                    </section>
+                    break;
+                default:
+                    <section aria-labelledby="at-wall-h">
+                        <h2 id="at-wall-h" class="at-h2">Portfolio wall</h2>
+                        @if (_visible.Count == 0) {
+                            <p>No apps match. Clear the search or choose All.</p>
+                        } else {
+                            <ul class="at-wall" aria-label="@($"{_sorted.Count} apps")">
+                                @foreach (var app in _sorted) {
+                                    <FreeCICD_App_Atlas_UI_Card @key="app.Key" App="app" ReviewIndex="_reviewIndex" TrafficAvailable="@(_review?.TrafficAvailable ?? false)" OnDecide="Decide" Saving="_saving" ItemVersions="_itemVersions" ReviewStamp="_reviewStamp" />
+                                }
+                            </ul>
+                        }
+                    </section>
+                    break;
+            }
+
+            @if (_review != null && _poolsByEnvironment.Count > 0 && ActiveFilters.All(AtlasView.IsReviewFilter) && String.IsNullOrWhiteSpace(_search)) {
+                @* Pools no application uses are not apps, so they are not on the wall or in the matrix; they get their own list here. *@
+                <section aria-labelledby="at-pools-h" class="at-rv-pools">
+                    <h2 id="at-pools-h" class="at-h2">Unused app pools</h2>
+                    <p class="at-muted at-small">Pools no site or application uses (built-in pools are left out), with their state. Mark them like the apps.</p>
+                    @foreach (var (env, all) in _poolsByEnvironment) {
+                        var pools = all.Where(p => AtlasDecommissionView.MatchesFilter(p, ReviewFilter)).ToList();
+                        if (pools.Count == 0) { continue; }
+                        <h3 class="at-rv-pools-env">@env<span class="at-muted at-small"> · @(_review.Environments.FirstOrDefault(e => e.Name == env)?.Server ?? "") · @pools.Count</span></h3>
+                        <ul class="at-rv-pool-list">
+                            @foreach (var p in pools) {
+                                <li @key="@(p.Key + "|" + _itemVersions.GetValueOrDefault(p.Key))">
+                                    <FreeCICD_App_Atlas_UI_Review Item="p" Label="@p.AppPool" TrafficAvailable="_review.TrafficAvailable" Saving="_saving" OnDecide="Decide" />
+                                </li>
+                            }
+                        </ul>
+                    }
+                </section>
+            }
+        }
+    }
+</div>
+
+@code {
+    protected DataObjects.AtlasRegistryResponse? _registry;
+    protected bool _loading = true;
+    protected bool _refreshing = false;
+    protected string _view = "wall";
+    /// <summary>The value of each filter dropdown, by group key; "" is that group's "All".</summary>
+    protected Dictionary<string, string> _filters = new();
+    protected string _search = "";
+    /// <summary>The sort of the wall and the matrix: the biggest gap first.</summary>
+    protected SortState _sort = new("gap", ascending: false);
+    protected string _refreshMessage = "";
+
+    // The decommission review, loaded next to the registry and shown on each card and row.
+    protected DataObjects.AtlasDecommissionResponse? _review;
+    protected bool _saving = false;
+    protected string _reviewStatus = "";
+    protected bool _emailOpen = false;
+    protected string _copyStatus = "";
+
+    // Everything derived from the registry and the review is computed once, when they load or when a filter, the
+    // search or the sort changes, never in a getter that runs on every render. Rendering only reads these fields.
+    protected List<DataObjects.AtlasApp> _visible = [];
+    protected List<DataObjects.AtlasApp> _sorted = [];
+    protected Dictionary<string, int> _chipCounts = new();
+    protected Dictionary<string, string> _haystacks = new();
+    protected Dictionary<string, DataObjects.AtlasDecommissionItem>? _reviewIndex;
+    protected List<(string Environment, List<DataObjects.AtlasDecommissionItem> Pools)> _poolsByEnvironment = [];
+    protected string _emailText = "";
+    /// <summary>Per item key, bumped after a failed save so only that item's controls are re-created with the stored values.</summary>
+    protected Dictionary<string, int> _itemVersions = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Bumped whenever the review or an item version changes, so cards know to re-render.</summary>
+    protected int _reviewStamp = 0;
+
+    protected CancellationTokenSource? _refreshCts;
+
+    // Refresh progress over SignalR: the AtlasService pushes AtlasRefreshProgress steps to the Atlas group while a
+    // refresh runs; the last one (Finished) reloads the registry. Joining needs the SignalR connection id, which may
+    // not exist yet on the first render, so the join is retried when Refresh is pressed. A reconnect gives SignalR a
+    // new id and drops the old one's groups; EnsureJoinedAsync joins again whenever the id has changed.
+    protected DataObjects.AtlasRefreshProgress? _progress;
+    protected readonly SignalRGroupMembership _group = new(DataObjects.Endpoints.Atlas.Join, DataObjects.Endpoints.Atlas.Leave);
+    protected int ProgressPercent => _progress == null ? 0 : _progress.Finished ? 100 : _progress.Total > 0 ? Math.Min(99, (int)Math.Round(100.0 * _progress.Done / _progress.Total)) : 5;
+
+    // Deploy verification: the report key's hint for the Sources panel and the two header actions.
+    protected DataObjects.AtlasReportKeyInfo? _reportKey;
+    protected bool _rotatingKey = false;
+    protected bool _queueingPreviews = false;
+
+    protected string ResultText {
+        get {
+            var text = $"Showing {_visible.Count} of {_registry?.Apps.Count ?? 0} apps";
+            if (ActiveFilters.Count > 0) text += $", filter: {String.Join(", ", ActiveFilters.Select(AtlasView.FilterLabel))}";
+            if (!String.IsNullOrWhiteSpace(_search)) text += $", search: “{_search}”";
+            return text + "." + (String.IsNullOrWhiteSpace(_refreshMessage) ? "" : " " + _refreshMessage);
+        }
+    }
+
+    protected async Task CopyEmail()
+    {
+        await Helpers.CopyToClipboard(_emailText);
+        _copyStatus = "Copied to the clipboard.";
+    }
+
+    /// <summary>
+    /// Saves one decision from a card, a row or the pool list, then reloads the review so every card shows what the
+    /// server stored (who decided, when). A failed save bumps that item's version so its controls go back to the
+    /// stored values; the other items are left alone.
+    /// </summary>
+    protected async Task Decide(AtlasDecision decision)
+    {
+        if (_saving) { return; }
+        _saving = true;
+        try {
+            var payload = new List<DataObjects.AtlasDecommissionDecision> { new() { Key = decision.Item.Key, Disposition = decision.To, Note = decision.Note ?? decision.Item.Note } };
+            var result = await Helpers.GetOrPost<DataObjects.BooleanResponse>(DataObjects.Endpoints.Atlas.SaveDecommissionDecisions, payload);
+            if (result?.Result == true) {
+                await LoadReview();
+                _reviewStatus = $"Saved: {AtlasDecommissionView.Title(decision.Item)} is {AtlasDecommissionView.Label(decision.To)}.";
+            } else {
+                RevertItem(decision.Item.Key);
+                _reviewStatus = result?.Messages.FirstOrDefault() ?? "The decision could not be saved.";
+            }
+        } catch (Exception ex) {
+            RevertItem(decision.Item.Key);
+            _reviewStatus = "The decision could not be saved: " + ex.Message;
+        } finally {
+            _saving = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        Model.OnSignalRUpdate -= OnSignalRUpdate;
+        _refreshCts?.Cancel();
+        _refreshCts?.Dispose();
+        _ = _group.LeaveAsync();
+    }
+
+    protected void OnSignalRUpdate(DataObjects.SignalRUpdate update)
+    {
+        if (update == null || update.UpdateType != DataObjects.SignalRUpdateType.AtlasRefreshProgress) {
+            return;
+        }
+        var step = Helpers.SignalRPayload<DataObjects.AtlasRefreshProgress>(update);
+        if (step == null) {
+            return;
+        }
+        InvokeAsync(async () => {
+            if (!_refreshing) {
+                // A scheduled sweep nobody on this page asked for: take its data quietly, with no bar or message.
+                if (step.Finished) {
+                    await Load();
+                    StateHasChanged();
+                }
+                return;
+            }
+            _progress = step;
+            StateHasChanged();
+            if (step.Finished) {
+                // The service's last word: reload the registry now instead of guessing when it is done.
+                _refreshCts?.Cancel();
+                await Load();
+                _refreshMessage = "Refreshed.";
+                _refreshing = false;
+                StateHasChanged();
+                await Task.Delay(4000);
+                if (_progress == step) {
+                    _progress = null;
+                    StateHasChanged();
+                }
+            }
+        });
+    }
+
+    /// <summary>Downloads rows as "{name}-yyyyMMdd-HHmm.csv", the one file naming for both Atlas exports.</summary>
+    protected static Task DownloadCsv<T>(string name, IEnumerable<T> rows) =>
+        Helpers.DownloadFileToBrowser($"{name}-{DateTime.Now:yyyyMMdd-HHmm}.csv", Helpers.GetCsvData(rows));
+
+    protected Task ExportCsv() => DownloadCsv("atlas-matrix", AtlasView.CsvRows(_sorted));
+
+    protected async Task ExportReviewCsv()
+    {
+        if (_review == null) { return; }
+        var items = DataObjects.AtlasEnvironmentsLiveFirst.SelectMany(env => _review.Items.Where(i => i.Environment == env).OrderBy(i => i.Kind).ThenBy(i => i.Site, StringComparer.OrdinalIgnoreCase).ThenBy(i => i.VirtualPath, StringComparer.OrdinalIgnoreCase));
+        await DownloadCsv("atlas-decommission", AtlasDecommissionView.CsvRows(items));
+    }
+
+    protected async Task Load()
+    {
+        _registry = await Helpers.GetOrPost<DataObjects.AtlasRegistryResponse>(DataObjects.Endpoints.Atlas.GetRegistry);
+        _haystacks = AtlasView.Haystacks(_registry?.Apps ?? []);
+        await LoadReview();
+        _reportKey = await Helpers.GetOrPost<DataObjects.AtlasReportKeyInfo>(DataObjects.Endpoints.Atlas.ReportKeyInfo);
+        StateHasChanged();
+    }
+
+    protected async Task LoadReview()
+    {
+        _review = await Helpers.GetOrPost<DataObjects.AtlasDecommissionResponse>(DataObjects.Endpoints.Atlas.GetDecommission);
+        if (_review == null) {
+            _filters.Remove("review");
+        }
+        _reviewIndex = _review == null ? null : AtlasDecommissionView.Index(_review);
+        _poolsByEnvironment = AtlasDecommissionView.PoolsByEnvironment(_review);
+        _emailText = _review == null ? "" : AtlasDecommissionView.EmailText(_review.Items, _review.Environments, _review.TrafficAvailable, _review.GeneratedUtc, Model.User.DisplayName ?? "");
+        _reviewStamp++;
+        _chipCounts = AtlasView.ChipCounts(_registry?.Apps ?? [], ReviewLookup);
+        Recompute();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Model.OnSignalRUpdate += OnSignalRUpdate;
+        await Load();
+        _loading = false;
+        await _group.EnsureJoinedAsync();
+    }
+
+    protected void OnSearch(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? "";
+        Recompute();
+    }
+
+    protected List<string> ActiveFilters => _filters.Values.Where(v => v.Length > 0).ToList();
+
+    protected int ActiveFilterCount => ActiveFilters.Count + (String.IsNullOrWhiteSpace(_search) ? 0 : 1);
+
+    /// <summary>The review dropdown's filter for the unused pools list; "all" when none is chosen.</summary>
+    protected string ReviewFilter => _filters.GetValueOrDefault("review") is { Length: > 0 } review ? review : "all";
+
+    protected string Pressed(string filter) => _filters.GetValueOrDefault(AtlasView.GroupOf(filter).Key) == filter ? "true" : "false";
+
+    protected void ClearSearch()
+    {
+        _search = "";
+        Recompute();
+    }
+
+    protected void ClearFilters()
+    {
+        _filters.Clear();
+        _search = "";
+        Recompute();
+    }
+
+    protected void SetGroupFilter(string group, string filter)
+    {
+        _filters[group] = filter;
+        Recompute();
+    }
+
+    protected void SetSort(string key)
+    {
+        var sort = AtlasView.Sorts.FirstOrDefault(s => s.Key == key);
+        if (sort.Key == null) {
+            return;
+        }
+        _sort = new SortState(sort.Column, ascending: !sort.Descending);
+        _sorted = AtlasView.Sort(_visible, _sort.Column, _sort.Descending);
+    }
+
+    /// <summary>The visible and sorted apps from the current registry, review, filter, search and sort.</summary>
+    protected void Recompute()
+    {
+        _visible = AtlasView.Apply(_registry?.Apps ?? [], ActiveFilters, _search, ReviewLookup, _haystacks);
+        _sorted = AtlasView.Sort(_visible, _sort.Column, _sort.Descending);
+    }
+
+    protected async Task Refresh()
+    {
+        _refreshing = true;
+        await _group.EnsureJoinedAsync();
+        var result = await Helpers.GetOrPost<DataObjects.BooleanResponse>(DataObjects.Endpoints.Atlas.Refresh, new { });
+        if (result?.Result != true) {
+            _refreshMessage = result?.Messages.FirstOrDefault() ?? "The refresh could not be started.";
+            _refreshing = false;
+            StateHasChanged();
+            return;
+        }
+        _refreshMessage = "";
+        _progress = new DataObjects.AtlasRefreshProgress { Phase = "links", Message = "Refresh started…" };
+        StateHasChanged();
+
+        // The service's Finished update (OnSignalRUpdate) reloads the registry. Without SignalR, or if the update
+        // never arrives, this fallback reloads after a while; leaving the page cancels it (Dispose).
+        _refreshCts?.Cancel();
+        _refreshCts?.Dispose();
+        _refreshCts = new CancellationTokenSource();
+        try {
+            await Task.Delay(_group.IsJoined ? 90000 : 8000, _refreshCts.Token);
+            await Load();
+            _progress = null;
+            _refreshMessage = "Refreshed.";
+        } catch (OperationCanceledException) {
+            return; // the Finished update reloaded it, or the page was left
+        }
+        _refreshing = false;
+    }
+
+    protected async Task RefreshPreviews()
+    {
+        _queueingPreviews = true;
+        try {
+            var result = await Helpers.GetOrPost<DataObjects.BooleanResponse>(DataObjects.Endpoints.Atlas.RefreshPreviews, new { });
+            _refreshMessage = result?.Result == true
+                ? "Rescan queued: FreeCICD's pipeline is running; the new scans arrive with its deploy."
+                : (result?.Messages.FirstOrDefault() ?? "The rescan could not be queued.");
+        } finally {
+            _queueingPreviews = false;
+        }
+    }
+
+    protected void RevertItem(string key)
+    {
+        _itemVersions[key] = _itemVersions.GetValueOrDefault(key) + 1;
+        _reviewStamp++;
+    }
+
+    protected DataObjects.AtlasDecommissionItem? ReviewLookup(DataObjects.AtlasDeployment d) => AtlasDecommissionView.ItemFor(_reviewIndex, d);
+
+    protected async Task RotateReportKey()
+    {
+        _rotatingKey = true;
+        try {
+            var result = await Helpers.GetOrPost<DataObjects.BooleanResponse>(DataObjects.Endpoints.Atlas.RotateReportKey, new { });
+            _refreshMessage = result?.Result == true
+                ? (result.Messages.FirstOrDefault() ?? "Report key rotated and written to the pipelines' variable group; every verify step uses it from its next run.")
+                : (result?.Messages.FirstOrDefault() ?? "The key could not be rotated.");
+            _reportKey = await Helpers.GetOrPost<DataObjects.AtlasReportKeyInfo>(DataObjects.Endpoints.Atlas.ReportKeyInfo);
+        } finally {
+            _rotatingKey = false;
+        }
+    }
+
+    /// <summary>A summary tile: sets its dropdown to the tile's filter, or back to All when it is already chosen.</summary>
+    protected void SetFilter(string filter)
+    {
+        var group = AtlasView.GroupOf(filter).Key;
+        _filters[group] = _filters.GetValueOrDefault(group) == filter ? "" : filter;
+        Recompute();
+    }
+
+    protected void SetView(string view) => _view = view;
+
+    /// <summary>A header click. The gap, the build dates and the status start descending (worst or newest first); name and deploy ascending.</summary>
+    protected void Sort(string column)
+    {
+        _sort.Toggle(column, defaultAscending: column is not ("gap" or "dev" or "prod" or "cms" or "status"));
+        _sorted = AtlasView.Sort(_visible, _sort.Column, _sort.Descending);
+    }
+
+    protected void ToggleEmail()
+    {
+        _emailOpen = !_emailOpen;
+        _copyStatus = "";
+    }
+
+    /// <summary>
+    /// The up-check state as a shape plus a word, never colour alone. Up = circle with a tick, Degraded = triangle
+    /// with "!", Down = square with a cross, No data = dashed ring. Static and handler-free so the card can use it too.
+    /// </summary>
+    public static RenderFragment RenderGlyph(DataObjects.AtlasUpState state, bool showLabel = true, string? detail = null)
+    {
+        var title = String.IsNullOrWhiteSpace(detail) ? AtlasView.StatusLabel(state) : $"{AtlasView.StatusLabel(state)}: {detail}";
+        return @<span class="at-glyph at-glyph-@state.ToString().ToLowerInvariant()" title="@title">
+            <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" focusable="false">
+                @switch (state) {
+                    case DataObjects.AtlasUpState.Up:
+                        <circle cx="10" cy="10" r="9" class="at-glyph-fill" />
+                        <path d="M5.5 10.5l3 3 6-7" class="at-glyph-mark" />
+                        break;
+                    case DataObjects.AtlasUpState.Degraded:
+                        <path d="M10 1.5l9 16.5H1z" class="at-glyph-fill" />
+                        <path d="M10 7v5.5M10 15v.5" class="at-glyph-mark" />
+                        break;
+                    case DataObjects.AtlasUpState.Down:
+                        <rect x="1.5" y="1.5" width="17" height="17" rx="2" class="at-glyph-fill" />
+                        <path d="M6 6l8 8M14 6l-8 8" class="at-glyph-mark" />
+                        break;
+                    default:
+                        <circle cx="10" cy="10" r="8" class="at-glyph-ring" />
+                        break;
+                }
+            </svg>
+            @if (showLabel) {
+                <span class="at-glyph-text">@AtlasView.StatusLabel(state)</span>
+            } else {
+                <span class="visually-hidden">@AtlasView.StatusLabel(state)</span>
+            }
+        </span>;
+    }
+
+    /// <summary>
+    /// The Drift Matrix: one row per app, DEV / PROD / CMS columns with build, build date and site, the gap, the
+    /// deploy method, the up-check and the flags. Sortable by column; on a phone each row stacks.
+    /// </summary>
+    protected RenderFragment RenderMatrix() => @<div class="at-matrix-wrap">
+        <table class="at-matrix">
+            <caption class="visually-hidden">Drift matrix: @_sorted.Count apps, sorted by @MatrixSortLabel @(_sort.Descending ? "descending" : "ascending")</caption>
+            <thead>
+                <tr>
+                    @foreach (var column in AtlasView.SortColumns) {
+                        <th scope="col" aria-sort="@MatrixAriaSort(column.Key)">
+                            <button type="button" class="at-sort" @onclick="@(() => Sort(column.Key))">
+                                @column.Label
+                                <i class="fa @_sort.IconClass(column.Key) ms-1" aria-hidden="true"></i>
+                                <span class="visually-hidden">, sort</span>
+                            </button>
+                        </th>
+                        if (column.Key == "status") {
+                            <th scope="col">Flags</th>
+                            @if (_reviewIndex != null) {
+                                <th scope="col">Review</th>
+                            }
+                        }
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var app in _sorted) {
+                    <tr @key="app.Key" class="@(app.NeedsAttention ? "at-row-attn" : "")">
+                        <th scope="row" data-label="App">
+                            <div>
+                                <span class="at-row-name">@app.Name</span>
+                                @if (app.FreeCrm.State == DataObjects.AtlasFreeCrmState.Yes) {
+                                    <span class="at-badge at-badge-solid">FreeCRM</span>
+                                }
+                                @if (app.NeedsAttention) {
+                                    <span class="at-tag-attn">Needs attention</span>
+                                }
+                            </div>
+                        </th>
+                        @foreach (var env in DataObjects.AtlasEnvironments) {
+                            var deployments = AtlasView.LiveIn(app, env).ToList();
+                            <td data-label="@env">
+                                <div>
+                                    @if (deployments.Count == 0) {
+                                        <span aria-hidden="true">–</span><span class="visually-hidden">none</span>
+                                    }
+                                    @foreach (var d in deployments) {
+                                        <div class="at-cell">
+                                            <span class="at-mono">@AtlasView.BuildText(d)</span>
+                                            <small>@AtlasView.Date(AtlasView.BuildDateOf(d)) · @foreach (var part in MatrixBreakable(AtlasView.Display(d))) {@part<wbr />}</small>
+                                        </div>
+                                    }
+                                </div>
+                            </td>
+                        }
+                        <td data-label="Gap">
+                            <div><span class="at-drift at-drift-@AtlasView.PairingCss(app)">@AtlasView.PairingLabel(app)</span></div>
+                        </td>
+                        <td data-label="Deploy"><div>@AtlasView.DeployLabel(app)</div></td>
+                        <td data-label="Status">
+                            <div>@RenderGlyph(app.Status)</div>
+                        </td>
+                        <td data-label="Flags">
+                            <div>
+                                @if (app.Flags.Count > 0) {
+                                    <ul class="at-flags">
+                                        @foreach (var flag in app.Flags) {
+                                            <li>@flag</li>
+                                        }
+                                    </ul>
+                                } else {
+                                    <span aria-hidden="true">–</span><span class="visually-hidden">none</span>
+                                }
+                            </div>
+                        </td>
+                        @if (_reviewIndex != null) {
+                            <td data-label="Review">
+                                <div class="at-rv at-rv-cell">
+                                    @foreach (var d in app.Deployments) {
+                                        var item = AtlasDecommissionView.ItemFor(_reviewIndex, d);
+                                        if (item == null) { continue; }
+                                        <div @key="@(item.Key + "|" + _itemVersions.GetValueOrDefault(item.Key))">
+                                            <FreeCICD_App_Atlas_UI_Review Item="item" Label="@AtlasDecommissionView.ReviewLabel(app, d)" Compact="true" TrafficAvailable="@(_review?.TrafficAvailable ?? false)" Saving="_saving" OnDecide="Decide" />
+                                        </div>
+                                    }
+                                </div>
+                            </td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>;
+
+    protected string MatrixSortLabel => AtlasView.SortColumns.FirstOrDefault(c => c.Key == _sort.Column).Label ?? "Gap";
+
+    protected string MatrixAriaSort(string column) => column == _sort.Column ? (_sort.Descending ? "descending" : "ascending") : "none";
+
+
+    /// <summary>Splits a host/path after each dot and slash, so long names wrap at sensible places.</summary>
+    protected static IEnumerable<string> MatrixBreakable(string text)
+    {
+        int start = 0;
+        for (int i = 0; i < text.Length; i++) {
+            if (text[i] is '.' or '/') {
+                yield return text[start..(i + 1)];
+                start = i + 1;
+            }
+        }
+        if (start < text.Length) {
+            yield return text[start..];
+        }
+    }
+}

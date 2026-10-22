@@ -31,7 +31,8 @@ steps:
                     ManagedRuntimeVersion = $pool.ManagedRuntimeVersion
                     IdentityType = $pool.ProcessModel.IdentityType.ToString()
                     Username = $pool.ProcessModel.UserName
-                    Password = $pool.ProcessModel.Password
+                    # The identity's password is deliberately not read: this report is a log, and a pipeline artifact
+                    # is no place for a credential. The Credentials App holds it for anyone who needs it.
                 }
             }
             return $output
@@ -60,9 +61,7 @@ steps:
             if ($thisAppPool) {
                 if ($thisAppPool.IdentityType) { $output += "$p IdentityType: $($thisAppPool.IdentityType)" }
                 if ($thisAppPool.ManagedRuntimeVersion) { $output += "$p ManagedRuntimeVersion: $($thisAppPool.ManagedRuntimeVersion)" }
-                if ($thisAppPool.Username) { $output += "$p Username: $($thisAppPool.Username)" }
-                #if ($thisAppPool.Password) { $output += "$p Password: *** (See the Credentials App)" }
-                if ($thisAppPool.Password) { $output += "$p Password: $($thisAppPool.Password)" }
+                if ($thisAppPool.Username) { $output += "$p Username: $($thisAppPool.Username) (password in the Credentials App)" }
             }
             return $output
         }

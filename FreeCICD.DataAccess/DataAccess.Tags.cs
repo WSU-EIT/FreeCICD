@@ -17,7 +17,7 @@ public partial class DataAccess
         var output = new DataObjects.BooleanResponse();
 
         var rec = await data.Tags.FirstOrDefaultAsync(x => x.TagId == TagId);
-        if(rec == null) {
+        if (rec == null) {
             output.Messages.Add("Error Deleting Tag '" + TagId.ToString() + "' - Record No Longer Exists");
             return output;
         }
@@ -73,14 +73,14 @@ public partial class DataAccess
 
         Tag? rec = null;
 
-        if(AdminUser(CurrentUser)) {
+        if (AdminUser(CurrentUser)) {
             rec = await data.Tags.FirstOrDefaultAsync(x => x.TagId == TagId);
         } else {
             rec = await data.Tags.FirstOrDefaultAsync(x => x.TagId == TagId && x.Deleted != true);
         }
 
-        if(rec != null) {
-            output = new DataObjects.Tag { 
+        if (rec != null) {
+            output = new DataObjects.Tag {
                 ActionResponse = GetNewActionResponse(true),
                 TagId = rec.TagId,
                 TenantId = rec.TenantId,
@@ -110,14 +110,14 @@ public partial class DataAccess
 
         List<Tag>? recs = null;
 
-        if(AdminUser(CurrentUser)) {
+        if (AdminUser(CurrentUser)) {
             recs = await data.Tags.Where(x => x.TenantId == TenantId).ToListAsync();
         } else {
             recs = await data.Tags.Where(x => x.TenantId == TenantId && x.Deleted != true).ToListAsync();
         }
 
-        if(recs != null && recs.Any()) {
-            foreach(var rec in recs) {
+        if (recs != null && recs.Any()) {
+            foreach (var rec in recs) {
                 output.Add(new DataObjects.Tag {
                     ActionResponse = GetNewActionResponse(true),
                     TagId = rec.TagId,
@@ -149,7 +149,7 @@ public partial class DataAccess
             .Where(x => x.TenantId == TenantId && x.ItemId == ItemId)
             .Select(x => x.TagId)
             .ToListAsync();
-        if(tags != null && tags.Any()) {
+        if (tags != null && tags.Any()) {
             output = tags;
         }
 
@@ -158,8 +158,8 @@ public partial class DataAccess
 
     protected async Task SaveItemTags(Guid TenantId, Guid ItemId, List<Guid>? Tags)
     {
-        List<Guid> keepTags = Tags != null && Tags.Any() 
-            ? Tags 
+        List<Guid> keepTags = Tags != null && Tags.Any()
+            ? Tags
             : new List<Guid>();
 
         // Remove any items from the table that should no longer be there.
@@ -167,11 +167,11 @@ public partial class DataAccess
         await data.SaveChangesAsync();
 
         // Make sure all tags exists
-        foreach(var tagId in keepTags) {
+        foreach (var tagId in keepTags) {
             var rec = await data.TagItems.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.ItemId == ItemId && x.TagId == tagId);
 
-            if(rec == null) {
-                await data.TagItems.AddAsync(new TagItem { 
+            if (rec == null) {
+                await data.TagItems.AddAsync(new TagItem {
                     TagItemId = Guid.NewGuid(),
                     TagId = tagId,
                     TenantId = TenantId,
@@ -192,8 +192,8 @@ public partial class DataAccess
 
         var rec = await data.Tags.FirstOrDefaultAsync(x => x.TagId == output.TagId);
 
-        if(rec != null && rec.Deleted) {
-            if(AdminUser(CurrentUser)) {
+        if (rec != null && rec.Deleted) {
+            if (AdminUser(CurrentUser)) {
                 // Ok to edit this record that is marked as deleted.
             } else {
                 output.ActionResponse.Messages.Add("Tag '" + output.TagId.ToString() + "' No Longer Exists");
@@ -201,12 +201,12 @@ public partial class DataAccess
             }
         }
 
-        if(rec == null) {
-            if(output.TagId == Guid.Empty) {
+        if (rec == null) {
+            if (output.TagId == Guid.Empty) {
                 newRecord = true;
                 output.TagId = Guid.NewGuid();
 
-                rec = new Tag { 
+                rec = new Tag {
                     TagId = output.TagId,
                     TenantId = output.TenantId,
                     Deleted = false,
@@ -230,7 +230,7 @@ public partial class DataAccess
         rec.LastModified = now;
         rec.LastModifiedBy = CurrentUserIdString(CurrentUser);
 
-        if(AdminUser(CurrentUser)) {
+        if (AdminUser(CurrentUser)) {
             rec.Deleted = output.Deleted;
 
             if (!output.Deleted) {
@@ -246,7 +246,7 @@ public partial class DataAccess
 
             output.ActionResponse.Result = true;
 
-            await SignalRUpdate(new DataObjects.SignalRUpdate { 
+            await SignalRUpdate(new DataObjects.SignalRUpdate {
                 TenantId = output.TenantId,
                 ItemId = output.TagId,
                 UpdateType = DataObjects.SignalRUpdateType.Tag,
@@ -254,7 +254,7 @@ public partial class DataAccess
                 UserId = CurrentUserId(CurrentUser),
                 Object = output,
             });
-        }catch(Exception ex) {
+        } catch (Exception ex) {
             output.ActionResponse.Messages.Add("Error Saving Tag " + output.TagId.ToString());
             output.ActionResponse.Messages.AddRange(RecurseException(ex));
         }

@@ -93,11 +93,6 @@ public static partial class PasswordGenerator
     public class PasswordOptions
     {
         /// <summary>
-        /// Require UpperCase Characters (defaults to true)
-        /// </summary>
-        public bool RequireUpperCase { get; set; } = true;
-
-        /// <summary>
         /// Require LowerCase Characters (defaults to true)
         /// </summary>
         public bool RequireLowerCase { get; set; } = true;
@@ -111,5 +106,9 @@ public static partial class PasswordGenerator
         /// Require Special Characters (defaults to true)
         /// </summary>
         public bool RequireSpecialCharacters { get; set; } = true;
+        /// <summary>
+        /// Require UpperCase Characters (defaults to true)
+        /// </summary>
+        public bool RequireUpperCase { get; set; } = true;
     }
 }

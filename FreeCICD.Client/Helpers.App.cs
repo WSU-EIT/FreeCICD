@@ -1,30 +1,14 @@
-﻿using System.Net.NetworkInformation;
-
-namespace FreeCICD.Client;
+﻿namespace FreeCICD.Client;
 
 public static partial class Helpers
 {
     public static Dictionary<string, List<string>> AppIcons {
         get {
-            Dictionary<string, List<string>> icons = new Dictionary<string, List<string>> {
-                { "fa:fa-solid fa-home", new List<string> { "IconName1", "IconName2" }},
-                { "fa:fa-rocket", new List<string> { "Pipelines", "PipelineDashboard" }},
-                { "fa:fa-magic", new List<string> { "PipelineWizard", "Wizard" }},
-                { "fa:fa-plug", new List<string> { "Plug", "SignalR" }},
-                { "fa:fa-cubes", new List<string> { "NuGetInventory" }},
-                { "fa:fa-server", new List<string> { "HostEnvironment" }},
-            };
-
-            return icons;
+            return FreeCICDAppIcons();
         }
     }
-
-    public static bool AppMethod()
-    {
-        return true;
-    }
-
     // {{ModuleItemStart:Tags}}
+
     public static List<DataObjects.Tag> AvailableTagListApp(DataObjects.TagModule? Module, List<Guid> ExcludeTags)
     {
         var output = new List<DataObjects.Tag>();
@@ -42,15 +26,6 @@ public static partial class Helpers
         return output;
     }
     // {{ModuleItemEnd:Tags}}
-
-    private static List<string> GetDeletedRecordTypesApp()
-    {
-        var output = new List<string>();
-
-        // Add any app-specific deleted record types here.
-
-        return output;
-    }
 
     /// <summary>
     /// Gets the deleted records for a specific app type.
@@ -89,133 +64,30 @@ public static partial class Helpers
         return output;
     }
 
-    public static List<DataObjects.MenuItem> MenuItemsApp {
-        get {
-            // Add any app-specific top-level menu items here.
-            var output = new List<DataObjects.MenuItem>();
+    private static List<string> GetDeletedRecordTypesApp()
+    {
+        var output = new List<string>();
 
-            // Pipeline Dashboard - Now the home page (SortOrder: 100 = leftmost)
-            output.Add(new DataObjects.MenuItem {
-                Title = "Pipelines",
-                Icon = "Pipelines",
-                PageNames = new List<string> { "pipelines" },
-                SortOrder = 100,
-                url = Helpers.BuildUrl(""),
-                AppAdminOnly = false,
-            });
+        // Add any app-specific deleted record types here.
 
-            // Pipeline Wizard - Create/Edit pipeline (SortOrder: 200)
-            output.Add(new DataObjects.MenuItem {
-                Title = "Pipeline Wizard",
-                Icon = "PipelineWizard",
-                PageNames = new List<string> { "home" },
-                SortOrder = 200,
-                url = Helpers.BuildUrl("Wizard"),
-                AppAdminOnly = false,
-            });
-
-            // NuGet Inventory - Package scanner across all repos (SortOrder: 300)
-            output.Add(new DataObjects.MenuItem {
-                Title = "NuGet Inventory",
-                Icon = "NuGetInventory",
-                PageNames = new List<string> { "nuget-inventory" },
-                SortOrder = 300,
-                url = Helpers.BuildUrl("NuGetInventory"),
-                AppAdminOnly = false,
-            });
-
-            // Host Environment - Server tools and runtimes (SortOrder: 400)
-            output.Add(new DataObjects.MenuItem {
-                Title = "Host Environment",
-                Icon = "HostEnvironment",
-                PageNames = new List<string> { "host-environment" },
-                SortOrder = 400,
-                url = Helpers.BuildUrl("HostEnvironment"),
-                AppAdminOnly = false,
-            });
-
-            return output;
-        }
+        return output;
     }
 
     public static List<DataObjects.MenuItem> MenuItemsAdminApp {
         get {
-            // Add any app-specific admin menu items here.
-            var output = new List<DataObjects.MenuItem>();
+            return FreeCICDAdminMenuItems();
+        }
+    }
 
-            // SignalR Connections viewer (App Admin only)
-            output.Add(new DataObjects.MenuItem {
-                Title = "SignalR Connections",
-                Icon = "Plug",
-                PageNames = new List<string> { "signalr-connections" },
-                SortOrder = 9000,
-                url = Helpers.BuildUrl("Admin/SignalRConnections"),
-                AppAdminOnly = true,
-            });
-
-            return output;
+    public static List<DataObjects.MenuItem> MenuItemsApp {
+        get {
+            return FreeCICDMenuItems();
         }
     }
 
     public static async Task ProcessSignalRUpdateApp(DataObjects.SignalRUpdate update)
     {
-        // Process any SignalR updates specific to your app here. See the main ProcessSignalRUpdate method for an example in the MainLayout.razor page.
-
-        if (update != null && (update.TenantId == null || update.TenantId == Model.TenantId)) {
-            var itemId = update.ItemId;
-            string message = update.Message.ToLower();
-            var userId = update.UserId;
-
-            switch (update.UpdateType) {
-                case DataObjects.SignalRUpdateType.AdminAlert:
-                    // Admin sent an alert message - show it as a toast
-                    var alertMessage = update.Message;
-                    var senderName = update.UserDisplayName ?? "Admin";
-                    
-                    // Parse message type from ObjectAsString
-                    var messageType = MessageType.Info;
-                    if (!string.IsNullOrWhiteSpace(update.ObjectAsString)) {
-                        messageType = update.ObjectAsString.ToLower() switch {
-                            "primary" => MessageType.Primary,
-                            "secondary" => MessageType.Secondary,
-                            "success" => MessageType.Success,
-                            "danger" => MessageType.Danger,
-                            "warning" => MessageType.Warning,
-                            "info" => MessageType.Info,
-                            "light" => MessageType.Light,
-                            "dark" => MessageType.Dark,
-                            _ => MessageType.Info
-                        };
-                    }
-                    
-                    // Determine auto-hide (default true)
-                    bool autoHide = true;
-                    if (update.Object != null) {
-                        try {
-                            var objJson = System.Text.Json.JsonSerializer.Serialize(update.Object);
-                            var obj = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(objJson);
-                            if (obj != null && obj.TryGetValue("AutoHide", out var autoHideVal)) {
-                                if (autoHideVal is System.Text.Json.JsonElement jsonEl) {
-                                    autoHide = jsonEl.GetBoolean();
-                                } else if (autoHideVal is bool boolVal) {
-                                    autoHide = boolVal;
-                                }
-                            }
-                        } catch { }
-                    }
-                    
-                    // Show the message with sender info
-                    var displayMessage = $"<strong>📢 {senderName}:</strong> {alertMessage}";
-                    Model.AddMessage(displayMessage, messageType, autoHide);
-                    break;
-                    
-                default:
-                    // Since this is called only from the default method in the main handler here,
-                    // we can assume that the update type is not recognized by this app.
-                    await Helpers.ConsoleLog("Unknown SignalR Update Type Received");
-                    break;
-            }
-        }
+        await ProcessFreeCICDSignalRUpdate(update);
     }
 
     public static async Task ProcessSignalRUpdateAppUndelete(DataObjects.SignalRUpdate update)
@@ -238,5 +110,4 @@ public static partial class Helpers
     {
         // Model.DeletedRecordCounts.MyValue = deletedRecords.MyValue.Count();
     }
-
 }

@@ -1,0 +1,12 @@
+@page "/Atlas"
+@page "/{TenantCode}/Atlas"
+@inherits AppPageBase
+
+@if (ShowPage) {
+    <FreeCICD_App_Atlas_UI />
+}
+
+@code {
+    protected override string PageName => AppViews.Atlas;
+    protected override bool RequireAdmin => true;
+}

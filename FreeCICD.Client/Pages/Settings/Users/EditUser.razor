@@ -59,9 +59,9 @@
                     @if (!_newUser) {
                         if (!InDialog){
                             <DeleteConfirmation OnConfirmed="Delete"
-                                                CancelText="@Helpers.ConfirmButtonTextCancel"
-                                                DeleteText="@Helpers.ConfirmButtonTextDelete"
-                                                ConfirmDeleteText="@Helpers.ConfirmButtonTextConfirmDelete" />
+                                    CancelText="@Helpers.ConfirmButtonTextCancel"
+                                    DeleteText="@Helpers.ConfirmButtonTextDelete"
+                                    ConfirmDeleteText="@Helpers.ConfirmButtonTextConfirmDelete" />
                         }
 
                         if (!InDialog && Model.User.AppAdmin && _user.UserAccounts.Count > 1){
@@ -73,8 +73,8 @@
                                     var tenantName = Helpers.TenantNameFromId(item.TenantId);
                                     <li>
                                         <a class="dropdown-item" 
-                                        href="javascript:void('0');"
-                                        @onclick="@(() => Helpers.EditUser(item.UserId))">
+                                                href="javascript:void('0');"
+                                                @onclick="@(() => Helpers.EditUser(item.UserId))">
                                             <Language Tag="Edit" IncludeIcon="true" />
                                             <span>-</span>
                                             <span>@item.FirstName @item.LastName</span>

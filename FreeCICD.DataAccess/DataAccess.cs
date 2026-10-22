@@ -3,7 +3,7 @@ using Plugins;
 
 namespace FreeCICD;
 
-public partial class DataAccess: IDisposable, IDataAccess
+public partial class DataAccess : IDisposable, IDataAccess
 {
     private int _accountLockoutMaxAttempts = 5;
     private int _accountLockoutMinutes = 10;
@@ -35,8 +35,7 @@ public partial class DataAccess: IDisposable, IDataAccess
         string LocalModeUrl = "",
         IServiceProvider? serviceProvider = null,
         string CookiePrefix = ""
-    )
-    {
+    ){
         _cookiePrefix = CookiePrefix;
         _connectionString = ConnectionString;
         _databaseType = DatabaseType;

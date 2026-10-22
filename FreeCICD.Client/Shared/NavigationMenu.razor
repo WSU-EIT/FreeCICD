@@ -6,7 +6,8 @@
         <div class="container-fluid">
             <a class="navbar-brand" href="@(Helpers.BuildUrl())">
                 @if (!String.IsNullOrWhiteSpace(LogoUrl) && Model.Tenant.TenantSettings.LogoIncludedOnNavbar) {
-                    <img src="@LogoUrl" class="logo-navbar" title="@Helpers.Text("AppTitle")" />
+                    @* FreeCICD a11y: alt text for the logo (WCAG 1.1.1) *@
+                    <img src="@LogoUrl" class="logo-navbar" title="@Helpers.Text("AppTitle")" alt="@Helpers.Text("AppTitle")" />
                 } else {
                     @if (!String.IsNullOrWhiteSpace(Model.Tenant.TenantSettings.AppIcon)) {
                         <i>@((MarkupString)Model.Tenant.TenantSettings.AppIcon)</i>
@@ -15,7 +16,7 @@
                 }
             </a>
             <button id="menu-bar-toggler" class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navBarToggler" aria-controls="navbarSupportedContent"
-            aria-expanded="false" aria-label="Toggle navigation">
+                    aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="navbar-collapse collapse" id="navBarToggler">
@@ -111,7 +112,8 @@
 
                         @if (String.IsNullOrWhiteSpace(Model.Tenant.TenantSettings.Theme)) {
                             <li class="nav-item dropdown" title="@Helpers.Text("Theme")">
-                                <a class="nav-link dropdown-toggle" href="#" id="themeDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                @* FreeCICD a11y: the icon-only theme menu needs a name (WCAG 4.1.2) *@
+                                <a class="nav-link dropdown-toggle" href="#" id="themeDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="@Helpers.Text("Theme")">
                                     @switch (Model.Theme) {
                                         case "dark":
                                             <Icon Name="ThemeDark" />
@@ -152,10 +154,11 @@
                             </li>
                         }
                         <li class="nav-item">
-                            <a class="nav-link" data-bs-toggle="offcanvas" href="#offcanvasUserMenu" role="button" aria-controls="offcanvasUserMenu">
+                            @* FreeCICD a11y: the icon-only user menu needs a name; the avatar is decorative (WCAG 1.1.1, 4.1.2) *@
+                            <a class="nav-link" data-bs-toggle="offcanvas" href="#offcanvasUserMenu" role="button" aria-controls="offcanvasUserMenu" aria-label="@Helpers.Text(Model.LoggedIn ? "User" : "Info")">
                                 @if (Model.LoggedIn) {
                                     @if (!String.IsNullOrWhiteSpace(UserAvatarUrl)) {
-                                        <img class="user-menu-icon" src="@UserAvatarUrl" />
+                                        <img class="user-menu-icon" src="@UserAvatarUrl" alt="" />
                                     } else {
                                         <Icon Name="User" />
                                     }
@@ -172,13 +175,6 @@
 </header>
 
 @code {
-    public void Dispose() { }
-
-    protected override void OnInitialized()
-    {
-        Model.OnChange += StateHasChanged;
-    }
-
     protected bool AdminView {
         get {
             var adminMenuItems = MenuItemsAdmin.Select(x => x.PageNames).SelectMany(x => x).ToList();
@@ -366,5 +362,11 @@
 
             return output;
         }
+    }
+    public void Dispose() { }
+
+    protected override void OnInitialized()
+    {
+        Model.OnChange += StateHasChanged;
     }
 }
